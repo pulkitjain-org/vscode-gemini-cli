@@ -24,7 +24,7 @@ import { PromptEnhancer } from './acp/promptEnhancer';
 import { configSection, getAgentCommand, getWorkspaceCwd, loadProductInfo, productInfo, setAgentEnvOverride, setStorageDirs } from './host/configuration';
 import { initModelList, initModelPreference, knownModelList } from './host/modelPreference';
 import { initReactionRecents } from './host/chatReactions';
-import { SetupWalkthrough, walkthroughId } from './host/setupWalkthrough';
+import { SetupState } from './host/setupState';
 import { GeminiStatusBar } from './host/statusBar';
 import { findCliEntry, QuickEdits } from './host/quickEdits';
 import { UsageMeter } from './host/usageMeter';
@@ -119,8 +119,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		},
 		workspaceFolder: getWorkspaceCwd,
 	});
-	const walkthrough = new SetupWalkthrough(service, context.globalState);
-	const warmup = new AgentWarmup(service, () => walkthrough.isSetUp, log);
+	const setup = new SetupState(service, context.globalState);
+	const warmup = new AgentWarmup(service, () => setup.isSetUp, log);
 	const browserTools = new BrowserTools(String(context.extension.packageJSON.version ?? ''), log, {
 		stop: agent => agentsView.stopTurn(agent),
 		title: agent => agentsView.agentTitle(agent) ?? vscode.l10n.t("Agent"),
@@ -217,7 +217,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		const review = teamFlows.reviews.forAgent(agentId);
 		return review && { label: vscode.l10n.t("Review !{0}", review.iid), tip: vscode.l10n.t("Open the review of !{0}: {1}", review.iid, review.title) };
 	};
-	agentsView.openReview = agentId => void vscode.commands.executeCommand('gemini.team.openAgentReview', agentId);
+	agentsView.openReview = agentId => void vscode.commands.executeCommand('gemini.team.openReview', agentId);
 	context.subscriptions.push(teamFlows.reviews.onDidChange(() => agentsView.refreshChats()));
 	const traceFolder = vscode.Uri.joinPath(context.globalStorageUri, 'traces').fsPath;
 	setTraceFolder(traceFolder);
@@ -260,7 +260,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		statusBar,
 		usageMeter,
 		usageMeter.onDidChange(usage => statusBar.setUsage(usage)),
-		walkthrough,
+		setup,
 		warmup,
 		new Appearance(context.extensionUri),
 		new CliManager(service, context.globalState, log),
@@ -296,10 +296,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		vscode.workspace.onDidChangeConfiguration(e => e.affectsConfiguration(`${configSection}.keepAwake`) && readKeepAwake()),
 		vscode.commands.registerCommand('gemini.enhancePrompt', async () => (await chatInFront())?.requestEnhance()),
 		vscode.commands.registerCommand('gemini.toggleFollowAgent', async () => (await chatInFront())?.toggleFollowing()),
-		vscode.commands.registerCommand('gemini.openChatAsMarkdown', async () => {
-			const agent = agentsView.activeAgentId() ?? agentsView.summaries().find(each => each.state !== 'stopped')?.id;
-			return agent ? agentsView.openAsMarkdown(agent) : vscode.window.showInformationMessage(vscode.l10n.t("Open an agent first."));
-		}),
 		vscode.commands.registerCommand('gemini.showUsage', async () => (await chatInFront())?.showUsage()),
 		vscode.commands.registerCommand('gemini.sessionApprovals', async () => (await chatInFront())?.manageApprovals()),
 		vscode.commands.registerCommand('gemini.addFileToChat', async (uri: unknown, uris: unknown) => {
@@ -327,8 +323,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		vscode.commands.registerCommand('gemini.restartAgent', () => service.restart()),
 		vscode.commands.registerCommand('gemini.completeSetupInTerminal', () => service.completeSetupInTerminal()),
 		vscode.commands.registerCommand('gemini.setProjectId', () => setProjectId()),
-		vscode.commands.registerCommand('gemini.signIn', () => walkthrough.signIn()),
-		vscode.commands.registerCommand('gemini.getStarted', () => vscode.commands.executeCommand('workbench.action.openWalkthrough', walkthroughId, false)),
+		vscode.commands.registerCommand('gemini.signIn', () => setup.signIn()),
 	);
 	// One line per launch, to measure startup on real machines (FINDINGS.md, starting the agent).
 	const servicesUpMs = Date.now() - activationStart;

@@ -11,7 +11,7 @@ What to do when something doesn't work. Most fixes are one command away in the *
 | No Gemini CLI found | Only in a build without the bundled CLI. Choose **Install Gemini CLI** in the message, or set `gemini.cliPath`. |
 | A program the agent runs cannot find a token that is set in your shell (`GITHUB_TOKEN`, `NPM_TOKEN`) | GeminiCode leaves every variable whose name looks like a credential out of the agent's environment, except the CLI's own `GEMINI_*` and `GOOGLE_*`. Give the program its token another way, such as its own sign-in (`gh auth login`) or a file it reads. |
 | "older than 0.66.0" | The CLI in use is too old. Choose **Install Latest**, or pick **Install or Change Gemini CLI Version...** from the Gemini status bar item's menu. |
-| Not sure the CLI starts at all | Run **Gemini: Check Agent Connection**. It starts the CLI on its own and reports its version and protocol, or the error. |
+| Not sure the CLI starts at all | Turn on `gemini.developer.showTools` and run **Gemini: Check Agent Connection**. It starts the CLI on its own and reports its version and protocol, or the error. |
 | The agent stops or misbehaves | Click the **Gemini** status bar item and choose **Restart Agent**. Open agents resume their sessions. |
 | Auto Edit or YOLO is refused | The Gemini CLI won't use them in a folder it doesn't trust. Pick the mode again and trust the folder when asked. |
 | An MCP server doesn't load | Check the warning and the server's mark in **Agent Setup**, and **Gemini: Show Log**. A project's servers load only in a trusted folder. |
@@ -30,7 +30,7 @@ What to do when something doesn't work. Most fixes are one command away in the *
 
 ## Record a performance trace
 
-When a turn feels slow, **Record Performance Trace...** in the Gemini status bar item's menu (or **Gemini: Record or Stop Performance Trace**, with `gemini.developer.showTools` on) restarts the agent with the Gemini CLI's own telemetry writing to a file in GeminiCode's own storage, `geminicode-trace-<date>.jsonl`; the notification shows where. Use the agent as usual, then run the command again or press **Stop Recording**. The agent restarts without telemetry once it is idle, and a summary opens: for each turn, the routing call if the model was on Auto, the first model reply, the model and tool time, and the input tokens with how many were cached.
+When a turn feels slow, **Record Performance Trace...** in the Gemini status bar item's menu (or **Gemini: Record or Stop Performance Trace** in the Command Palette), both with `gemini.developer.showTools` on, restarts the agent with the Gemini CLI's own telemetry writing to a file in GeminiCode's own storage, `geminicode-trace-<date>.jsonl`; the notification shows where. Use the agent as usual, then run the command again or press **Stop Recording**. The agent restarts without telemetry once it is idle, and a summary opens: for each turn, the routing call if the model was on Auto, the first model reply, the model and tool time, and the input tokens with how many were cached.
 
 The file stays on your Mac. It holds timings, token counts, the CLI's own system prompt and tool declarations. It holds no prompt or reply text. Attach the `.md` summary to an issue; keep the `.jsonl` unless someone asks for it.
 

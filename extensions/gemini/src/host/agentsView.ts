@@ -8,7 +8,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type * as acp from '@agentclientprotocol/sdk';
 import * as vscode from 'vscode';
-import { AgentChanges, ChangeTotals } from '../acp/agentChanges';
+import { AgentChanges, ChangeTotals, EditedFile } from '../acp/agentChanges';
 import { cliHome, projectTempDirName } from '../acp/cli/formats';
 import { attentionChange } from '../acp/attention';
 import { branchNameFrom } from '../acp/branchNames';
@@ -410,9 +410,23 @@ export class AgentsView implements vscode.Disposable {
 				return target && this.open(target);
 			}),
 			vscode.commands.registerCommand('gemini.agents.openTerminal', (node?: AgentTreeNode) => this.openTerminal(node?.kind === 'agent' ? node.record.id : this.activeAgentId())),
-			vscode.commands.registerCommand('gemini.agents.openChanges', (node?: AgentTreeNode) => node?.kind === 'agent' && this.openChanges(node.record.id)),
+			// From the pane's row, or from the Changes view's file rows with the file.
+			vscode.commands.registerCommand('gemini.agents.openChanges', (target?: AgentTreeNode | EditedFile) => {
+				if (!target) {
+					return undefined;
+				}
+				if (typeof (target as EditedFile).path === 'string') {
+					return this.changesView.openFile(target as EditedFile);
+				}
+				const node = target as AgentTreeNode;
+				return node.kind === 'agent' && this.openChanges(node.record.id);
+			}),
 			vscode.commands.registerCommand('gemini.agents.rename', (node?: AgentTreeNode) => this.rename(node)),
-			vscode.commands.registerCommand('gemini.agents.openAsMarkdown', (node?: AgentTreeNode) => node?.kind === 'agent' && this.openAsMarkdown(node.record.id)),
+			// From the pane's row; from the palette, the agent in front, else the first one not stopped.
+			vscode.commands.registerCommand('gemini.agents.openAsMarkdown', (node?: AgentTreeNode) => {
+				const id = node?.kind === 'agent' ? node.record.id : this.activeAgentId() ?? this.summaries().find(each => each.state !== 'stopped')?.id;
+				return id ? this.openAsMarkdown(id) : vscode.window.showInformationMessage(vscode.l10n.t("Open an agent first."));
+			}),
 			// From the palette or a key: the agent in front.
 			vscode.commands.registerCommand('gemini.agents.stop', (node?: AgentTreeNode) => {
 				const id = node?.kind === 'agent' ? node.record.id : this.activeAgentId();
@@ -428,8 +442,6 @@ export class AgentsView implements vscode.Disposable {
 			vscode.commands.registerCommand('gemini.agents.remove', (node?: AgentTreeNode) => this.removeAgent(node)),
 			vscode.commands.registerCommand('gemini.agents.removeWorkspace', (node?: AgentTreeNode) => this.removeWorkspace(node)),
 			vscode.commands.registerCommand('gemini.projects.new', (node?: AgentTreeNode) => this.projectAgents.newProject(node)),
-			// The Projects section's +: the same command, drawn as a plus.
-			vscode.commands.registerCommand('gemini.projects.add', (node?: AgentTreeNode) => this.projectAgents.newProject(node)),
 			vscode.commands.registerCommand('gemini.projects.newThread', (node?: AgentTreeNode) => node?.kind === 'agent' && this.projects.openNewThread(node.record.id)),
 			vscode.commands.registerCommand('gemini.projects.settings', (node?: AgentTreeNode) => node?.kind === 'agent' && this.projects.openSettingsOf(node.record.id)),
 			this.projects,

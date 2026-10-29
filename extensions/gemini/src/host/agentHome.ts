@@ -26,6 +26,7 @@ import { tildify } from './displayText';
 import { configSection, getApprovalPolicy, getProjectSettings, indexBuildOn } from './configuration';
 import { preferredModel } from './modelPreference';
 import { moveCard, toggleCard, type DashboardLayout } from '../acp/dashboard';
+import { developerToolsOn } from './developerTools';
 import { buildDashboard, DashboardInput, StartupState } from './homeDashboard';
 import { FromHome, HomeAction, HomeAgent, HomeCardId, HomeIndex, HomeProject, HomeView, ToHome } from './panelProtocol';
 import { HomeStrings } from './panelStrings';
@@ -111,7 +112,6 @@ export class AgentHome implements vscode.Disposable {
 		// One click back to Home from anywhere: the house at the start of the title bar (geminiModes.ts) runs gemini.home.
 		this.disposables.push(
 			onDidChangeSpellCheck(on => void this.panel?.webview.postMessage({ type: 'spellCheck', on } satisfies ToHome)),
-			vscode.commands.registerCommand('gemini.agentHome', () => this.show(false)),
 			vscode.commands.registerCommand('gemini.home', () => this.show(false)),
 			vscode.window.onDidChangeWindowState(state => state.focused && this.panel?.visible && this.refreshTools(showRefreshMs)),
 			agents.usage?.onDidChange(() => this.schedule()) ?? { dispose: () => undefined },
@@ -340,7 +340,8 @@ export class AgentHome implements vscode.Disposable {
 			...projectId ? { projectId } : {},
 			signedIn,
 			...this.teamData?.refreshedAt ? { dataFrom: this.teamData.refreshedAt } : {},
-			...this.options?.startup ? { startup: this.options.startup() } : {},
+			// Startup timings are a developer's card.
+			...this.options?.startup && developerToolsOn() ? { startup: this.options.startup() } : {},
 			projectsOn: projectsEnabled(),
 			refreshing: !!this.teamData && Date.now() - this.teamData.refreshedAt < 3000,
 			hideUnconnected: !!firstConnected && Date.now() - firstConnected > weekMs,

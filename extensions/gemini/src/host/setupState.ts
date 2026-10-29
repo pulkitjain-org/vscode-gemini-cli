@@ -3,27 +3,23 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// The Get Started walkthrough (Gemini: Get Started). Its steps tick themselves
-// off from the agent's status through the `gemini.setup.*` context keys. It
-// doesn't open on its own: Home opens on the first start with the same first
-// steps, and a walkthrough asked for during startup, before the workbench has
-// registered it, opens upstream's Setup walkthrough instead.
+// How far setup has come (CLI ready, signed in, project in order), kept from
+// the agent's status across launches. Home's Get started card is the setup
+// flow; this decides whether the agent may start early.
 
 import * as vscode from 'vscode';
 import { advanceSetupProgress, noSetupProgress, SetupProgress } from '../acp/setupProgress';
 import { AgentService } from './agentService';
 
-export const walkthroughId = 'gemini-fork.gemini#gemini.getStarted';
 const progressKey = 'gemini.setup.progress';
 
-export class SetupWalkthrough extends vscode.Disposable {
+export class SetupState extends vscode.Disposable {
 	private readonly listener: vscode.Disposable;
 	private progress: SetupProgress;
 
 	constructor(private readonly service: AgentService, private readonly globalState: vscode.Memento) {
 		super(() => this.listener.dispose());
 		this.progress = globalState.get<SetupProgress>(progressKey) ?? noSetupProgress;
-		this.publish();
 		this.listener = service.onDidChangeStatus(status => this.update(advanceSetupProgress(this.progress, status)));
 		this.update(advanceSetupProgress(this.progress, service.status));
 	}
@@ -57,12 +53,5 @@ export class SetupWalkthrough extends vscode.Disposable {
 		}
 		this.progress = next;
 		void this.globalState.update(progressKey, next);
-		this.publish();
-	}
-
-	private publish(): void {
-		void vscode.commands.executeCommand('setContext', 'gemini.setup.cliReady', this.progress.cliReady);
-		void vscode.commands.executeCommand('setContext', 'gemini.setup.signedIn', this.progress.signedIn);
-		void vscode.commands.executeCommand('setContext', 'gemini.setup.projectReady', this.progress.projectReady);
 	}
 }

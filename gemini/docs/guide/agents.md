@@ -58,7 +58,7 @@ Files, diffs and pages an agent opens go in an editor group beside its chat, wit
 
 ## Follow the agent
 
-To watch an agent work, turn on **Follow the agent** in the composer's **+** menu, or run **Gemini: Follow the Agent**. Each file the agent reads opens at the line it is on, and each file it edits opens once the edit is written. Focus stays in the chat.
+To watch an agent work, turn on **Follow the agent** in the composer's **+** menu. Each file the agent reads opens at the line it is on, and each file it edits opens once the edit is written. Focus stays in the chat.
 
 The file opened last is named under the composer. Click the name to show it, or **×** to close it.
 

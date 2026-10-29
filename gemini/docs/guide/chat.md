@@ -68,7 +68,7 @@ The rewrite replaces your draft as Gemini writes it; **Cancel** or <kbd>esc</kbd
 
 In **Plan** mode the agent reads and proposes a plan without changing anything. When a reply ends in Plan mode, **Approve Plan** under it switches the chat back to the mode it was in before Plan (Default when it started in Plan) and asks Gemini to carry out the plan. The chevron beside it is the CLI's own approval dialog, in its words: **Yes, automatically accept edits** builds in Auto Edit, **Yes, manually accept edits** builds in Default, **Edit or comment the plan first** opens Plan Review, and **Not yet** leaves the plan as it is. When you switched to another model after planning, a line under the button names both: "Builds with … ; planned with …". The Gemini CLI doesn't say ahead which model Auto will pick, so with Auto there is no such line.
 
-![An agent in Plan mode writing a plan that ends with Build This Plan](../../site/media/showcase-plan-dark.webp "clip")
+![An agent in Plan mode writing a plan that ends with Approve Plan](../../site/media/showcase-plan-dark.webp "clip")
 
 With the model on Auto, Gemini plans with Pro and builds with Flash. Turn off **Plan with Pro, build with Flash** in [Agent Setup](helpers.md#gemini-cli-settings) to keep one model throughout.
 
@@ -226,6 +226,6 @@ Writing the summary is a model turn, so it counts toward your quota.
 
 - The thin outline of your prompts down the chat's right edge jumps to each one. <kbd>⌥⌘↑</kbd> and <kbd>⌥⌘↓</kbd> do the same.
 - **Latest**, above the input, takes you back to the newest message.
-- **Open Chat as Markdown**, in an agent's right-click menu or the Command Palette, opens the whole conversation as a document you can search, save or share.
+- **Open Chat as Markdown**, in an agent's right-click menu or the Command Palette (for the agent in front), opens the whole conversation as a document you can search, save or share.
 
 For a fresh session, start a new agent. Removing an agent you no longer need also deletes its saved conversation.

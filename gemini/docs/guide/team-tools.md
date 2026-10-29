@@ -6,7 +6,7 @@ Everything runs from your Mac, over your VPN. Nothing goes through a GeminiCode 
 
 ## Connect your tools
 
-Open **Connections** from the Command Palette (**Gemini: Connections**), the tools item in the status bar, or the Agents pane's **...** menu. Each tool shows who you're signed in as, the server and when the token expires.
+Open **Connections** from the Command Palette (**Gemini: Connections**), the tools item in the status bar, or the Agents pane's **...** menu. The actions Home's cards offer, Open Merge Request, Run Checks, Run Checks on a Branch, Move, Log Time and Reassign, are one Command Palette entry, **Gemini: Jira and GitLab Actions...**, which asks what to do and then which ticket, agent or branch. Each tool shows who you're signed in as, the server and when the token expires.
 
 | Tool | How it connects | What you need |
 | --- | --- | --- |
@@ -107,7 +107,7 @@ Name the file in the team defaults:
 }
 ```
 
-Then open the design-system file in the Figma desktop app and run **Gemini: Sync Design System**, or **Sync Design System** on Figma's row in Connections. Until the team file names one, **Add Figma Design** offers **Set Up Your Design System**, which says what to add. GeminiCode reads each page you named (every visible page when `pages` is left out, as long as the file has no more than eight; Figma limits how many reads its Dev Mode server answers a day, so a larger file has to name its pages), says what changed since the last sync, such as "4 new tokens, 1 component removed", and offers **Review Changes**, which shows each file's diff, and **Write Files**. It writes:
+Then open the design-system file in the Figma desktop app and run **Sync Design System** on Figma's row in Connections (or **Gemini: Sync Design System** from the Command Palette, with `gemini.developer.showTools` on). Until the team file names one, **Add Figma Design** offers **Set Up Your Design System**, which says what to add. GeminiCode reads each page you named (every visible page when `pages` is left out, as long as the file has no more than eight; Figma limits how many reads its Dev Mode server answers a day, so a larger file has to name its pages), says what changed since the last sync, such as "4 new tokens, 1 component removed", and offers **Review Changes**, which shows each file's diff, and **Write Files**. It writes:
 
 - a skill in `.gemini/skills/design-system/` (or the folder `skill` names), with the rules for using the design system;
 - `references/tokens.md`, every variable with its value, and `references/components.md`, every component with its variants;
@@ -131,7 +131,7 @@ A ticket's whole journey can happen in GeminiCode:
 
 ### Checks on any branch
 
-**Run Checks on a Branch…**, on Home or in the Command Palette, runs the same checks on any branch before a merge request exists: the branch checked out here, an agent's, a local one or one on origin. In a window with several folders it works in the repository of the agent in front, else of the active editor; when neither says which, it asks, with the agent last in front first, then each folder. Start on Ticket and Move's team defaults pick their folder the same way. A window with one folder never asks.
+**Run Checks on a Branch…**, on Home or under **Gemini: Jira and GitLab Actions...** in the Command Palette, runs the same checks on any branch before a merge request exists: the branch checked out here, an agent's, a local one or one on origin. In a window with several folders it works in the repository of the agent in front, else of the active editor; when neither says which, it asks, with the agent last in front first, then each folder. Start on Ticket and Move's team defaults pick their folder the same way. A window with one folder never asks.
 
 A branch that isn't checked out gets a checkout of its own under `~/.geminicode/worktrees/<repository>/checks/`, with your `gemini.agents.worktreeSetup` command, or the repository's own setup script once you allow it, run in it once. Later runs reuse it, and your own checkout never moves. SonarQube's gate comes from the server's last analysis of the branch, so it needs one push first. With no agent on the branch, **Fix** starts one in that checkout, with the findings as its first prompt.
 
@@ -216,7 +216,7 @@ Clicking a merge request asks whether to open it in GeminiCode's browser or your
 
 Every write GeminiCode makes to Jira, Confluence or GitLab for you is recorded on your Mac, whether an agent asked for it or you pressed a button: a comment, a move, a time log, a reassignment, a published page, a merge request, a review comment, an approval, a merge. With several Jira or Confluence sites, the record names the site. Each write gets two lines in a file per day under GeminiCode's storage, one before the call and one after, with what the tool gave back (a comment id, a worklog id, `!321`, the merge commit). The lines hold what changed and where, not the text; the text is in the chat.
 
-**Gemini: Open Audit Log** (also in the Gemini status bar menu, and behind **Audit: 14 actions today** at the right of the status bar) shows the log as a page: one row per write with the time, who asked (an agent or a button of yours), the action, its effect, how you answered, the id the tool gave back and the state. Pick a day, a tool, or only the intents without a result. A row with no result is a write that was running when GeminiCode last quit; it is highlighted, and Home lists it under **Unfinished**. Check the tool before doing it again, then **Mark as Checked**. **Export the Day…** writes the day as Markdown to your home folder, and **Open Folder** shows the files.
+**Gemini: Open Audit Log** (also behind **Audit: 14 actions today** at the right of the status bar, and in the Gemini status bar menu with `gemini.developer.showTools` on) shows the log as a page: one row per write with the time, who asked (an agent or a button of yours), the action, its effect, how you answered, the id the tool gave back and the state. Pick a day, a tool, or only the intents without a result. A row with no result is a write that was running when GeminiCode last quit; it is highlighted, and Home lists it under **Unfinished**. Check the tool before doing it again, then **Mark as Checked**. **Export the Day…** writes the day as Markdown to your home folder, and **Open Folder** shows the files.
 
 ## Your team's own servers
 

@@ -55,7 +55,7 @@ export class AgentService implements vscode.Disposable {
 	readonly files = createFileHandlers(new WorkspaceFileSystem(), sessionId => agentFileAccessPolicy(this.runtime.folderOf(sessionId) ?? getWorkspaceCwd()));
 	/**
 	 * A session of the service's own, opened only when something asks for it
-	 * (`ensureReady`), such as the walkthrough's Sign In: the status comes from
+	 * (`ensureReady`), such as Sign In: the status comes from
 	 * the process and every chat's sessions, so no session opens per process start.
 	 */
 	readonly client: AgentClient;
@@ -173,7 +173,7 @@ export class AgentService implements vscode.Disposable {
 				if (state.kind === 'ready') {
 					this.log.info(`Session ${state.sessionId} ready`);
 				} else if (state.kind === 'error' && this.runtime.state.kind === 'ready') {
-					// Its own session failed, such as for the walkthrough's Sign In: say why, as for the agent.
+					// Its own session failed, such as for Sign In: say why, as for the agent.
 					this.showOnce(state.error);
 				}
 			}),

@@ -95,7 +95,7 @@ These are under **Gemini › Advanced** in Settings.
 | `gemini.chat.reactions.enabled` | on | React to replies with an emoji. See [Reacting to replies](chat.md#reacting-to-replies). |
 | `gemini.chat.reactions.agentReactions` | on | Let Gemini react to your messages when it has something to add. Costs about 50 tokens per session. |
 | `gemini.chat.reactions.meanings` | `{}` | What an emoji asks Gemini to do, such as `{ "🚀": "Go ahead, then commit with a short message." }`. An entry can change a built-in meaning (👍 👎 ❓ ❤️) or add one. |
-| `gemini.developer.showTools` | off | Show GeminiCode's developer tools in the Command Palette: Run Benchmark, Record or Stop Performance Trace, Show Status Menu, New Skill, and installing a Gemini CLI version. They still run from the Gemini status bar menu, Agent Setup and the messages that offer them. |
+| `gemini.developer.showTools` | off | Show GeminiCode's developer tools: in the Command Palette, Run Benchmark, Record or Stop Performance Trace, Show Status Menu, New Skill, Check Agent Connection, Sync Design System and installing a Gemini CLI version; in the Gemini status bar menu, Open Audit Log, Record Performance Trace and Run Benchmark; in Agent Setup, the Measure buttons of Context per model call; on Home, the startup card. The audit log still opens from Agent Setup and Home's cards. |
 
 ## Storage
 

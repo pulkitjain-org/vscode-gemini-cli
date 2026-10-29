@@ -114,7 +114,6 @@ export class ReviewComments implements vscode.Disposable {
 			run('gemini.mrReview.cancelEdit', (comment: ReviewComment) => this.cancel(comment)),
 			run('gemini.mrReview.deleteComment', (comment: ReviewComment) => comment.draftId ? this.hosts.get(comment.review)?.remove(comment.draftId) : undefined),
 			run('gemini.mrReview.askSuggestion', (comment: ReviewComment) => comment.draftId ? this.hosts.get(comment.review)?.askSuggestion(comment.draftId) : undefined),
-			run('gemini.mrReview.openPage', (thread?: vscode.CommentThread) => this.hostOf(thread)?.openPage()),
 		);
 	}
 
@@ -187,6 +186,11 @@ export class ReviewComments implements vscode.Disposable {
 			}
 		}
 		return undefined;
+	}
+
+	/** Opens the review page of the review a thread belongs to (Open Review on a thread's title). */
+	openPage(thread: vscode.CommentThread): void {
+		this.hostOf(thread)?.openPage();
 	}
 
 	private hostOf(thread: vscode.CommentThread | undefined): ReviewDiffHost | undefined {

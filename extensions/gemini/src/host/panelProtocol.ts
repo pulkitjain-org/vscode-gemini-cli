@@ -514,6 +514,8 @@ export interface SettingsPageView {
 	readonly rules: readonly RulesFileView[];
 	readonly preferences: PreferencesView;
 	readonly contextCost: ContextCostView;
+	/** `gemini.developer.showTools`: the Measure buttons show. */
+	readonly developer: boolean;
 	readonly trust: TrustView;
 	/** Unset when the page has nothing to measure it with. */
 	readonly storage?: StorageView;

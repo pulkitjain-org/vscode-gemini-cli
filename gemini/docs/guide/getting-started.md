@@ -21,7 +21,7 @@ Install GeminiCode, sign in with Google and start your first agent. The Gemini C
 
 ## Set up
 
-Home's **Get started** card has a button for each step that is left: **Sign In**, **Set Project**, **Connect** for your team's tools, and **Open Folder**. The **Get Started with GeminiCode** walkthrough, from **Gemini: Get Started**, goes through the same setup in five steps:
+Home's **Get started** card has a button for each step that is left: **Sign In**, **Set Project**, **Connect** for your team's tools, and **Open Folder**. It is the whole setup, in five steps:
 
 1. **Gemini CLI.** GeminiCode comes with a tested Gemini CLI. It uses `gemini.cliPath`, then a copy you installed from GeminiCode, then the bundled copy, then `gemini` on your `PATH`.
 2. **Sign in.** Run **Gemini: Sign In with Google**. If your account needs a one-time step the editor can't show, run **Gemini: Complete Setup in Terminal**.
@@ -44,7 +44,7 @@ Read [Agents](agents.md) for the layout, and [Review and safety](review.md) for 
 
 ## Make it yours
 
-Run **Make It Yours** from the Command Palette, or open the step of the same name in Get Started, to pick:
+Run **Make It Yours** from the Command Palette to pick:
 
 - **A theme.** GeminiCode Dark or GeminiCode Light (the default follows your system), or any other installed theme with **More themes**.
 - **A code font.** JetBrains Mono (the default) and Geist Mono ship with GeminiCode; SF Mono and Menlo come with macOS.

@@ -53,11 +53,6 @@
         "category": "%category%"
       },
       {
-        "command": "gemini.openChatAsMarkdown",
-        "title": "%command.openChatAsMarkdown%",
-        "category": "%category%"
-      },
-      {
         "command": "gemini.agents.openAsMarkdown",
         "title": "%command.openChatAsMarkdown%",
         "category": "%category%"
@@ -90,11 +85,6 @@
       {
         "command": "gemini.signIn",
         "title": "%command.signIn%",
-        "category": "%category%"
-      },
-      {
-        "command": "gemini.getStarted",
-        "title": "%command.getStarted%",
         "category": "%category%"
       },
       {
@@ -186,12 +176,6 @@
         "icon": "$(comment-discussion)"
       },
       {
-        "command": "gemini.projects.add",
-        "title": "%command.projects.new%",
-        "category": "%category%",
-        "icon": "$(add)"
-      },
-      {
         "command": "gemini.projects.newThread",
         "title": "%command.projects.newThread%",
         "category": "%category%",
@@ -202,12 +186,6 @@
         "title": "%command.projects.settings%",
         "category": "%category%",
         "icon": "$(gear)"
-      },
-      {
-        "command": "gemini.agentHome",
-        "title": "%command.agentHome%",
-        "category": "%category%",
-        "icon": "$(home)"
       },
       {
         "command": "gemini.home",
@@ -445,15 +423,16 @@
         "enablement": "gemini.agentHasChanges"
       },
       {
-        "command": "gemini.changes.openFile",
-        "title": "%command.changes.openFile%",
-        "category": "%category%"
-      },
-      {
         "command": "gemini.team.startOnTicket",
         "title": "%command.team.startOnTicket%",
         "category": "%category%",
         "icon": "$(play)"
+      },
+      {
+        "command": "gemini.team.actions",
+        "title": "%command.team.actions%",
+        "category": "%category%",
+        "icon": "$(tools)"
       },
       {
         "command": "gemini.team.openMergeRequest",
@@ -494,12 +473,6 @@
         "command": "gemini.team.discardReview",
         "title": "%command.team.discardReview%",
         "category": "%category%"
-      },
-      {
-        "command": "gemini.team.openAgentReview",
-        "title": "%command.team.openAgentReview%",
-        "category": "%category%",
-        "icon": "$(comment-discussion)"
       },
       {
         "command": "gemini.mrReview.addComment",
@@ -556,12 +529,6 @@
         "icon": "$(sparkle)"
       },
       {
-        "command": "gemini.mrReview.openPage",
-        "title": "%command.mrReview.openPage%",
-        "category": "%category%",
-        "icon": "$(preview)"
-      },
-      {
         "command": "gemini.team.fixMergeRequest",
         "title": "%command.team.fixMergeRequest%",
         "category": "%category%",
@@ -605,70 +572,6 @@
         "title": "%command.team.runChecksOnBranch%",
         "category": "%category%",
         "icon": "$(shield)"
-      }
-    ],
-    "walkthroughs": [
-      {
-        "id": "gemini.getStarted",
-        "title": "%walkthrough.title%",
-        "description": "%walkthrough.description%",
-        "steps": [
-          {
-            "id": "cli",
-            "title": "%walkthrough.cli.title%",
-            "description": "%walkthrough.cli.description%",
-            "media": {
-              "markdown": "walkthrough/cli.md"
-            },
-            "completionEvents": [
-              "onContext:gemini.setup.cliReady"
-            ]
-          },
-          {
-            "id": "signIn",
-            "title": "%walkthrough.signIn.title%",
-            "description": "%walkthrough.signIn.description%",
-            "media": {
-              "markdown": "walkthrough/signIn.md"
-            },
-            "completionEvents": [
-              "onContext:gemini.setup.signedIn"
-            ]
-          },
-          {
-            "id": "project",
-            "title": "%walkthrough.project.title%",
-            "description": "%walkthrough.project.description%",
-            "media": {
-              "markdown": "walkthrough/project.md"
-            },
-            "completionEvents": [
-              "onContext:gemini.setup.projectReady"
-            ]
-          },
-          {
-            "id": "look",
-            "title": "%walkthrough.look.title%",
-            "description": "%walkthrough.look.description%",
-            "media": {
-              "markdown": "walkthrough/look.md"
-            },
-            "completionEvents": [
-              "onCommand:gemini.appearance"
-            ]
-          },
-          {
-            "id": "agent",
-            "title": "%walkthrough.agent.title%",
-            "description": "%walkthrough.agent.description%",
-            "media": {
-              "markdown": "walkthrough/agent.md"
-            },
-            "completionEvents": [
-              "onCommand:gemini.agents.newAgent"
-            ]
-          }
-        ]
       }
     ],
     "keybindings": [
@@ -968,7 +871,7 @@
           "group": "inline"
         },
         {
-          "command": "gemini.projects.add",
+          "command": "gemini.projects.new",
           "when": "view == gemini.agents && viewItem == section.projects",
           "group": "inline"
         },
@@ -1137,7 +1040,7 @@
           "when": "commentController == gemini.review && commentThread == gitlab"
         },
         {
-          "command": "gemini.mrReview.openPage",
+          "command": "gemini.team.openReview",
           "group": "navigation@2",
           "when": "commentController == gemini.review && !commentThreadIsEmpty"
         }
@@ -1209,10 +1112,6 @@
           "when": "false"
         },
         {
-          "command": "gemini.team.openAgentReview",
-          "when": "false"
-        },
-        {
           "command": "gemini.mrReview.addComment",
           "when": "false"
         },
@@ -1253,14 +1152,6 @@
           "when": "false"
         },
         {
-          "command": "gemini.mrReview.openPage",
-          "when": "false"
-        },
-        {
-          "command": "gemini.agentHome",
-          "when": "false"
-        },
-        {
           "command": "gemini.team.reopenFlow",
           "when": "false"
         },
@@ -1270,10 +1161,6 @@
         },
         {
           "command": "gemini.team.settleIntent",
-          "when": "false"
-        },
-        {
-          "command": "gemini.projects.add",
           "when": "false"
         },
         {
@@ -1345,20 +1232,52 @@
           "when": "false"
         },
         {
-          "command": "gemini.agents.openAsMarkdown",
-          "when": "false"
-        },
-        {
           "command": "gemini.agents.openChanges",
-          "when": "false"
-        },
-        {
-          "command": "gemini.changes.openFile",
           "when": "false"
         },
         {
           "command": "gemini.team.fixMergeRequest",
           "when": "false"
+        },
+        {
+          "command": "gemini.team.openMergeRequest",
+          "when": "false"
+        },
+        {
+          "command": "gemini.team.moveTicket",
+          "when": "false"
+        },
+        {
+          "command": "gemini.team.logTime",
+          "when": "false"
+        },
+        {
+          "command": "gemini.team.reassignTicket",
+          "when": "false"
+        },
+        {
+          "command": "gemini.team.runChecks",
+          "when": "false"
+        },
+        {
+          "command": "gemini.team.runChecksOnBranch",
+          "when": "false"
+        },
+        {
+          "command": "gemini.toggleFollowAgent",
+          "when": "false"
+        },
+        {
+          "command": "gemini.showUsage",
+          "when": "false"
+        },
+        {
+          "command": "gemini.designSystem.sync",
+          "when": "config.gemini.developer.showTools"
+        },
+        {
+          "command": "gemini.checkAgent",
+          "when": "config.gemini.developer.showTools"
         }
       ]
     },

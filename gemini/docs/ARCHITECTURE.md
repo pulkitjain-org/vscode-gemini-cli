@@ -22,7 +22,7 @@ extensions/gemini/
                     audit log and the benchmark.
   src/host/         The VS Code side: the chat view and agent tabs, the Agents pane, Agent Home, the
                     Changes view, the status bar, the settings and team pages, commands, git actions,
-                    update notices and the Get Started walkthrough. ChatController owns a chat's
+                    update notices and the setup state. ChatController owns a chat's
                     webview, transcript and turns; each of its features (git, follow, usage,
                     attachments, permissions, Undo and Rewind, saved sessions, projects) keeps its
                     messages and state in a module of its own in chat/. AgentsView owns the agents
@@ -34,7 +34,6 @@ extensions/gemini/
   media/            Webview stylesheets and icons.
   themes/           The GeminiCode Dark and Light colour themes.
   icons/            The GeminiCode file icon theme.
-  walkthrough/      Get Started step pages.
   scripts/          bundle-cli.mts (fetches the pinned CLI into cli/ for release builds), build-file-icons.py,
                     build-emoji-data.mts (the emoji picker's data), bench-run.mts (the benchmark outside
                     the app), and the measurements FINDINGS.md quotes: perf-real.mts (a real account),
@@ -126,7 +125,7 @@ The command is worked out without blocking the extension host. The CLI's resolut
 
 `AgentRuntime` runs `initialize` once and serves every chat from that process. Each chat is its own ACP session with its own `cwd`. With a Google sign-in a new session takes about 0.8 s, against about 3 s for a new process ([FINDINGS.md](FINDINGS.md#sessions)).
 
-The agent's status (status bar, walkthrough, Home) comes from the process and from how opening sessions went for every chat (`describeRuntimeStatus`): a sign-in, project, network or timeout error from any chat's session shows once as a notification. The service's own session (`AgentService.client`) opens only when something asks for it, such as the walkthrough's Sign In, so a process start opens no session of its own.
+The agent's status (status bar, Home) comes from the process and from how opening sessions went for every chat (`describeRuntimeStatus`): a sign-in, project, network or timeout error from any chat's session shows once as a notification. The service's own session (`AgentService.client`) opens only when something asks for it, such as the walkthrough's Sign In, so a process start opens no session of its own.
 
 `AgentWarmup` starts the process 3 s after the window opens (`gemini.agents.startEarly`, which still reads its old name, `gemini.agent.startEarly`), but only when it can start without asking anything: setup finished before, a saved sign-in or API key, and no project problem. A CLI with no saved sign-in opens the sign-in flow as it starts.
 
@@ -279,7 +278,7 @@ Switching to an agent's or thread's tab sends its chat `focus`, and showing Agen
 
 ### First open and persistence
 
-A first launch opens on Agent Home: the window defaults leave out upstream's onboarding and startup editor, and the Get Started walkthrough opens only from **Gemini: Get Started**. The first time a workspace opens, `layoutDefaults.ts` reveals the Gemini side bar (the workbench would otherwise open on the Explorer). After that the workbench restores whatever the user arranged.
+A first launch opens on Agent Home, whose Get started card is the setup flow (there is no walkthrough; `SetupState` keeps how far setup has come, for the early start): the window defaults leave out upstream's onboarding and startup editor. The first time a workspace opens, `layoutDefaults.ts` reveals the Gemini side bar (the workbench would otherwise open on the Explorer). After that the workbench restores whatever the user arranged.
 
 The list of workspaces and agents is kept in a record store shared by every window (see [Storage](#storage)). Each agent's visible conversation (the last 300 items, long text cut to 20,000 characters) and changed files are saved as one JSON file per agent in the extension's global storage. On reopen, or after the process restarts, GeminiCode resumes the session with `session/load` when the CLI supports it. Otherwise it starts a fresh session and says so in the chat. See [Restarts](#restarts) for everything else that survives a quit.
 

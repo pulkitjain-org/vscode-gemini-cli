@@ -261,7 +261,7 @@ function trustSection(trust: TrustView): HTMLElement {
 let contextFolderMenu: SelectMenu | undefined;
 
 /** Context per model call: the total, a bar of its parts, each part, and advice for the heavy ones; in a multi-root window, for the folder picked. */
-function contextSection(cost: ContextCostView): HTMLElement {
+function contextSection(cost: ContextCostView, developer: boolean): HTMLElement {
 	const measuring = cost.state === 'measuring';
 	const measure = button('secondary', measuring ? strings.measuring : cost.total === undefined ? strings.measure : strings.measureAgain, () => post({ type: 'measureContext' }), measuring ? 'loading' : 'pulse');
 	measure.disabled = measuring;
@@ -284,7 +284,9 @@ function contextSection(cost: ContextCostView): HTMLElement {
 		contextFolderMenu = selectMenu(select, strings.contextFolder);
 		actions.append(contextFolderMenu.element);
 	}
-	actions.append(measure);
+	if (developer) {
+		actions.append(measure);
+	}
 	const node = section(strings.contextTitle, format(strings.contextHint, cost.folder), actions);
 	// What measuring takes from the quota, before the button is pressed.
 	const note = el('p', 'hint context-note');
@@ -366,7 +368,7 @@ function render(view: SettingsPageView): void {
 
 	// Re-rendering replaces every element; keep keyboard focus on the same control.
 	const focused = document.activeElement instanceof HTMLElement && page.contains(document.activeElement) ? document.activeElement.getAttribute('aria-label') ?? document.activeElement.textContent : undefined;
-	page.replaceChildren(header, contextSection(view.contextCost), servers, skills, hooks, extensions, memory, rules, trustSection(view.trust), preferencesSection(view.preferences), ...view.storage ? [storageSection(view.storage, strings, post)] : []);
+	page.replaceChildren(header, contextSection(view.contextCost, view.developer), servers, skills, hooks, extensions, memory, rules, trustSection(view.trust), preferencesSection(view.preferences), ...view.storage ? [storageSection(view.storage, strings, post)] : []);
 	if (focused) {
 		[...page.querySelectorAll<HTMLElement>('button')].find(b => (b.getAttribute('aria-label') ?? b.textContent) === focused)?.focus();
 	}

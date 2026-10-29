@@ -20,6 +20,7 @@ import { trustRows, type TrustRow } from '../acp/trustRows';
 import type { AgentService } from './agentService';
 import { type getAgentCommand, getWorkspaceCwd, workspaceFolderPaths } from './configuration';
 import { configuredDefaultMode } from './defaultMode';
+import { developerToolsOn } from './developerTools';
 import { tildify } from './displayText';
 import { CliReport, ContextCostView, ExtensionView, FromSettingsPage, HookView, McpServerView, MemoryFileView, PreferencesView, RulesFileView, SettingsPageView, SkillView, ToSettingsPage, TrustRowView, TrustView } from './panelProtocol';
 import { SettingsPageStrings } from './panelStrings';
@@ -265,6 +266,8 @@ export class SettingsPage implements vscode.Disposable {
 			servers: servers.map(server => scopes.has(server.scope) && measured.has(server.name) ? { ...server, tokens: measured.get(server.name) } : server),
 			skills, hooks, extensions: this.extensions, memory: this.memory, rules, preferences: this.preferencesView(personal),
 			contextCost: await this.contextCostView(folder, cost),
+			// Measuring costs model calls: a developer's button. The measures the chat made still show.
+			developer: developerToolsOn(),
 			trust: await trust,
 			...this.storage ? { storage: this.storage.view() } : {},
 		};
