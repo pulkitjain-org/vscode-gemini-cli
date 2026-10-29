@@ -93,6 +93,11 @@ export class IndexClient {
 		this.now = options.now ?? Date.now;
 	}
 
+	/** The process's id while it runs, for a measurement of it from outside. */
+	get pid(): number | undefined {
+		return this.child?.pid;
+	}
+
 	/** Whether the process is running now. */
 	get running(): boolean {
 		return !!this.child;

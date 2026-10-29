@@ -273,6 +273,8 @@ Taken again on 29 Oct 2026 for what a commit costs the window's index (`src/host
 | The repo map of a folder | `LIKE 'folder/%'` over every row of `files` and `symbols` | a range on the primary key (`prefixRange`) |
 | The files a file changes with | a scan of `cochange` for the second column | an index on it (`cochange_b`) |
 
+The indexer's memory on a folder of 100,000 generated TypeScript files (`test/acp/index/indexerMemory.test.ts`, run with `GEMINI_INDEX_PERF=1`), measured on 29 Oct 2026: the build took 32 s and the process sat at 182 MB resident afterwards, well under the 512 MB the test allows, so the inventory is compared whole; the `files` answer lists the first 50,000 paths, its cap.
+
 ### When the indexer gives up
 
 After three crashes the indexer stops for ten minutes. New sessions then get no `geminicode-index` server in `session/new` and no `indexHint`; `mcpServers` per session is what the CLI already supports. The CLI 0.64.0 does handle `notifications/tools/list_changed` (its MCP client calls `refreshTools`), but GeminiCode's local MCP server (`localMcpServer.ts`) answers requests only and has no stream to send notifications on, so a session already running keeps the tools, and their calls fail with a message.
