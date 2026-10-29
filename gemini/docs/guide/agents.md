@@ -138,7 +138,7 @@ Every agent's session gets the `geminicode-index` tools for the folder it works 
 | `code_diagnostics` | Errors and warnings in the files the agent changed, or the files it names, from the language servers: a check after an edit without running a build. |
 | `code_calls` | What calls a function, or what it calls, as the language server resolves them. |
 
-GeminiCode is an editor, so its language servers are running already: agents ask them through the same tools. `find_symbol` with references lists the exact uses of a symbol, through imports and aliases, where a language server covers the file, instead of every line that shares its name. Where none answers (a language with no extension, a server still loading, or an agent's own branch outside the workspace), the index answers alone and the result says so. When a turn changes files and the language servers report errors in the folder's changed files, a notice under the turn lists them, with **Fix**, which asks the agent to fix them and check again. Agents only reach files in their own folder that are neither secret nor ignored by git. `gemini.index.languageServers` turns this off.
+GeminiCode is an editor, so its language servers are running already: agents ask them through the same tools. `find_symbol` with references lists the exact uses of a symbol, through imports and aliases, where a language server covers the file, instead of every line that shares its name. Where none answers (a language with no extension, a server still loading, or an agent's own branch outside the workspace), the index answers alone and the result says so. When a turn changes files and the language servers report errors in the folder's changed files, a notice under the turn lists them, with **Fix**, which asks the agent to fix them and check again. Agents only reach files in their own folder that are neither secret nor ignored by git.
 
 Each session also starts with a short outline of the folder, so the agent knows its way around before its first search. Once the index is built, the session's first prompt asks the agent to use these tools before searching file by file. Results rank the code above its tests, unless you ask about tests, and say when they are complete, so the agent reads only what they point to. In the chat, the calls read as "Search code for …", "Look up …" and so on.
 
@@ -192,7 +192,7 @@ Attach a library's documentation, and agents search it with `docs_search` instea
 
 Pages are fetched from your Mac, through its network settings, and stored once however many workspaces use them. Fetching follows the site's `robots.txt`. Pages behind a sign-in can't be indexed: a page that asks you to sign in is reported rather than stored. Agents treat fetched pages as reference material, never as instructions.
 
-Each source is refreshed daily by default, set with `gemini.docs.refresh` or per source. A page that hasn't changed costs one small request. The switch on a source detaches it from the workspace without deleting it.
+Each source is refreshed daily unless its own row says otherwise. A page that hasn't changed costs one small request. The switch on a source detaches it from the workspace without deleting it.
 
 **Suggested from your dependencies** offers the documentation of the libraries your `package.json`, `requirements.txt`, `pyproject.toml`, `go.mod`, `Cargo.toml`, `pom.xml` or `build.gradle` names, for the versions you use. The list ships with GeminiCode, so nothing is looked up to make it.
 
@@ -200,15 +200,13 @@ Each source is refreshed daily by default, set with `gemini.docs.refresh` or per
 
 | Setting | Default | What it does |
 | --- | --- | --- |
-| `gemini.index.enabled` | on | Keep indexes and give agents the index tools. |
-| `gemini.index.languageServers` | on | Let the index tools ask the editor's language servers too: exact references, types, errors and callers. |
+| `gemini.index.enabled` | on | Keep indexes and give agents the index tools, which ask the editor's language servers too. |
 | `gemini.index.buildOn` | `agentStart` | When a workspace's index is first built. |
 | `gemini.index.exclude` | empty | Extra files and folders to leave out, in `.gitignore` syntax. |
 | `gemini.index.include` | empty | Files to index even though they would be left out, in `.gitignore` syntax. |
 | `gemini.index.maxFileSizeKb` | 1024 | Larger files are left out. |
 | `gemini.docs.enabled` | on | Allow attaching documentation from the web. |
 | `gemini.docs.allowedDomains` | empty | The only sites docs may come from, such as `react.dev` or `*.example.com`. Empty allows any site. |
-| `gemini.docs.refresh` | `daily` | How often attached docs are fetched again. |
 
 An administrator can lock `gemini.index.enabled`, `gemini.docs.enabled` and `gemini.docs.allowedDomains` as policies. See [Settings](settings.md#settings-your-administrator-can-lock).
 
@@ -220,7 +218,7 @@ The CLI deletes saved sessions after 30 days. The list says when each one goes, 
 
 ## Notifications and keeping awake
 
-When an agent finishes, or needs your permission, while GeminiCode is in the background, a notification appears and the Dock icon bounces. Click the notification to open the agent. The Dock icon and the Agents pane show how many agents are waiting for you. Turn both off with `gemini.notifications.enabled`.
+When an agent finishes, or needs your permission, while GeminiCode is in the background, a notification appears and the Dock icon bounces. Click the notification to open the agent. The Dock icon and the Agents pane show how many agents are waiting for you. `gemini.notifications` keeps the notifications to the agents that need you, or turns them off; the Dock icon counts either way.
 
 While any agent works, GeminiCode keeps the Mac from going to sleep, so a long task carries on when you step away. The display can still sleep. Turn this off with `gemini.keepAwake`.
 

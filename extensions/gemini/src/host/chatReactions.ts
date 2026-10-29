@@ -31,9 +31,9 @@ export function reactionsOn(): boolean {
 	return vscode.workspace.getConfiguration('gemini').get<boolean>('chat.reactions.enabled', true);
 }
 
-/** Whether the agent is asked to react to the user's prompts. */
+/** Whether the agent is asked to react to the user's prompts: with reactions on, as the one setting covers both. */
 export function agentReactionsOn(): boolean {
-	return reactionsOn() && vscode.workspace.getConfiguration('gemini').get<boolean>('chat.reactions.agentReactions', true);
+	return reactionsOn();
 }
 
 /** The fixed meanings with the user's and the workspace's edits. */

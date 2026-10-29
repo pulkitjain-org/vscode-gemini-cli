@@ -459,8 +459,6 @@ export type FromWebview =
 export type ToWebview =
 	/** The chat's tab came to the front: the message box takes the focus. */
 	| { readonly type: 'focus' }
-	/** `gemini.chat.spellCheck` changed. */
-	| { readonly type: 'spellCheck'; readonly on: boolean }
 	/** `gemini.chat.foldFinishedWork` changed. */
 	| { readonly type: 'foldWork'; readonly on: boolean }
 	/** Whether reactions are on (`gemini.chat.reactions.enabled`), and the picker's Recent row. */

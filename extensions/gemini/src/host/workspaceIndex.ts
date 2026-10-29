@@ -443,9 +443,9 @@ export class WorkspaceIndex implements vscode.Disposable {
 	}
 }
 
-/** Whether agents' index tools also ask the editor's language servers (`gemini.index.languageServers`). */
+/** Agents' index tools also ask the editor's language servers where one covers the file; the index answers alone elsewhere. */
 function languageServersOn(): boolean {
-	return vscode.workspace.getConfiguration(configSection).get<boolean>('index.languageServers', true);
+	return true;
 }
 
 export function indexEnabled(): boolean {

@@ -81,7 +81,7 @@ export interface TeamToolContext {
 	readOnly?(agent: string): boolean;
 	/** Confluence's calls, its bundle loaded now if it was not yet; undefined when Confluence isn't connected. */
 	confluence?(): ConfluenceTools | undefined;
-	/** Whether Figma looks up Code Connect mappings in design reads (`gemini.figma.codeConnect`); off, Figma answers faster and never asks about them. */
+	/** Whether Figma looks up Code Connect mappings in design reads when the repository's defaults file does not say (`designSystem`); off, Figma answers faster and never asks about them. */
 	figmaCodeConnect?(): boolean;
 	/** The design system of the repository around `folder`, for Figma reads: Code Connect over the setting, and the tokens that name colours. */
 	designSystem?(folder: string): Promise<{ readonly codeConnect?: boolean; readonly tokens: TokenIndex } | undefined>;

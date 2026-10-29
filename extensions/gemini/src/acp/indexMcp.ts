@@ -326,7 +326,7 @@ export class IndexMcpServer {
 			case 'code_diagnostics': {
 				const editor = await this.backend.editor?.();
 				if (!editor) {
-					return text('The editor\'s language servers are off for agents (gemini.index.languageServers).', true);
+					return text('The editor\'s language servers are not available to agents in this window.', true);
 				}
 				const { checked, diagnostics } = await editor.diagnostics(folder, diagnosticFiles(folder, args.paths));
 				return text(formatDiagnostics(folder, checked, diagnostics));

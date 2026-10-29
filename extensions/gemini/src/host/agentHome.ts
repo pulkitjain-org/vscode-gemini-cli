@@ -8,7 +8,6 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { IndexStatus } from '../acp/index/indexerProtocol';
-import { onDidChangeSpellCheck, spellCheckOn } from './spellCheck';
 import { isModeAllowed } from '../acp/adminPolicy';
 import { effectiveStartMode } from '../acp/chatTurns';
 import { errorMessage } from '../acp/errors';
@@ -111,7 +110,6 @@ export class AgentHome implements vscode.Disposable {
 		}
 		// One click back to Home from anywhere: the house at the start of the title bar (geminiModes.ts) runs gemini.home.
 		this.disposables.push(
-			onDidChangeSpellCheck(on => void this.panel?.webview.postMessage({ type: 'spellCheck', on } satisfies ToHome)),
 			vscode.commands.registerCommand('gemini.home', () => this.show(false)),
 			vscode.window.onDidChangeWindowState(state => state.focused && this.panel?.visible && this.refreshTools(showRefreshMs)),
 			agents.usage?.onDidChange(() => this.schedule()) ?? { dispose: () => undefined },
@@ -808,7 +806,7 @@ export class AgentHome implements vscode.Disposable {
 			<form id="composer" class="home-composer">
 				<div id="attachments" class="attachments" hidden></div>
 				<div class="composer-tabs" role="tablist"><button type="button" id="tab-write" class="composer-tab" role="tab" aria-selected="true" aria-controls="prompt"></button><button type="button" id="tab-preview" class="composer-tab" role="tab" aria-selected="false" aria-controls="preview"></button></div>
-				<textarea id="prompt" rows="4" spellcheck="${spellCheckOn()}"></textarea>
+				<textarea id="prompt" rows="4" spellcheck="true"></textarea>
 				<div id="preview" class="composer-preview markdown" role="tabpanel" tabindex="0" hidden></div>
 				<div class="home-start-row"><div id="start-as" class="home-start-as" role="radiogroup" hidden><span class="home-project" hidden><button type="button" id="project" class="start-as-chevron" aria-haspopup="menu" aria-expanded="false"><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button><div id="project-menu" class="home-menu" hidden></div></span></div><span id="needs-trust" class="needs-trust" hidden><i class="codicon codicon-workspace-untrusted" aria-hidden="true"></i><span></span><button type="button" class="primary"></button></span></div>
 				<div class="home-composer-bar">

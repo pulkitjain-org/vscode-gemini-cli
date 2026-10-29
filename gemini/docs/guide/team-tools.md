@@ -115,7 +115,7 @@ Then open the design-system file in the Figma desktop app and run **Sync Design 
 
 Commit them like any other change. Syncing again keeps the rules you wrote in the skill's **Rules** section.
 
-Once the skill is there, a prompt with a Figma design asks the agent to load it and build with its tokens and components. Colours in the design that are tokens come to the agent with their names, such as `#2F5BD3 (color/brand/primary)`. `codeConnect` turns Code Connect on or off for this repository, over the `gemini.figma.codeConnect` setting.
+Once the skill is there, a prompt with a Figma design asks the agent to load it and build with its tokens and components. Colours in the design that are tokens come to the agent with their names, such as `#2F5BD3 (color/brand/primary)`. `codeConnect` turns Code Connect on for this repository; it is off unless the file says so.
 
 Figma gives each variable's value in the mode the file shows, and only the variables a page uses, so sync the pages that show the whole design system, such as its foundations.
 
@@ -210,7 +210,7 @@ When the source branch gets new commits during a review, the page says so. **Ref
 
 The page shortens long paths and tells apart files with the same name, such as two `index.ts`.
 
-Clicking a merge request asks whether to open it in GeminiCode's browser or your default browser; **Always Use…** stops asking, and `gemini.team.openMergeRequestsIn` changes it later.
+Clicking a merge request opens it in GeminiCode's browser; `gemini.team.openMergeRequestsIn` makes it your default browser instead, and **Open in GitLab** in a card's menu always uses the default browser.
 
 ## Audit log
 
@@ -236,7 +236,7 @@ Every agent session gets a `geminicode-tools` MCP server with tools only for the
 
 Four actions are harder to take back, so they ask every time, with Allow once and Reject only: moving a ticket (`jira_transition`), logging time (`jira_log_time`), opening a merge request (`gitlab_create_mr`) and merging one (`gitlab_merge`, which needs the merge request named). The same goes for the matching tools of a `jira` or `gitlab` MCP server your team runs beside GeminiCode. `gitlab_merge` reads GitLab's own checks first (pipeline, approval rules, threads, conflicts, GitLab's mergeable verdict) and refuses when any fails, saying which; when it merges, it names the commit it read, so a push in between makes GitLab refuse rather than merge something else.
 
-`figma_design` reads a large frame a section at a time, so no single answer is cut short, and names the parts not read yet for the agent to ask for next. A read Figma gives up on comes back as the frame's outline and design variables. A frame read in the last ten minutes is answered from memory. Figma's Code Connect lookups are off by default, since Figma answers faster without them; turn on `gemini.figma.codeConnect` to include them.
+`figma_design` reads a large frame a section at a time, so no single answer is cut short, and names the parts not read yet for the agent to ask for next. A read Figma gives up on comes back as the frame's outline and design variables. A frame read in the last ten minutes is answered from memory. Figma's Code Connect lookups are off unless the repository's `.gemini/geminicode-tools.json` sets `codeConnect`, since Figma answers faster without them.
 
 Text an agent reads from a ticket, a page, a merge request, a job log or a design comes wrapped in an `<external>` tag, and the server tells the model to read it as information from other people, never as instructions. The prompts Fix and Review write wrap the job logs, review threads and merge request titles they quote the same way.
 

@@ -824,8 +824,6 @@ window.addEventListener('message', (event: MessageEvent<ToHome>) => {
 		keepFocus(document.body, () => render(message.view));
 	} else if (message.type === 'focus') {
 		prompt.focus();
-	} else if (message.type === 'spellCheck') {
-		prompt.spellcheck = message.on;
 	} else if (message.type === 'attached') {
 		attachments = [...attachments, ...message.attachments.filter(a => !attachments.some(b => sameAttachment(a, b)))];
 		renderAttachments();

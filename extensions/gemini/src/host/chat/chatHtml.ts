@@ -11,7 +11,6 @@ import type { ChatStrings, ForkStrings, ProjectChatStrings, ReactionStrings, Sid
 import { reactionsOn } from '../chatReactions';
 import { configSection } from '../configuration';
 import { foldWorkOn } from '../foldWork';
-import { spellCheckOn } from '../spellCheck';
 import { createNonce, escapeAttribute } from '../webviewHtml';
 
 /** A project chat's strings, from dist/onDemand.js (projectStrings.ts); set as the extension activates. */
@@ -517,7 +516,7 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 			<div class="composer-tabs" role="tablist"><button type="button" id="tab-write" class="composer-tab" role="tab" aria-selected="true" aria-controls="input"></button><button type="button" id="tab-preview" class="composer-tab" role="tab" aria-selected="false" aria-controls="preview"></button></div>
 			<div id="preview" class="composer-preview markdown" role="tabpanel" tabindex="0" hidden></div>
 			<div class="input-wrap">
-				<textarea id="input" rows="1" spellcheck="${spellCheckOn()}" aria-label="${escapeAttribute(vscode.l10n.t("Message to Gemini"))}"></textarea>
+				<textarea id="input" rows="1" spellcheck="true" aria-label="${escapeAttribute(vscode.l10n.t("Message to Gemini"))}"></textarea>
 				<div class="input-mirror" aria-hidden="true"></div>
 				<span id="enhance-float" class="enhance-float" hidden><button type="button" id="revert" class="enhance-chip" hidden><i class="codicon codicon-discard" aria-hidden="true"></i><span></span></button><button type="button" id="enhance" class="enhance-chip"><svg class="enhance-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 3.5C6.88 7 9 9.12 12.5 9.5C9 9.88 6.88 12 6.5 15.5C6.12 12 4 9.88 0.5 9.5C4 9.12 6.12 7 6.5 3.5Z"/><path d="M12.75 0.5C12.92 2.1 13.9 3.08 15.5 3.25C13.9 3.42 12.92 4.4 12.75 6C12.58 4.4 11.6 3.42 10 3.25C11.6 3.08 12.58 2.1 12.75 0.5Z"/></svg><i class="codicon codicon-loading codicon-modifier-spin" aria-hidden="true"></i><span></span><span class="enhance-key"></span></button></span>
 			</div>
@@ -549,7 +548,7 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 			<div id="workspace-menu" class="foot-menu" hidden></div>
 			<div id="repos-menu" class="foot-menu" hidden></div>
 			<div id="commit-menu" class="foot-menu" hidden></div>
-			<div id="commit-box" class="usage-popover commit-box" role="dialog" hidden><label class="usage-heading" for="commit-message"></label><textarea id="commit-message" class="commit-message" rows="4" spellcheck="${spellCheckOn()}"></textarea><p class="usage-note commit-note" role="status"></p><div class="permission-actions"><button type="button" class="secondary commit-cancel"></button><button type="button" class="primary commit-confirm"></button></div></div>
+			<div id="commit-box" class="usage-popover commit-box" role="dialog" hidden><label class="usage-heading" for="commit-message"></label><textarea id="commit-message" class="commit-message" rows="4" spellcheck="true"></textarea><p class="usage-note commit-note" role="status"></p><div class="permission-actions"><button type="button" class="secondary commit-cancel"></button><button type="button" class="primary commit-confirm"></button></div></div>
 		</div>
 	</div>
 	<script nonce="${nonce}" type="module" src="${script}" data-highlighter="${highlighter}" data-katex="${katex}" data-katex-style="${katexStyle}" data-fold-work="${foldWorkOn()}" data-emoji-picker="${emojiPicker}" data-figma-design="${figmaDesign}" data-thread-card="${threadCard}" data-project-settings="${projectSettings}" data-side-chat="${sideChat}" data-reactions="${!project && reactionsOn()}" data-research="${!project}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>

@@ -9,15 +9,15 @@ import * as vscode from 'vscode';
 import { errorMessage } from '../acp/errors';
 import { removeStaleTempFiles } from '../acp/fsUtil';
 import { removeKeptSessionFolders } from '../acp/sessionFolder';
-import { applyLogRetention, keepLogsDays } from '../acp/storageUsage';
-import { configSection } from './configuration';
+import { applyLogRetention } from '../acp/storageUsage';
+import { keepDaysSetting } from './storageSection';
 
 /** How long after startup the housekeeping runs, so it never competes with the first chat. */
 const startDelayMs = 60_000;
 
 /**
  * Housekeeping once the window has settled: the audit log's days past
- * `gemini.storage.keepLogsDays` go, and so do the CLI debug log every window
+ * `gemini.audit.keepDays` go, and so do the CLI debug log every window
  * shared before each got its own, the pilot's counters, which nothing records
  * or exports any more, copies of sessions' folders a load never put back
  * (sessionFolder.ts), and the temporary files of writes a crash interrupted.
@@ -25,7 +25,7 @@ const startDelayMs = 60_000;
 export function scheduleStorageMaintenance(globalStorage: string, log: vscode.LogOutputChannel): vscode.Disposable {
 	const timer = setTimeout(async () => {
 		try {
-			const days = keepLogsDays(vscode.workspace.getConfiguration(configSection).get<number>('storage.keepLogsDays'));
+			const days = keepDaysSetting();
 			const removed = await applyLogRetention(globalStorage, days);
 			await fs.rm(path.join(globalStorage, 'cli-debug.log'), { force: true });
 			await fs.rm(path.join(globalStorage, 'pilot'), { recursive: true, force: true });

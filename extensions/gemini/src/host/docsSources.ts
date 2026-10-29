@@ -245,7 +245,7 @@ function allowedDomains(): string[] {
 	return Array.isArray(value) ? value.filter((d): d is string => typeof d === 'string') : [];
 }
 
+/** A source that sets no refresh of its own (the Index & Docs tab sets each) is fetched again daily. */
 function refreshSetting(): DocsRefresh {
-	const value = vscode.workspace.getConfiguration(configSection).get<string>('docs.refresh', 'daily');
-	return value === 'weekly' || value === 'manual' ? value : 'daily';
+	return 'daily';
 }

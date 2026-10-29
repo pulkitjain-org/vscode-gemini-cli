@@ -196,7 +196,7 @@ Reactions work in agents' and threads' chats. A project's coordinator chat has n
 
 Messages you send show Markdown the way replies do. In the composer, <kbd>⌘B</kbd> makes the selection bold and <kbd>⌘E</kbd> makes it code, and <kbd>⇧↩</kbd> on a list line starts the next item. The **Write** and **Preview** tabs (or <kbd>⇧⌘V</kbd>) switch between your draft and how it will look.
 
-The composers underline misspelt words; right-click a word for suggestions or **Add to Dictionary**. Turn it off with `gemini.chat.spellCheck`.
+The composers underline misspelt words; right-click a word for suggestions or **Add to Dictionary**. Languages follow the OS.
 
 ## Usage and quota
 

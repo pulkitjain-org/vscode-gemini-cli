@@ -297,8 +297,6 @@ export interface HomeMode {
 
 export type ToHome =
 	| { readonly type: 'view'; readonly view: HomeView }
-	/** `gemini.chat.spellCheck` changed. */
-	| { readonly type: 'spellCheck'; readonly on: boolean }
 	| { readonly type: 'focus' }
 	/**
 	 * The agent asked for could not start (the user has been told why); put the
@@ -501,7 +499,7 @@ export interface StorageView {
 	readonly rows: readonly StorageRowView[];
 	/** Clean Up's button when it has something to remove, such as "Clean Up 4..."; it lists everything and asks first. */
 	readonly cleanup?: string;
-	/** `gemini.storage.keepLogsDays`, as the logs row's menu shows it. */
+	/** `gemini.audit.keepDays`, as the logs row's menu shows it. */
 	readonly keepLogs: { readonly value: string; readonly choices: readonly { readonly value: string; readonly label: string }[] };
 	readonly error?: string;
 }

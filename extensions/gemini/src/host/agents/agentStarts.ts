@@ -12,6 +12,7 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { Attachment } from '../../acp/attachments';
 import type { AgentRecord, AgentsModel } from '../../acp/agents';
+import { branchDefaults } from '../branchDefaults';
 import { branchNameFrom, isValidBranchName } from '../../acp/branchNames';
 import { errorMessage } from '../../acp/errors';
 import { reviewRequest, workingChanges } from '../../acp/reviewPrompt';
@@ -158,17 +159,21 @@ export class AgentStarts {
 			models: models.map(model => ({ id: model.id, name: model.name })),
 			...(models.length ? { defaultModel: sessionModel(models) } : {}),
 			modes: this.host.startModes(),
-			branchPlaceholder: branchNameFrom(page),
+			branchPlaceholder: branchNameFrom(page, branchDefaults().prefix),
 		});
 		if (!choice || typeof choice.folder !== 'string' || !path.isAbsolute(choice.folder)) {
 			return undefined;
 		}
-		const { folder, ownBranch, model } = choice;
+		const { folder, ownBranch } = choice;
 		const trusted = await this.host.trust.ask(folder);
-		const mode = typeof choice.mode === 'string' && (trusted || choice.mode === 'plan') ? choice.mode : 'default';
+		// On a branch, the workspace's branch defaults fill what the dialog left as it was: the model, and Plan first.
+		const defaults = ownBranch ? branchDefaults(folder) : undefined;
+		const model = choice.model && models.length && choice.model === sessionModel(models) && defaults?.model && models.some(each => each.id === defaults.model) ? defaults.model : choice.model;
+		const picked = typeof choice.mode === 'string' && (trusted || choice.mode === 'plan') ? choice.mode : 'default';
+		const mode = defaults?.planFirst && picked === (this.host.startModes()[0]?.id ?? 'default') ? 'plan' : picked;
 		let worktree: AgentWorktree | undefined;
 		if (ownBranch) {
-			worktree = await this.worktrees.makeFree(folder, choice.branch && isValidBranchName(choice.branch) ? choice.branch : branchNameFrom(page));
+			worktree = await this.worktrees.makeFree(folder, choice.branch && isValidBranchName(choice.branch) ? choice.branch : branchNameFrom(page, defaults!.prefix));
 			if (!worktree) {
 				return undefined;
 			}

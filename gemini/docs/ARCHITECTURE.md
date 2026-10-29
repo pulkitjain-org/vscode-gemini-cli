@@ -346,7 +346,7 @@ The user can react with an emoji to any of the agent's replies in an agent's or 
 - when the agent is idle, the reaction starts a turn;
 - while a turn runs, a thumbs down steers it at the next safe point (the note then warns that the last step may not have finished), and any other reaction waits in the queue. A second reaction to the same reply replaces one still waiting (`PromptQueue.addReaction`).
 
-**The agent's reactions.** With `gemini.chat.reactions.agentReactions` on (the default), a `<reaction_rule>` sent once per session lets the agent begin a reply with `<react>X</react>`. `ChatTranscript` holds the start of a turn's first reply (up to 32 characters) while it could still be that tag, and lifts the emoji onto the prompt as a badge before the reply is stored or shown. Anything else is left as text.
+**The agent's reactions.** With `gemini.chat.reactions.enabled` on (the default), a `<reaction_rule>` sent once per session lets the agent begin a reply with `<react>X</react>`. `ChatTranscript` holds the start of a turn's first reply (up to 32 characters) while it could still be that tag, and lifts the emoji onto the prompt as a badge before the reply is stored or shown. Anything else is left as text.
 
 Reactions are optional fields on transcript items, so they survive reloads, Fork and Rewind. A replayed CLI session turns its notes back into reactions (`withoutReactionNotes`). When a thread's turn came from the user's reactions, its turn-end report tells the coordinator "The user reacted ... to its reply." (`reactionReport`).
 
@@ -354,7 +354,7 @@ Reactions are optional fields on transcript items, so they survive reloads, Fork
 
 `windows.ts` leaves Electron's spell checker on (a marked one-line edit). `geminiSpellCheck.ts` (fork-only, registered with a marked line in `windowImpl.ts`) shows the system's suggestions, Add to Dictionary, and Cut, Copy and Paste when a right-click in an editable field reaches the window.
 
-Upstream's inputs and editors set `spellcheck="false"` on themselves. The Gemini pages set it off on their body and on for the chat and Agent Home composers, which let their right-click through instead of showing the webview host's menu. `gemini.chat.spellCheck` turns it off live. Languages follow the OS.
+Upstream's inputs and editors set `spellcheck="false"` on themselves. The Gemini pages set it off on their body and on for the chat and Agent Home composers, which let their right-click through instead of showing the webview host's menu. Languages follow the OS.
 
 #### Themed menus
 
@@ -702,7 +702,7 @@ The connectors call each tool from the user's machine, so the Mac's VPN, proxy a
 
 `teamHttp.ts` gives every read an 8-second timeout and every write 20 seconds, and turns failures into a reason the user can act on (no answer: check the VPN; 401: replace the token; a write with no answer: it may have gone through, and its audit intent stays open). It keeps one reachability state per server (`teamReachability`): after no answer, calls fail at once for 30 s, 1, 2 and up to 5 minutes, and `TeamConnections` checks the server again when the wait ends; a refused token stops calls with that token until it changes. A read that meets 429, 502, 503 or 504 is retried once, honouring Retry-After up to 5 s; a write never is. Tokens are in SecretStorage only; agents never see them. Tool results are trimmed text (`teamTools.ts`), never raw JSON. Tool results that carry other people's text are wrapped in an `<external>` tag (`external()` in `teamTools.ts`), which the server's instructions tell the model to read as data. Team defaults come from `.gemini/geminicode-tools.json` (`teamDefaults.ts`).
 
-Figma takes several seconds per frame and may give up on one by itself, so `figma_design` reads without Code Connect (unless `gemini.figma.codeConnect`) or the screenshot, a frame too large for one answer a section at a time under the CLI's 40,000-character part cap (`figmaPartLimit`), with a deadline per call, and answers a read Figma stopped with the frame's outline and variables. Requests go one at a time, and a frame's design is kept for ten minutes, keyed by file and node.
+Figma takes several seconds per frame and may give up on one by itself, so `figma_design` reads without Code Connect (unless the repository's defaults file sets `codeConnect`) or the screenshot, a frame too large for one answer a section at a time under the CLI's 40,000-character part cap (`figmaPartLimit`), with a deadline per call, and answers a read Figma stopped with the frame's outline and variables. Requests go one at a time, and a frame's design is kept for ten minutes, keyed by file and node.
 
 #### Jira sites
 

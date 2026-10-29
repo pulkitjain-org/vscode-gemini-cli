@@ -115,7 +115,8 @@ export class TeamConnections implements vscode.Disposable {
 			childUnavailable: (server, reason) => this.log.warn(`The ${server} server didn't start, so the call went to ${server === 'jira' ? 'Jira' : 'GitLab'} directly: ${reason}`),
 			allowShell: () => getApprovalPolicy().allowShell,
 			confluence: () => this.confluence(),
-			figmaCodeConnect: () => vscode.workspace.getConfiguration(configSection).get<boolean>('figma.codeConnect', false),
+			// Code Connect is the repository's call (`figma.codeConnect` in .gemini/geminicode-tools.json, read by `designSystem`), not a setting.
+			figmaCodeConnect: () => false,
 			designSystem: async folder => extensionChunk<typeof import('../onDemand')>('onDemand')().figmaDesignSystem(await this.defaults(folder)),
 		};
 		this.server = new TeamToolsMcpServer(this.toolContext, version);

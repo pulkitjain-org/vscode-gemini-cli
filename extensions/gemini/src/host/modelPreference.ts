@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as path from 'node:path';
-import type * as vscode from 'vscode';
+import * as vscode from 'vscode';
 import { cliHome } from '../acp/cliSessions';
 import { ModelListContext, proAccessFromQuota, terminalModelList } from '../acp/modelList';
 import { readSettingsFile } from '../acp/projectSettings';
@@ -18,6 +18,7 @@ import { defaultModel, SessionChoice } from '../acp/sessionSettings';
 const lastModelKey = 'gemini.lastModel';
 const composerHeightKey = 'gemini.composerHeight';
 const knownModelsKey = 'gemini.knownModels';
+const followAgentKey = 'gemini.chat.followAgent';
 let storage: vscode.Memento | undefined;
 
 export function initModelPreference(globalState: vscode.Memento): void {
@@ -36,6 +37,15 @@ export function sessionModel(available: readonly SessionChoice[]): string | unde
 
 export function rememberModel(modelId: string): void {
 	void storage?.update(lastModelKey, modelId);
+}
+
+/** Follow the agent, as the last chat left it (the + menu's switch); before 1.7 the setting `gemini.chat.followAgent`, still read where it is set. */
+export function followAgentOn(): boolean {
+	return storage?.get<boolean>(followAgentKey) ?? vscode.workspace.getConfiguration('gemini').get<boolean>('chat.followAgent', false);
+}
+
+export function rememberFollowAgent(on: boolean): void {
+	void storage?.update(followAgentKey, on);
 }
 
 /** The height in pixels the user dragged the chat input to, or 0 for its natural height. */

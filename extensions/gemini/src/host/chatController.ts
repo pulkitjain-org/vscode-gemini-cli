@@ -10,7 +10,6 @@ import * as vscode from 'vscode';
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import { onDidChangeFoldWork } from './foldWork';
-import { onDidChangeSpellCheck } from './spellCheck';
 import { currentTraceFile } from './traceCommand';
 import { parseTraceFile, summarizeTrace, turnReadout } from '../acp/traceRecording';
 import type { Attachment } from '../acp/attachments';
@@ -254,7 +253,6 @@ export class ChatController implements vscode.Disposable {
 		this.runs = new ChatRun(options, isAttached, post, attachments => void this.addAttachments(attachments),
 			() => this.transcript.items.flatMap(item => item.kind === 'agent' || item.kind === 'user' ? [item.text] : []));
 		this.disposables.push(
-			onDidChangeSpellCheck(on => this.post({ type: 'spellCheck', on })),
 			onDidChangeFoldWork(on => this.post({ type: 'foldWork', on })),
 			onDidChangeReactions(() => this.postReactions()),
 			onDidChangeSendWith(cmdEnter => this.post({ type: 'sendWith', cmdEnter })),

@@ -18,6 +18,7 @@ import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import { branchDefaults, defaultBranchPrefix } from './branchDefaults';
 import type { EditedFile } from '../acp/agentChanges';
 import { isArchived, warmThreads, type AgentProjectRole, type AgentRecord } from '../acp/agents';
 import type { ForkContext, ThreadCard, TranscriptItem, TriedCard } from '../acp/chatTranscript';
@@ -706,16 +707,20 @@ export class Projects implements vscode.Disposable {
 		const config = await project.loading;
 		const repos = config.repos.length > 1 ? config.repos.filter(repo => request.repos?.includes(repo.key)) : [];
 		const memory = await projectMemory(project.home, config, 'threads');
-		const model = request.model ?? config.defaults.threadModel;
+		// The project's own defaults, else the workspace's branch defaults (`gemini.agents.branchDefaults`).
+		const workspace = branchDefaults(this.agents.workspaceFolder(project.id));
+		const model = request.model ?? config.defaults.threadModel ?? workspace.model;
+		const planFirst = config.defaults.planFirst ?? workspace.planFirst;
+		const branchPrefix = config.defaults.branchPrefix ?? (workspace.prefix === defaultBranchPrefix ? undefined : workspace.prefix);
 		return this.agents.startThread(project.id, {
 			...request,
 			// The dialog shows the default already; the coordinator plans first when the user asked, or by default.
-			planFirst: request.planFirst || (request.byCoordinator && !!config.defaults.planFirst),
+			planFirst: request.planFirst || (request.byCoordinator && !!planFirst),
 			...(model ? { model } : {}),
 		}, {
 			...(repos.length ? { repos } : {}),
 			...(memory ? { memory } : {}),
-			...(config.defaults.branchPrefix !== undefined ? { branchPrefix: config.defaults.branchPrefix } : {}),
+			...(branchPrefix !== undefined ? { branchPrefix } : {}),
 		});
 	}
 
