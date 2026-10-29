@@ -31,6 +31,20 @@ The clips' dates are also in `clipDates` in `build.mts`, which the site's video 
 
 Nothing at the moment.
 
+## Needs retaking for 1.7
+
+The 1.7 release renames and moves what these show, so each is retaken from the 1.7 dev build before the site is rebuilt:
+
+- `docs/plus-menu` (Chat guide): the model menu now ends in **Set as Default for the CLI**.
+- `compact-line` (Chat guide): the line reads **Compressed**, and the command is `/compress`.
+- The `showcase-plan` clip and `docs/plan-review` (Chat guide, feature pages): **Build This Plan** is **Approve Plan**, with the CLI's four answers on its chevron.
+- Every Home shot (`showcase-work` poster, the Home shots in the Agents guide and the landing page): the chooser is **Here** / **On a Branch** with a chevron, the quick actions are New Agent, Review and Run Checks, there is no Index button, and the tool logos are one line.
+- `agents-pane` (Agents guide): rows say "needs you", "done", "kept" and "merged", not "waiting" and "idle".
+- `docs/project-helpers`, `index-page` and the Connections shot (Agent Setup, Agents and Team tools guides): Agent Setup now has the tab strip (Loads, Index & Docs, Connections, Storage & Audit), and Storage sits on the Storage & Audit tab.
+- Any shot with the status bar: one **Gemini** item carries the team tools, the index and the audit count.
+- `fork-list`, `try-scm` and `try-workspace` (Agents guide): the Try button carries a chevron.
+- The side question shot, if one is taken: **Read the code too** beside **Ask**.
+
 ## Needs retaking for 1.6
 
 These show the app before 1.6 and are still on the site:

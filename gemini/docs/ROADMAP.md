@@ -59,7 +59,15 @@ The app reads `geminiDefaultProjectId` from `product.json`, but no build sets it
 
 ### Workspaces opened through a symbolic link
 
-The CLI keys a folder's chats by the path it is given, and the terminal always gives the real path. Since 1.7 GeminiCode opens every session on the folder's real path too (`realFolder` in `agentRuntime.ts`), so a terminal's and GeminiCode's sessions share one key, and reads both keys, so chats saved under a linked path before still show ([FINDINGS.md](FINDINGS.md#reopening-a-session-sessionload)). The second key can go a release later.
+Closed in 1.7: GeminiCode opens every session on the folder's real path, as a terminal's CLI does (`realFolder` in `agentRuntime.ts`), so the two share one key; it still reads the linked path's key for chats saved before, which can go a release later ([FINDINGS.md](FINDINGS.md#reopening-a-session-sessionload)).
+
+### Fork cards, and the bar back to what started a chat
+
+Thread cards and Home's cards draw their buttons from the one action set (`branchAgentActions` in `agentRow.ts`); a fork's card in its parent's chat still offers only Open and Try. The bar at the top of a thread's chat back to its project is not yet the one "Started from" bar a fork would get too, and the project's Clean Up Folders is not yet Agent Setup's one Clean Up for every merged agent.
+
+### Pinning a page's remote reads
+
+An agent's browser page can fetch from any site its policy allows; the platform's fetch gives no way to pin a request to the address the policy checked, so a site that redirects elsewhere is checked by its first address only.
 
 ### Sessions are never closed
 
@@ -115,16 +123,16 @@ Reword the rest of upstream's welcome text. Only the product name in its setup w
 
 At each upstream move, check whether `src/vs/sessions` has gained an extension API for agent providers. If it has, move the Agents pane onto it.
 
-## Ideas from upstream 1.142
+## Ideas from upstream 1.144
 
-Upstream's 1.142 release has these for Copilot's agents. Each could be built on what GeminiCode has:
+Upstream's 1.142 to 1.144 releases have these for Copilot's agents. Each could be built on what GeminiCode has:
 
 - Move a chat to a new worktree: start a branch and worktree from a running chat and carry the conversation over, as an agent's own branch does at start, using the conversation hand-over a new session already gets.
 - Stop a background shell command: a control on a long-running command's row that cancels it without ending the turn.
 - Thinking level and context window in the model picker. This needs the CLI to offer `session/set_config_option`, which 0.66.0 does not.
 - Permission modes as separate policies. Upstream lets an admin allow or remove each permission mode on its own, as GeminiCode's `GeminiAllowAutoEdit` and `GeminiAllowYolo` do. Follow upstream's naming if it settles.
 
-The 1.142 base also brings upstream's Markdown editor (pasting images, renaming links, an outline and breadcrumbs, copying code blocks), `editor.occurrencesHighlightFromAllProviders`, and many leak fixes.
+The 1.142 and 1.144 bases also bring upstream's Markdown editor (pasting images, renaming links, an outline and breadcrumbs, copying code blocks), `editor.occurrencesHighlightFromAllProviders`, and many leak fixes.
 
 ## Risks
 
