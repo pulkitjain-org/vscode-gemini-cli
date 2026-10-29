@@ -10,14 +10,15 @@ import * as vscode from 'vscode';
 import type { IndexStatus } from '../acp/index/indexerProtocol';
 import { onDidChangeSpellCheck, spellCheckOn } from './spellCheck';
 import { isModeAllowed } from '../acp/adminPolicy';
-import { defaultStartMode } from '../acp/chatTurns';
+import { effectiveStartMode } from '../acp/chatTurns';
 import { errorMessage } from '../acp/errors';
 import { secretPathReason } from '../acp/fileAccess';
 import { collectCommandActions, commandActionKey } from '../acp/hostAllowlists';
 import type { JiraSites } from '../acp/jiraSites';
 import { formatCounts } from '../acp/agentChanges';
 import { attachmentsForFiles } from './addToChat';
-import { AgentsView, AgentSummary, relativeTime, startModes } from './agentsView';
+import { AgentsView, AgentSummary, relativeTime } from './agentsView';
+import { configuredDefaultMode } from './defaultMode';
 import { chooseFolder } from './agents/agentStarts';
 import { startsQuietly } from './agentWarmup';
 import { detectAuth } from '../acp/directRequest';
@@ -294,8 +295,8 @@ export class AgentHome implements vscode.Disposable {
 				}] : []),
 			} : {}),
 			ownBranch: vscode.workspace.getConfiguration(configSection).get<boolean>('agents.ownBranch', false),
-			modes: startModes().filter(mode => isModeAllowed(getApprovalPolicy(), mode.id)),
-			defaultMode: defaultStartMode(vscode.workspace.getConfiguration(configSection).get('agents.defaultMode'), modeId => isModeAllowed(getApprovalPolicy(), modeId)) ?? 'default',
+			modes: this.agents.startModes(),
+			defaultMode: effectiveStartMode(configuredDefaultMode(), this.agents.cliDefaultMode, modeId => isModeAllowed(getApprovalPolicy(), modeId)) ?? 'default',
 			...preferredModel() ? { model: preferredModel() } : {},
 			dashboard: this.dashboard(all, await this.unfinished(), await this.signedIn(), (await this.agents.teamTools?.workspaceDefaults().catch(() => undefined))?.jira?.commentVisibility),
 		};

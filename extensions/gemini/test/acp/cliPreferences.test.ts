@@ -16,7 +16,7 @@ afterEach(() => fs.rm(dir, { recursive: true, force: true }));
 
 describe('cliPreferences', () => {
 	it('reads the CLI defaults from empty settings', () => {
-		expect(readCliPreferences({})).toEqual({ permanentApproval: false, planRouting: true, usageStatistics: true, keepChats: '30d' });
+		expect(readCliPreferences({})).toEqual({ defaultApprovalMode: 'default', permanentApproval: false, planRouting: true, usageStatistics: true, keepChats: '30d' });
 	});
 
 	it('reads set values, and forever when cleanup is off', () => {
@@ -24,7 +24,7 @@ describe('cliPreferences', () => {
 			security: { enablePermanentToolApproval: true },
 			general: { plan: { modelRouting: false }, sessionRetention: { enabled: true, maxAge: '90d' } },
 			privacy: { usageStatisticsEnabled: false },
-		})).toEqual({ permanentApproval: true, planRouting: false, usageStatistics: false, keepChats: '90d' });
+		})).toEqual({ defaultApprovalMode: 'default', permanentApproval: true, planRouting: false, usageStatistics: false, keepChats: '90d' });
 		expect(readCliPreferences({ general: { sessionRetention: { enabled: false, maxAge: '7d' } } }).keepChats).toBe('forever');
 	});
 

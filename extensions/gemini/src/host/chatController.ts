@@ -23,6 +23,9 @@ import { buildModeAfterPlan, diffsOf, nextApprovalMode, dropOldest, lastPromptAt
 import type { StoredCheckpoints } from '../acp/checkpoints';
 import { buildPromptContent } from '../acp/promptContent';
 import { assembleTurnContent } from '../acp/turnContent';
+import { isModeAllowed } from '../acp/adminPolicy';
+import { knownModes } from '../acp/sessionSettings';
+import { getApprovalPolicy } from './configuration';
 import { atSafePoint, PromptQueue, steeringNote, steerWaitMs, type PromptExtras } from '../acp/promptQueue';
 import { meaningOf, olderReplyExcerpt, reactionNote, reactionRule, reactionShortcut, routeReaction, type ReactionRef, type ReactionRequest } from '../acp/reactions';
 import { CoordinatorTurnFailed } from '../acp/projectHub';
@@ -1146,11 +1149,20 @@ export class ChatController implements vscode.Disposable {
 	 * composer's mode chip shows it. A project's coordinator has no modes to pick.
 	 */
 	cycleMode(): void {
-		const next = this.options.project ? undefined : nextApprovalMode(this.service.client.settings);
+		const next = this.options.project ? undefined : nextApprovalMode(this.service.client.settings, this.busy);
 		if (!next) {
 			return;
 		}
 		this.settings.onMessage({ type: 'setMode', id: next });
+	}
+
+	/** Switches to YOLO, or back to the mode before it, as the CLI's Ctrl+Y does; nothing where policy or the agent offers no YOLO. */
+	toggleYolo(): void {
+		const mode = this.service.client.settings.mode;
+		if (this.options.project || !mode || !mode.available.some(choice => choice.id === knownModes.yolo) || !isModeAllowed(getApprovalPolicy(), knownModes.yolo)) {
+			return;
+		}
+		this.settings.onMessage({ type: 'setMode', id: mode.currentId === knownModes.yolo ? this.settings.modeBeforeYolo ?? mode.available[0].id : knownModes.yolo });
 	}
 
 	/** Picks the session's model in a quick pick, as the composer's model picker does. */

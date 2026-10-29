@@ -377,6 +377,11 @@ export interface McpServerView {
 
 /** A Gemini CLI setting the page offers, from the user's own settings.json. */
 export interface PreferencesView {
+	/** `general.defaultApprovalMode`, and its choices with the CLI's names. */
+	readonly defaultApprovalMode: string;
+	readonly defaultApprovalModeChoices: readonly { readonly value: string; readonly label: string }[];
+	/** The name of the mode `gemini.agents.defaultMode` sets, when it is set: it wins over the CLI's. */
+	readonly ownDefaultMode?: string;
 	readonly permanentApproval: boolean;
 	readonly planRouting: boolean;
 	readonly usageStatistics: boolean;
@@ -528,7 +533,7 @@ export type FromSettingsPage =
 	/** Sign in to a remote MCP server, through the CLI's /mcp auth in a terminal. */
 	| { readonly type: 'signIn'; readonly name: string }
 	| { readonly type: 'setPreference'; readonly key: 'permanentApproval' | 'planRouting' | 'usageStatistics'; readonly value: boolean }
-	| { readonly type: 'setPreference'; readonly key: 'keepChats'; readonly value: string }
+	| { readonly type: 'setPreference'; readonly key: 'keepChats' | 'defaultApprovalMode'; readonly value: string }
 	| { readonly type: 'extension'; readonly action: 'enable' | 'disable' | 'update' | 'uninstall'; readonly name: string }
 	| { readonly type: 'openFile'; readonly path: string; readonly server?: string; readonly needle?: string }
 	| { readonly type: 'createRules'; readonly path: string }

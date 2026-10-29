@@ -162,7 +162,7 @@ export class AgentClient {
 	private readonly onDidReceiveEventEmitter = new Emitter<ChatEvent>();
 	readonly onDidReceiveEvent = this.onDidReceiveEventEmitter.event;
 
-	private readonly onDidChangeModeByAgentEmitter = new Emitter<{ readonly from: string | undefined; readonly to: string }>();
+	private readonly onDidChangeModeByAgentEmitter = new Emitter<{ readonly from: string | undefined; readonly to: string; readonly restored?: boolean }>();
 	/** The agent changed the session's mode itself, such as out of Plan once a plan is approved. */
 	readonly onDidChangeModeByAgent = this.onDidChangeModeByAgentEmitter.event;
 
@@ -776,7 +776,10 @@ export class AgentClient {
 			return;
 		}
 		if (this.chosenMode === 'yolo' && modeId === 'autoEdit' && state.kind === 'ready' && this.connection) {
-			void this.connection.setMode(state.sessionId, 'yolo').catch(err => {
+			void this.connection.setMode(state.sessionId, 'yolo').then(() => {
+				// The user's choice wins, and the chat says so once.
+				this.onDidChangeModeByAgentEmitter.fire({ from: modeId, to: 'yolo', restored: true });
+			}, err => {
 				this.runtime.debug(`Could not put ${state.sessionId} back in YOLO: ${errorMessage(err)}`);
 				this.setSettings({ ...this._settings, mode: { ...mode, currentId: modeId } });
 			});

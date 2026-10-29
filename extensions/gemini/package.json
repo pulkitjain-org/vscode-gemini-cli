@@ -330,6 +330,11 @@
         "category": "%category%"
       },
       {
+        "command": "gemini.agents.toggleYolo",
+        "title": "%command.agents.toggleYolo%",
+        "category": "%category%"
+      },
+      {
         "command": "gemini.agents.switchModel",
         "title": "%command.agents.switchModel%",
         "category": "%category%"
@@ -612,36 +617,56 @@
             "id": "cli",
             "title": "%walkthrough.cli.title%",
             "description": "%walkthrough.cli.description%",
-            "media": { "markdown": "walkthrough/cli.md" },
-            "completionEvents": ["onContext:gemini.setup.cliReady"]
+            "media": {
+              "markdown": "walkthrough/cli.md"
+            },
+            "completionEvents": [
+              "onContext:gemini.setup.cliReady"
+            ]
           },
           {
             "id": "signIn",
             "title": "%walkthrough.signIn.title%",
             "description": "%walkthrough.signIn.description%",
-            "media": { "markdown": "walkthrough/signIn.md" },
-            "completionEvents": ["onContext:gemini.setup.signedIn"]
+            "media": {
+              "markdown": "walkthrough/signIn.md"
+            },
+            "completionEvents": [
+              "onContext:gemini.setup.signedIn"
+            ]
           },
           {
             "id": "project",
             "title": "%walkthrough.project.title%",
             "description": "%walkthrough.project.description%",
-            "media": { "markdown": "walkthrough/project.md" },
-            "completionEvents": ["onContext:gemini.setup.projectReady"]
+            "media": {
+              "markdown": "walkthrough/project.md"
+            },
+            "completionEvents": [
+              "onContext:gemini.setup.projectReady"
+            ]
           },
           {
             "id": "look",
             "title": "%walkthrough.look.title%",
             "description": "%walkthrough.look.description%",
-            "media": { "markdown": "walkthrough/look.md" },
-            "completionEvents": ["onCommand:gemini.appearance"]
+            "media": {
+              "markdown": "walkthrough/look.md"
+            },
+            "completionEvents": [
+              "onCommand:gemini.appearance"
+            ]
           },
           {
             "id": "agent",
             "title": "%walkthrough.agent.title%",
             "description": "%walkthrough.agent.description%",
-            "media": { "markdown": "walkthrough/agent.md" },
-            "completionEvents": ["onCommand:gemini.agents.newAgent"]
+            "media": {
+              "markdown": "walkthrough/agent.md"
+            },
+            "completionEvents": [
+              "onCommand:gemini.agents.newAgent"
+            ]
           }
         ]
       }
@@ -729,6 +754,17 @@
         "when": "activeWebviewPanelId == 'gemini.agent'"
       },
       {
+        "key": "shift+tab",
+        "command": "gemini.agents.cycleMode",
+        "when": "activeWebviewPanelId == 'gemini.agent'"
+      },
+      {
+        "key": "ctrl+y",
+        "mac": "cmd+y",
+        "command": "gemini.agents.toggleYolo",
+        "when": "activeWebviewPanelId == 'gemini.agent'"
+      },
+      {
         "command": "gemini.agents.switchModel",
         "key": "ctrl+alt+.",
         "mac": "cmd+alt+.",
@@ -751,7 +787,7 @@
         "mac": "cmd+backspace",
         "when": "focusedView == gemini.agents"
       }
-     ],
+    ],
     "viewsContainers": {
       "activitybar": [
         {
@@ -1277,6 +1313,10 @@
           "when": "activeWebviewPanelId == 'gemini.agent'"
         },
         {
+          "command": "gemini.agents.toggleYolo",
+          "when": "activeWebviewPanelId == 'gemini.agent'"
+        },
+        {
           "command": "gemini.agents.sideQuestion",
           "when": "activeWebviewPanelId == 'gemini.agent'"
         },
@@ -1378,7 +1418,9 @@
           },
           "gemini.figma.viewports": {
             "type": "array",
-            "items": { "type": "string" },
+            "items": {
+              "type": "string"
+            },
             "default": [],
             "markdownDescription": "%configuration.figma.viewports%"
           },

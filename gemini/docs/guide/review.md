@@ -9,7 +9,7 @@ Agents ask before they act, and every change they make can be kept, undone or re
 
 ## Approval modes
 
-Pick a mode from the composer's **+** menu, or press <kbd>⌘.</kbd> in an agent's tab (**Gemini: Cycle Approval Mode**) to step through Default, Auto Edit and Plan as the CLI's <kbd>⇧Tab</kbd> does; it never picks YOLO. The list comes from the Gemini CLI, minus any mode your admin turned off.
+Pick a mode from the composer's **+** menu, or press <kbd>⇧Tab</kbd> in an agent's tab (**Gemini: Cycle Approval Mode**, also <kbd>⌘.</kbd>) to step through Default, Auto Edit and Plan as the CLI's own <kbd>⇧Tab</kbd> does: it never picks YOLO, and skips Plan while a turn runs. <kbd>⌘Y</kbd> toggles YOLO (**Gemini: Toggle YOLO**), as the CLI's <kbd>Ctrl+Y</kbd> does, where your admin allows it. The list and its names come from the Gemini CLI (Default "Prompts for approval", Auto Edit "Auto-approves edit tools", YOLO "Auto-approves all tools", Plan "Read-only mode"), minus any mode your admin turned off; Home and the New Agent dialog show the same list. When the CLI switches to Auto Edit by itself after an edit is allowed for the session, GeminiCode puts your YOLO back and says so in the chat.
 
 | Mode | What the agent does |
 | --- | --- |

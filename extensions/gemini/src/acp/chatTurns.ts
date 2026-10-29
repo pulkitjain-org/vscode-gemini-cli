@@ -156,6 +156,19 @@ export function defaultStartMode(setting: unknown, isAllowed: (modeId: string) =
 }
 
 /**
+ * The mode a new agent starts in: `gemini.agents.defaultMode` when the user
+ * set it (`setting`), else the CLI's own Default Approval Mode from its
+ * settings (`general.defaultApprovalMode`, which the CLI never lets be YOLO),
+ * so a terminal and GeminiCode start the same way. Undefined for Default.
+ */
+export function effectiveStartMode(setting: string | undefined, cliDefault: string | undefined, isAllowed: (modeId: string) => boolean): string | undefined {
+	if (setting !== undefined) {
+		return defaultStartMode(setting, isAllowed);
+	}
+	return cliDefault !== yoloModeId ? defaultStartMode(cliDefault, isAllowed) : undefined;
+}
+
+/**
  * The mode the mode menu tags "Recommended here": Auto Edit, where its edits
  * can be reviewed with Keep and Undo against Git (the folder is trusted, in a
  * repository with at least one commit). Only a tag, on a mode the agent
@@ -168,12 +181,14 @@ export function recommendedMode(folder: { readonly trusted: boolean; readonly co
 /**
  * The approval mode after `settings`' current one, for Cycle Approval Mode: the
  * next the agent lists, as the CLI's own ⇧Tab steps through them, but never
- * YOLO, which approves everything and is picked on purpose. Undefined when
- * there is nothing to switch to.
+ * YOLO, which approves everything and is picked on purpose (⌘Y toggles it),
+ * and never Plan while a turn runs. Undefined when there is nothing to
+ * switch to.
  */
-export function nextApprovalMode(settings: SessionSettings): string | undefined {
+export function nextApprovalMode(settings: SessionSettings, busy = false): string | undefined {
 	const mode = settings.mode;
-	const cycle = mode?.available.filter(choice => choice.id !== yoloModeId) ?? [];
+	// As the CLI's own Shift+Tab: never YOLO, and not Plan while a turn runs, since the running turn would carry on editing.
+	const cycle = mode?.available.filter(choice => choice.id !== yoloModeId && !(busy && choice.id === planModeId)) ?? [];
 	if (!mode || !cycle.length) {
 		return undefined;
 	}

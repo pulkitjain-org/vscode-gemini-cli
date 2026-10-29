@@ -20,7 +20,7 @@ import { savedRepoCount } from '../acp/projectStore';
 import type { Attachment } from '../acp/attachments';
 import { FolderFileIndex } from '../acp/folderFiles';
 import { errorMessage } from '../acp/errors';
-import type { SessionChoice } from '../acp/sessionSettings';
+import { type SessionChoice, startModeList } from '../acp/sessionSettings';
 import { TranscriptStore } from '../acp/transcriptStore';
 import { CheckpointStore } from '../acp/checkpointStore';
 import type { CleanupItem, WorktreeCandidate } from '../acp/storageUsage';
@@ -31,7 +31,7 @@ import { AgentTerminals } from './agentTerminals';
 import { AgentService } from './agentService';
 import { AgentSession } from './agentSession';
 import { ChangesSource, ChangesView } from './changesView';
-import type { AgentStateKind } from './panelProtocol';
+import type { AgentStateKind, HomeMode } from './panelProtocol';
 import { ReviewController } from './reviewController';
 import { CommitSettler } from './commitSettler';
 import type { BrowserTools } from './browserTools';
@@ -40,8 +40,12 @@ import type { WorkspaceIndex } from './workspaceIndex';
 import { toolChipsFor } from './toolChips';
 import { ChatActivity, ChatController, ChatEnhancer, ChatTerminal, ChatWorkspace, FileSearch, openChatAsMarkdown } from './chatController';
 import { configSection, getApprovalPolicy, includedFolderPaths } from './configuration';
+import { readCliPreferences } from '../acp/cliPreferences';
+import { configuredDefaultMode } from './defaultMode';
+import { geminiDir } from '../acp/directRequest';
+import { readSettingsFile } from '../acp/projectSettings';
 import { isModeAllowed } from '../acp/adminPolicy';
-import { defaultStartMode } from '../acp/chatTurns';
+import { effectiveStartMode } from '../acp/chatTurns';
 import { type InstantAnswer, shellCommand } from '../acp/permissions';
 import { isReadOnlyGitRead } from '../acp/sessionApprovals';
 import type { ChatContextCost } from './chat/chatOptions';
@@ -69,7 +73,6 @@ import { AgentWorktrees } from './agents/agentWorktrees';
 import { spareDelayMs, SpareSession } from './agents/spareSession';
 import { showError } from './errorNotice';
 import type { FolderTrust } from './folderTrust';
-export { startModes } from './agents/agentStarts';
 export type { WorkspaceSummary } from './agents/agentTree';
 
 const agentPanelType = 'gemini.agent';
@@ -155,6 +158,8 @@ const saveMaxWaitMs = 10_000;
  * are modules in `./agents/`.
  */
 export class AgentsView implements vscode.Disposable {
+
+	private _cliDefaultMode: string | undefined;
 
 	private readonly model: AgentsModel;
 	/** Where the list is saved, shared with every window; undefined when it could not be read. */
@@ -332,7 +337,7 @@ export class AgentsView implements vscode.Disposable {
 			trust: this.service.trust,
 		};
 		this.projectAgents = new AgentProjects(this.model, this.service, this.projects, this.worktrees, { isMerging: id => this.mergeLoaded?.isMerging(id) ?? false }, this.live, this.tree, { ...host, keptClean: record => this.tries.keptClean(record) });
-		this.starts = new AgentStarts(this.model, this.worktrees, this.tree, this.live, host);
+		this.starts = new AgentStarts(this.model, this.worktrees, this.tree, this.live, { ...host, startModes: () => this.startModes() });
 		this.forks = new AgentForks(this.model, this.service, this.worktrees, this.live, {
 			start: (record, folder) => this.start(record, folder),
 			open: id => this.open(id),
@@ -413,8 +418,11 @@ export class AgentsView implements vscode.Disposable {
 				const id = node?.kind === 'agent' ? node.record.id : this.activeAgentId();
 				return id && this.stopTurn(id);
 			}),
+			// The CLI's default mode can change in Agent Setup or a terminal; read again whenever the agent starts, which a settings change restarts.
+			service.onDidStart(() => void this.refreshCliDefaultMode()),
 			vscode.commands.registerCommand('gemini.agents.focusChat', () => this.focusChat()),
 			vscode.commands.registerCommand('gemini.agents.cycleMode', () => this.chatInFront()?.cycleMode()),
+			vscode.commands.registerCommand('gemini.agents.toggleYolo', () => this.chatInFront()?.toggleYolo()),
 			vscode.commands.registerCommand('gemini.agents.sideQuestion', () => this.chatInFront()?.openSide()),
 			vscode.commands.registerCommand('gemini.agents.switchModel', () => this.chatInFront()?.pickModel()),
 			vscode.commands.registerCommand('gemini.agents.remove', (node?: AgentTreeNode) => this.removeAgent(node)),
@@ -1075,6 +1083,30 @@ export class AgentsView implements vscode.Disposable {
 		return undefined;
 	}
 
+	/**
+	 * The modes a new agent may start in, in the CLI's words: what a running
+	 * session offers, else the window's own agent's, else the CLI's list; less
+	 * what policy turns off.
+	 */
+	startModes(): HomeMode[] {
+		const offered = [...this.live.values()].map(live => live.session.client.settings.mode?.available).find(modes => modes?.length) ?? this.service.client.settings.mode?.available;
+		return startModeList(offered, modeId => isModeAllowed(getApprovalPolicy(), modeId)).map(mode => ({ id: mode.id, name: mode.name, description: mode.description ?? '' }));
+	}
+
+	/** The CLI's own Default Approval Mode (`general.defaultApprovalMode`), read from its settings when the agent starts; what a new agent starts in unless `gemini.agents.defaultMode` is set. */
+	get cliDefaultMode(): string | undefined {
+		if (this._cliDefaultMode === undefined) {
+			// Not read yet: the first asker gets the CLI's own default, the next ones what the file says.
+			void this.refreshCliDefaultMode();
+		}
+		return this._cliDefaultMode;
+	}
+
+	private async refreshCliDefaultMode(): Promise<void> {
+		const settings = await readSettingsFile(path.join(geminiDir(), 'settings.json')).catch(() => ({}));
+		this._cliDefaultMode = readCliPreferences(settings).defaultApprovalMode;
+	}
+
 	private start(record: AgentRecord, folder: string, openLater = false): LiveAgent {
 		const project = projectsEnabled() ? record.project : undefined;
 		// A coordinator's session runs in its own empty folder (coordinatorHome); its chat still belongs to the workspace.
@@ -1097,8 +1129,8 @@ export class AgentsView implements vscode.Disposable {
 				}
 			},
 		}, this.preferredModel(record));
-		// A new agent starts in `gemini.agents.defaultMode`; one started with a mode of its own (Home, a team flow) switches to it after this.
-		const startMode = !record.sessionId && !project ? defaultStartMode(vscode.workspace.getConfiguration(configSection).get('agents.defaultMode'), modeId => isModeAllowed(getApprovalPolicy(), modeId)) : undefined;
+		// A new agent starts in `gemini.agents.defaultMode`, else the CLI's own default; one started with a mode of its own (Home, a team flow) switches to it after this.
+		const startMode = !record.sessionId && !project ? effectiveStartMode(configuredDefaultMode(), this.cliDefaultMode, modeId => isModeAllowed(getApprovalPolicy(), modeId)) : undefined;
 		if (startMode) {
 			session.client.setModeOnNextSession(startMode);
 		}

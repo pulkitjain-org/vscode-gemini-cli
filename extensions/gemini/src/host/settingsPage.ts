@@ -7,7 +7,7 @@ import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { CliExtension, isExtensionSource, parseExtensionList, parseMemoryList, runCliCommands } from '../acp/cliCommands';
-import { CliPreference, defaultKeepChats, isKeepChats, keepChatsChoices, keepChatsForever, readCliPreferences, setCliPreference } from '../acp/cliPreferences';
+import { CliPreference, defaultApprovalModes, defaultKeepChats, isKeepChats, keepChatsChoices, keepChatsForever, readCliPreferences, setCliPreference } from '../acp/cliPreferences';
 import { geminiDir } from '../acp/directRequest';
 import { appendMemory } from '../acp/memory';
 import { errorMessage } from '../acp/errors';
@@ -19,11 +19,13 @@ import { ownTrustRules, readTrustRules, staleTrustRules, type TrustLevel, type T
 import { trustRows, type TrustRow } from '../acp/trustRows';
 import type { AgentService } from './agentService';
 import { type getAgentCommand, getWorkspaceCwd, workspaceFolderPaths } from './configuration';
+import { configuredDefaultMode } from './defaultMode';
 import { tildify } from './displayText';
 import { CliReport, ContextCostView, ExtensionView, FromSettingsPage, HookView, McpServerView, MemoryFileView, PreferencesView, RulesFileView, SettingsPageView, SkillView, ToSettingsPage, TrustRowView, TrustView } from './panelProtocol';
 import { SettingsPageStrings } from './panelStrings';
 import { StorageSection, type StorageHost } from './storageSection';
 import type { forgetSkills } from './teamCommands';
+import { cliModeList } from '../acp/sessionSettings';
 import { PagePanel, PageShell, SinglePage } from './pagePanel';
 import { ContextCost, estimateTokens, heavyContextTokens, heavyServerTokens, measureCalls, measureTokens } from '../acp/contextCost';
 import type { ContextMeasures } from './chat/chatContext';
@@ -383,9 +385,14 @@ export class SettingsPage implements vscode.Disposable {
 			[keepChatsForever]: vscode.l10n.t("Until I delete them"),
 		};
 		const values = keepChatsChoices.includes(preferences.keepChats) ? keepChatsChoices : [...keepChatsChoices, preferences.keepChats];
+		// The CLI's own names for its modes, as a session lists them.
+		const modeNames = new Map(cliModeList.map(mode => [mode.id, mode.name]));
+		const own = configuredDefaultMode();
 		return {
 			...preferences,
 			keepChatsChoices: values.map(value => ({ value, label: value === defaultKeepChats ? vscode.l10n.t("{0} (default)", labels[value]) : labels[value] ?? value })),
+			defaultApprovalModeChoices: defaultApprovalModes.map(value => ({ value, label: value === 'default' ? vscode.l10n.t("{0} (the CLI's default)", modeNames.get(value) ?? value) : modeNames.get(value) ?? value })),
+			...own !== undefined ? { ownDefaultMode: modeNames.get(own) ?? own } : {},
 			display: tildify(this.personalSettings()),
 		};
 	}
@@ -706,11 +713,13 @@ export class SettingsPage implements vscode.Disposable {
 			written = await setCliPreference(file, key, value);
 		} else if ((key === 'permanentApproval' || key === 'planRouting' || key === 'usageStatistics') && typeof value === 'boolean') {
 			written = await setCliPreference(file, key, value);
+		} else if (key === 'defaultApprovalMode' && typeof value === 'string' && defaultApprovalModes.includes(value)) {
+			written = await setCliPreference(file, key, value);
 		} else {
 			return;
 		}
 		if (!written) {
-			await this.cannotRewrite(file, key === 'keepChats' ? '"general"' : key === 'permanentApproval' ? '"security"' : key === 'planRouting' ? '"general"' : '"privacy"');
+			await this.cannotRewrite(file, key === 'keepChats' || key === 'defaultApprovalMode' ? '"general"' : key === 'permanentApproval' ? '"security"' : key === 'planRouting' ? '"general"' : '"privacy"');
 			return;
 		}
 		this.offerRestart(vscode.l10n.t("Saved to {0}. New agents use it.", tildify(file)));
@@ -846,6 +855,9 @@ export class SettingsPage implements vscode.Disposable {
 			signIn: vscode.l10n.t("Sign In"),
 			preferences: vscode.l10n.t("Gemini CLI settings"),
 			preferencesHint: vscode.l10n.t("Your own settings in {0}. A project's .gemini/settings.json can override them."),
+			defaultApprovalMode: vscode.l10n.t("Default approval mode"),
+			defaultApprovalModeHint: vscode.l10n.t("The mode a new agent starts in, as the CLI's own /settings sets it. YOLO is picked on purpose, never by default."),
+			ownDefaultModeNote: vscode.l10n.t("GeminiCode's gemini.agents.defaultMode is set to {0}, which wins here; clear it to follow the CLI."),
 			permanentApproval: vscode.l10n.t("Allow for all future sessions"),
 			permanentApprovalHint: vscode.l10n.t("Permission prompts offer to allow a tool or command from now on, so trusted commands such as npm test stop asking in every new chat."),
 			planRouting: vscode.l10n.t("Plan with Pro, build with Flash"),

@@ -11,14 +11,13 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { Attachment } from '../../acp/attachments';
 import type { AgentRecord, AgentsModel } from '../../acp/agents';
-import { isModeAllowed } from '../../acp/adminPolicy';
 import { branchNameFrom, isValidBranchName } from '../../acp/branchNames';
 import { errorMessage } from '../../acp/errors';
 import { reviewRequest, workingChanges } from '../../acp/reviewPrompt';
 import { AgentWorktree, repositoryRoot } from '../../acp/worktrees';
 import type { AgentSession } from '../agentSession';
 import type { ChatController } from '../chatController';
-import { configSection, getApprovalPolicy } from '../configuration';
+import { configSection } from '../configuration';
 import { tildify } from '../displayText';
 import { knownModelList, sessionModel, sessionModelList } from '../modelPreference';
 import type { HomeMode } from '../panelProtocol';
@@ -37,6 +36,8 @@ export interface AgentStartsHost {
 	pickModel(id: string, model: string): void;
 	/** Folder trust, asked the first time a folder is chosen for agents. */
 	readonly trust: Pick<FolderTrust, 'ask'>;
+	/** The modes a new agent may start in, in the CLI's words, less what policy turns off (`AgentsView.startModes`). */
+	startModes(): HomeMode[];
 }
 
 export class AgentStarts {
@@ -155,7 +156,7 @@ export class AgentStarts {
 			folders: places.map(place => ({ folder: place.folder, label: path.basename(place.folder) || place.folder, description: tildify(place.folder), git: place.git })),
 			models: models.map(model => ({ id: model.id, name: model.name })),
 			...(models.length ? { defaultModel: sessionModel(models) } : {}),
-			modes: startModes().filter(mode => isModeAllowed(getApprovalPolicy(), mode.id)),
+			modes: this.host.startModes(),
 			branchPlaceholder: branchNameFrom(page),
 		});
 		if (!choice || typeof choice.folder !== 'string' || !path.isAbsolute(choice.folder)) {
@@ -259,15 +260,6 @@ export class AgentStarts {
 		}
 		return pick.folder ?? chooseFolder();
 	}
-}
-
-/** The approval modes a new agent can start in, in the order the chat lists them. */
-export function startModes(): HomeMode[] {
-	return [
-		{ id: 'default', name: vscode.l10n.t("Default"), description: vscode.l10n.t("Asks before changes") },
-		{ id: 'autoEdit', name: vscode.l10n.t("Auto Edit"), description: vscode.l10n.t("Edits without asking") },
-		{ id: 'plan', name: vscode.l10n.t("Plan"), description: vscode.l10n.t("Read-only") },
-	];
 }
 
 /** A folder the user picks to add as a workspace, or with `open`, as Home's Open Folder... asks; undefined when dismissed. */

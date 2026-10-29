@@ -236,6 +236,10 @@ export interface SettingsPageStrings {
 	readonly preferences: string;
 	/** `{0}` is the settings file. */
 	readonly preferencesHint: string;
+	readonly defaultApprovalMode: string;
+	readonly defaultApprovalModeHint: string;
+	/** `{0}` is the mode GeminiCode's own setting names. */
+	readonly ownDefaultModeNote: string;
 	readonly permanentApproval: string;
 	readonly permanentApprovalHint: string;
 	readonly planRouting: string;

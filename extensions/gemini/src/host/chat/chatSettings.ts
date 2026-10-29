@@ -22,6 +22,7 @@ export class ChatSettings implements vscode.Disposable {
 	private readonly listeners: { dispose(): void }[];
 	/** The last mode other than Plan the session was in. */
 	private lastBuildMode: string | undefined;
+	private lastPlainMode: string | undefined;
 
 	constructor(
 		private readonly service: Pick<ChatHost, 'client' | 'permissions' | 'askToTrust'>,
@@ -31,11 +32,13 @@ export class ChatSettings implements vscode.Disposable {
 	) {
 		this.noteMode(service.client.settings.mode?.currentId);
 		this.listeners = [
-			service.client.onDidChangeModeByAgent(({ from, to }) => {
+			service.client.onDidChangeModeByAgent(({ from, to, restored }) => {
 				const name = (id: string | undefined) => service.client.settings.mode?.available.find(choice => choice.id === id)?.name ?? id ?? '';
-				this.transcript.addNotice(from === 'plan'
-					? vscode.l10n.t("Plan approved, now in {0} mode.", name(to))
-					: vscode.l10n.t("The agent switched to {0} mode.", name(to)));
+				this.transcript.addNotice(restored
+					? vscode.l10n.t("Gemini CLI switched to {0} after that approval; {1} is back, as you chose.", name(from), name(to))
+					: from === 'plan'
+						? vscode.l10n.t("Plan approved, now in {0} mode.", name(to))
+						: vscode.l10n.t("The agent switched to {0} mode.", name(to)));
 			}),
 			service.client.onDidChangeSettings(settings => this.noteMode(settings.mode?.currentId)),
 		];
@@ -46,9 +49,17 @@ export class ChatSettings implements vscode.Disposable {
 		return this.lastBuildMode;
 	}
 
+	/** The last mode that was neither YOLO nor Plan: where ⌘Y goes back to from YOLO. */
+	get modeBeforeYolo(): string | undefined {
+		return this.lastPlainMode;
+	}
+
 	private noteMode(id: string | undefined): void {
 		if (id && id !== 'plan') {
 			this.lastBuildMode = id;
+		}
+		if (id && id !== 'plan' && id !== 'yolo') {
+			this.lastPlainMode = id;
 		}
 	}
 

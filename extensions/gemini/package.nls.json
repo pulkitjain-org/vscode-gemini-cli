@@ -155,6 +155,7 @@
 	"command.agents.stop": "Stop Agent",
 	"command.agents.focusChat": "Focus Chat",
 	"command.agents.cycleMode": "Cycle Approval Mode",
+	"command.agents.toggleYolo": "Toggle YOLO",
 	"command.agents.switchModel": "Switch Model...",
 	"command.agents.remove": "Remove Agent",
 	"command.agents.removeWorkspace": "Remove Workspace from List",

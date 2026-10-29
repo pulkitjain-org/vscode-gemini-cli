@@ -47,8 +47,8 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// The team flows, about 32 KB: Open Merge Request, Move Ticket and Log Time, Review and Checks, with the
 	// review's comments, threads and suggested changes. Loaded only with a flow's page.
 	'media/teamFlow.js': 36_000,
-	// Project Helpers, about 17.3 KB: the Storage section added about 1.4 KB.
-	'media/settings.js': 19_000,
+	// Agent Setup, about 19.4 KB: the Storage section added about 1.4 KB, the CLI's default approval mode as a select about 1 KB.
+	'media/settings.js': 20_500,
 	// Connections, about 17.5 KB: the Jira sites after the first and Confluence's per-site Connect dialog added about 4 KB.
 	'media/connections.js': 20_000,
 	// The Review Page for Confluence drafts, about 27 KB: the in-place editor, its floating toolbar, the marked changes

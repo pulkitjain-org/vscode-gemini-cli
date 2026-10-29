@@ -90,37 +90,46 @@ function preferenceRow(label: string, hint: string, on: boolean, onChange: (on: 
 }
 
 /** The Keep saved chats menu, drawn again with the page. */
-let keepChatsMenu: SelectMenu | undefined;
+/** The preference selects' menus, disposed with the next render. */
+const preferenceMenus: SelectMenu[] = [];
+
+/** A preference with a few values, as a themed select; the menus are disposed with the next render. */
+function selectRow(id: string, label: string, hint: string, choices: readonly { readonly value: string; readonly label: string }[], current: string, onChange: (value: string) => void): HTMLElement {
+	const row = el('div', 'row preference');
+	const main = el('div', 'row-main');
+	const title = el('div', 'row-title');
+	const name = el('label', 'name', label);
+	name.htmlFor = id;
+	title.append(name);
+	main.append(title, el('div', 'row-detail', hint));
+	const select = el('select', 'select');
+	select.id = id;
+	for (const choice of choices) {
+		const option = el('option', undefined, choice.label);
+		option.value = choice.value;
+		option.selected = choice.value === current;
+		select.append(option);
+	}
+	select.addEventListener('change', () => onChange(select.value));
+	const menu = selectMenu(select, label);
+	preferenceMenus.push(menu);
+	row.append(main, menu.element);
+	return row;
+}
 
 function preferencesSection(preferences: PreferencesView): HTMLElement {
+	for (const menu of preferenceMenus.splice(0)) {
+		menu.dispose();
+	}
 	const node = section(strings.preferences, format(strings.preferencesHint, preferences.display));
 	const list = el('div', 'rows');
+	list.append(selectRow('default-approval-mode', strings.defaultApprovalMode, preferences.ownDefaultMode ? `${strings.defaultApprovalModeHint} ${format(strings.ownDefaultModeNote, preferences.ownDefaultMode)}` : strings.defaultApprovalModeHint, preferences.defaultApprovalModeChoices, preferences.defaultApprovalMode, value => post({ type: 'setPreference', key: 'defaultApprovalMode', value })));
 	list.append(
 		preferenceRow(strings.permanentApproval, strings.permanentApprovalHint, preferences.permanentApproval, value => post({ type: 'setPreference', key: 'permanentApproval', value })),
 		preferenceRow(strings.planRouting, strings.planRoutingHint, preferences.planRouting, value => post({ type: 'setPreference', key: 'planRouting', value })),
 		preferenceRow(strings.usageStatistics, strings.usageStatisticsHint, preferences.usageStatistics, value => post({ type: 'setPreference', key: 'usageStatistics', value })),
 	);
-	const row = el('div', 'row preference');
-	const main = el('div', 'row-main');
-	const title = el('div', 'row-title');
-	const id = 'keep-chats';
-	const label = el('label', 'name', strings.keepChats);
-	label.htmlFor = id;
-	title.append(label);
-	main.append(title, el('div', 'row-detail', strings.keepChatsHint));
-	const select = el('select', 'select');
-	select.id = id;
-	for (const choice of preferences.keepChatsChoices) {
-		const option = el('option', undefined, choice.label);
-		option.value = choice.value;
-		option.selected = choice.value === preferences.keepChats;
-		select.append(option);
-	}
-	select.addEventListener('change', () => post({ type: 'setPreference', key: 'keepChats', value: select.value }));
-	keepChatsMenu?.dispose();
-	keepChatsMenu = selectMenu(select, strings.keepChats);
-	row.append(main, keepChatsMenu.element);
-	list.append(row);
+	list.append(selectRow('keep-chats', strings.keepChats, strings.keepChatsHint, preferences.keepChatsChoices, preferences.keepChats, value => post({ type: 'setPreference', key: 'keepChats', value })));
 	node.append(list);
 	return node;
 }

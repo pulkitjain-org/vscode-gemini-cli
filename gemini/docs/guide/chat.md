@@ -17,7 +17,7 @@ The **+** menu at the bottom left of the composer holds:
 - **Usage and quota**: how full the chat is, what each turn carries, and today's quota.
 - **Skills and commands**: the same list as typing `/`.
 
-A mode other than Default shows as a chip beside **+**; click its × to go back. From the keyboard, <kbd>⌘.</kbd> steps to the next mode and <kbd>⌥⌘.</kbd> switches the model (**Gemini: Cycle Approval Mode** and **Gemini: Switch Model...**), and <kbd>⌃⌘I</kbd> puts the cursor back in the message box (**Gemini: Focus Chat**).
+A mode other than Default shows as a chip beside **+**; click its × to go back. From the keyboard, <kbd>⇧Tab</kbd> steps to the next mode and <kbd>⌘Y</kbd> toggles YOLO, as in the Gemini CLI's own terminal (<kbd>⌘.</kbd> still steps too); <kbd>⌥⌘.</kbd> switches the model (**Gemini: Cycle Approval Mode**, **Gemini: Toggle YOLO** and **Gemini: Switch Model...**), and <kbd>⌃⌘I</kbd> puts the cursor back in the message box (**Gemini: Focus Chat**).
 
 ## Attaching context
 
