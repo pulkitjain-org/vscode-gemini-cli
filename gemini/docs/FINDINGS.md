@@ -137,6 +137,8 @@ Read from the CLI and checked by `realAgentSessions.test.ts`.
 
 ### Finding the session
 
+The CLI registers two folders for one directory reached through a link: its process's `process.cwd()`, the real path, when it starts, and the path `session/new` was given. Sessions are saved under the given path's folder. GeminiCode opens every session on the real path, so both coincide; for a session opened elsewhere on the given path, the lookup reads every folder the directory is registered under (`chatsFolders` in `cliSessions.ts`), and a copy for `session/load` goes in the folder of the path the load will be given.
+
 - `session/load` takes `sessionId`, `cwd` and `mcpServers`. It finds the session among the chat files the CLI saves for the folder: `~/.gemini/tmp/<project>/chats/session-<time>-<first 8 characters of the id>.jsonl`, where `<project>` is the short name `~/.gemini/projects.json` gives the folder (older CLIs used a SHA-256 of its path).
 - The CLI matches the exact id and does not reset the session, so the same session can be reopened again and again.
 - A chat is saved only once it has messages, so an empty session cannot be reopened. Like `session/new`, `session/load` needs `security.auth.selectedType` in the user's settings.

@@ -93,8 +93,18 @@ async function folderKeys(cwd: string): Promise<string[]> {
 	return real === given ? [given] : [real, given];
 }
 
-/** The folder the CLI saves `cwd`'s sessions in, if it ever saved any. */
+/** The folder the CLI saves `cwd`'s sessions in, if it ever saved any: the real path's first. */
 export async function chatsFolder(cwd: string, home = cliHome()): Promise<string | undefined> {
+	return (await chatsFolders(cwd, home))[0];
+}
+
+/**
+ * Every folder the CLI has saved `cwd`'s sessions in: one per key it was
+ * registered under (the real path's first, then the path as given), since a
+ * CLI given a linked path registers that path, and GeminiCode since 1.7 the
+ * real one; a session is looked for in each.
+ */
+async function chatsFolders(cwd: string, home = cliHome()): Promise<string[]> {
 	const candidates: string[] = [];
 	for (const key of await folderKeys(cwd)) {
 		const registered = await registeredProject(key, home);
@@ -103,13 +113,14 @@ export async function chatsFolder(cwd: string, home = cliHome()): Promise<string
 		}
 		candidates.push(projectHash(key));
 	}
-	for (const id of candidates) {
+	const folders: string[] = [];
+	for (const id of new Set(candidates)) {
 		const folder = path.join(home, projectTempDirName, id, chatsDirName);
 		if (await isFolder(folder)) {
-			return folder;
+			folders.push(folder);
 		}
 	}
-	return undefined;
+	return folders;
 }
 
 /**
@@ -174,10 +185,18 @@ const parseSliceMs = 8;
  * one per id (its latest file), oldest first by start time.
  */
 async function numberedSessions(cwd: string, home?: string): Promise<CliSession[]> {
-	const folder = await chatsFolder(cwd, home);
-	if (!folder) {
+	const folders = await chatsFolders(cwd, home);
+	if (!folders.length) {
 		return [];
 	}
+	const result: CliSession[] = [];
+	for (const folder of folders) {
+		result.push(...await numberedSessionsIn(folder));
+	}
+	return result;
+}
+
+async function numberedSessionsIn(folder: string): Promise<CliSession[]> {
 	let names: string[];
 	try {
 		names = (await fs.readdir(folder)).filter(name => name.startsWith(sessionFilePrefix) && (name.endsWith('.jsonl') || name.endsWith('.json'))).sort();
@@ -674,19 +693,28 @@ export async function deleteCliSession(cwd: string, id: string, home?: string): 
 
 /** The files that hold session `id` in `cwd`, newest first. */
 async function sessionFilesOf(cwd: string, id: string, home?: string): Promise<string[]> {
-	const folder = await chatsFolder(cwd, home);
-	if (!folder || !id) {
+	return (await sessionFilesWithSessions(cwd, id, home)).map(f => f.file);
+}
+
+/** Every file of session `id` in `cwd`'s chats folders, newest first, with the session each holds. */
+async function sessionFilesWithSessions(cwd: string, id: string, home?: string): Promise<{ readonly file: string; readonly session: ParsedSession }[]> {
+	if (!id) {
 		return [];
 	}
-	let names: string[];
-	try {
-		const suffix = `-${id.slice(0, 8)}.json`;
-		names = (await fs.readdir(folder)).filter(name => name.startsWith(sessionFilePrefix) && (name.endsWith(suffix) || name.endsWith(`${suffix}l`)));
-	} catch {
-		return [];
+	const found: { readonly file: string; readonly session: ParsedSession }[] = [];
+	for (const folder of await chatsFolders(cwd, home)) {
+		let names: string[];
+		try {
+			// The CLI names a session's file after the first 8 characters of its id.
+			const suffix = `-${id.slice(0, 8)}.json`;
+			names = (await fs.readdir(folder)).filter(name => name.startsWith(sessionFilePrefix) && (name.endsWith(suffix) || name.endsWith(`${suffix}l`)));
+		} catch {
+			continue;
+		}
+		const files = await mapLimited(names, readConcurrency, async name => ({ file: path.join(folder, name), session: await readSessionFile(path.join(folder, name)) }));
+		found.push(...files.filter((f): f is { file: string; session: ParsedSession } => f.session?.id === id));
 	}
-	const files = await mapLimited(names, readConcurrency, async name => ({ file: path.join(folder, name), session: await readSessionFile(path.join(folder, name)) }));
-	return files.filter(f => f.session?.id === id).sort((a, b) => (b.session?.updatedAt ?? 0) - (a.session?.updatedAt ?? 0)).map(f => f.file);
+	return found.sort((a, b) => b.session.updatedAt - a.session.updatedAt);
 }
 
 /** Session `id` in `cwd` from its newest file, reading only that session's files; undefined when there is none. */
@@ -696,20 +724,7 @@ async function readSessionById(cwd: string, id: string, home?: string): Promise<
 
 /** The newest file of session `id` in `cwd`, and its session. */
 async function newestSessionFile(cwd: string, id: string, home?: string): Promise<{ readonly file: string; readonly session: ParsedSession } | undefined> {
-	const folder = await chatsFolder(cwd, home);
-	if (!folder || !id) {
-		return undefined;
-	}
-	let names: string[];
-	try {
-		// The CLI names a session's file after the first 8 characters of its id.
-		const suffix = `-${id.slice(0, 8)}.json`;
-		names = (await fs.readdir(folder)).filter(name => name.startsWith(sessionFilePrefix) && (name.endsWith(suffix) || name.endsWith(`${suffix}l`)));
-	} catch {
-		return undefined;
-	}
-	const files = await mapLimited(names, readConcurrency, async name => ({ file: path.join(folder, name), session: await readSessionFile(path.join(folder, name)) }));
-	return files.filter((f): f is { file: string; session: ParsedSession } => f.session?.id === id).sort((a, b) => b.session.updatedAt - a.session.updatedAt)[0];
+	return (await sessionFilesWithSessions(cwd, id, home))[0];
 }
 
 /**
