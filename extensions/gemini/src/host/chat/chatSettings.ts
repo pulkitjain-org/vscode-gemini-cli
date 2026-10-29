@@ -6,16 +6,19 @@
 // The composer's mode and model pickers. A mode the CLI refuses because it
 // does not trust the folder offers to trust it, and the chat says when the
 // agent switches mode by itself. The mode the chat was in before Plan is kept
-// for Build This Plan, which builds in it.
+// for Approve Plan, which builds in it.
 
+import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { ChatTranscript } from '../../acp/chatTranscript';
+import { setCliDefaultModel } from '../../acp/cliPreferences';
+import { geminiDir } from '../../acp/directRequest';
 import { AgentError, errorMessage } from '../../acp/errors';
 import type { FromWebview, ToWebview } from '../chatProtocol';
 import { rememberModel } from '../modelPreference';
 import type { ChatControllerOptions, ChatHost } from './chatOptions';
 
-export type SettingsMessage = Extract<FromWebview, { readonly type: 'setMode' | 'setModel' }>;
+export type SettingsMessage = Extract<FromWebview, { readonly type: 'setMode' | 'setModel' | 'setCliDefaultModel' }>;
 
 export class ChatSettings implements vscode.Disposable {
 
@@ -44,7 +47,7 @@ export class ChatSettings implements vscode.Disposable {
 		];
 	}
 
-	/** The mode the chat was in before Plan mode, which Build This Plan builds in; unset when it started in Plan. */
+	/** The mode the chat was in before Plan mode, which Approve Plan builds in; unset when it started in Plan. */
 	get modeBeforePlan(): string | undefined {
 		return this.lastBuildMode;
 	}
@@ -82,6 +85,24 @@ export class ChatSettings implements vscode.Disposable {
 					}
 				});
 				break;
+			case 'setCliDefaultModel':
+				void this.setCliDefault(message.id);
+				break;
+		}
+	}
+
+	/** Writes the model to the user's CLI settings, where the terminal's /model dialog saves its default, and says so in the chat. */
+	private async setCliDefault(modelId: string): Promise<void> {
+		const name = this.service.client.settings.model?.available.find(choice => choice.id === modelId)?.name ?? modelId;
+		const file = path.join(geminiDir(), 'settings.json');
+		try {
+			if (await setCliDefaultModel(file, modelId)) {
+				this.transcript.addNotice(vscode.l10n.t("The Gemini CLI now starts on {0}, in the terminal too.", name), 'info');
+			} else {
+				this.transcript.addNotice(vscode.l10n.t("Couldn't write {0}: it isn't valid JSON.", file), 'error');
+			}
+		} catch (err) {
+			this.transcript.addNotice(errorMessage(err), 'error');
 		}
 	}
 

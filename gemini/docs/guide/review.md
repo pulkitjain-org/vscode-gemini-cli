@@ -82,9 +82,11 @@ The last 100 replies of each agent can be undone, and they stay undoable after t
 
 ## Rewind
 
-**Rewind** goes back to before one of your messages, as the CLI's `/rewind` does. Click the clock icon under the message, or press <kbd>esc</kbd> twice in an empty message box and pick one.
+**Rewind** goes back to before one of your messages, as the CLI's `/rewind` does. Click the clock icon under the message, type `/rewind`, or press <kbd>esc</kbd> twice in an empty message box, and pick a message: each shows when it was sent and how many files changed since.
 
-That message and everything after it go from the chat and from Gemini's context, so Gemini forgets them, and the files Gemini changed since go back to how they were. The message returns to the message box, to edit and send again.
+Then choose, in the CLI's own words: **Rewind conversation and revert code changes**, **Rewind conversation**, or **Revert code changes** (the code choices appear only when code changed since). Rewinding the conversation removes that message and everything after it from the chat and from Gemini's context, so Gemini forgets them, and the message returns to the message box, to edit and send again. Reverting the code puts back what Gemini's edit tools changed since; as in the CLI, your own edits and what shell commands changed stay as they are. **Undo changes** on a reply is the short way to revert one turn's code.
+
+The CLI's own checkpointing (`general.checkpointing.enabled`, off by default) keeps a shadow Git commit before each edit, for its `/restore`; GeminiCode's checkpoints are its own, per turn, and need nothing turned on. Turn the CLI's on only when you also use `/restore` from a terminal in the same folder.
 
 ## Commit the agent's work
 

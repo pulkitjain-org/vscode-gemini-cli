@@ -27,7 +27,7 @@ export interface PlanView {
 	readonly missing: boolean;
 	/** The agent is in a turn: Build waits for it, and so does editing. */
 	readonly busy: boolean;
-	/** Build This Plan is offered: the agent's latest turn ended in Plan mode. */
+	/** Approve Plan is offered: the agent's latest turn ended in Plan mode. */
 	readonly canBuild: boolean;
 }
 

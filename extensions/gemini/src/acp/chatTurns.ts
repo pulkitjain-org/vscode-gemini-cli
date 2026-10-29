@@ -14,7 +14,7 @@ import type { TranscriptItem } from './chatTranscript';
 import type { StoredCheckpoints } from './checkpoints';
 import type { SessionSettings } from './sessionSettings';
 
-/** The CLI's Plan and Default mode IDs (gemini-cli 0.63 `ApprovalMode`); Build This Plan shows only when the agent offers both. */
+/** The CLI's Plan and Default mode IDs (gemini-cli 0.63 `ApprovalMode`); Approve Plan shows only when the agent offers both. */
 const planModeId = 'plan';
 const defaultModeId = 'default';
 const autoEditModeId = 'autoEdit';
@@ -105,7 +105,7 @@ export function undoNote(cwd: string, files: readonly string[]): string {
 }
 
 /**
- * The mode Build This Plan switches to, when the chat is in Plan mode: the
+ * The mode Approve Plan switches to, when the chat is in Plan mode: the
  * mode it was in before Plan (`before`) when the agent still offers it, else
  * Default when the agent offers that.
  */
@@ -118,7 +118,7 @@ export function buildModeAfterPlan(settings: SessionSettings, before?: string): 
 	return offered(before) ? before : offered(defaultModeId) ? defaultModeId : undefined;
 }
 
-/** What Build This Plan offers: the mode it builds in, and the other choice its chevron gives (Default, or Auto Edit from Default). */
+/** What Approve Plan offers: the mode it builds in, and the other choice its chevron gives (Default, or Auto Edit from Default). */
 export interface PlanBuildChoice {
 	readonly mode: string;
 	readonly other?: string;
@@ -134,7 +134,7 @@ export function planBuildChoice(settings: SessionSettings, before?: string): Pla
 }
 
 /**
- * The models Build This Plan's hint names: the model the plan's turn used
+ * The models Approve Plan's hint names: the model the plan's turn used
  * most (from its token counts) and the one the build will use, only when both
  * are known and differ. Auto (`auto…`) picks a model per request, so the
  * build's model isn't known ahead and no hint is given.

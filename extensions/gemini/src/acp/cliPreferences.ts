@@ -118,6 +118,20 @@ export function applyCliPreference<K extends CliPreference>(settings: Record<str
 	}
 }
 
+/**
+ * Makes `modelId` the model the CLI starts on (`model.name` in the user
+ * settings), as the terminal's /model dialog saves it. False, leaving the file
+ * alone, when it isn't valid JSON.
+ */
+export function setCliDefaultModel(file: string, modelId: string): Promise<boolean> {
+	return updateSettingsFile(file, settings => {
+		const existing = settings.model;
+		const model = isRecord(existing) ? existing : {};
+		settings.model = model;
+		model.name = modelId;
+	});
+}
+
 /** Writes one preference to a settings file. False, leaving the file alone, when it isn't valid JSON (comments are kept). */
 export async function setCliPreference<K extends CliPreference>(file: string, key: K, value: CliPreferences[K]): Promise<boolean> {
 	if (key === 'keepChats' && !isKeepChats(value as string)) {

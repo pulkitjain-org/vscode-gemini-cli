@@ -29,6 +29,7 @@ Stop Agent, Focus Chat, Cycle Approval Mode, Toggle YOLO and Switch Model are al
 | <kbd>esc</kbd> <kbd>esc</kbd> (chat input, agent working) | Stop the agent |
 | <kbd>⌘esc</kbd> (agent's tab; Alt+Backspace on Windows) | Stop the agent at once |
 | <kbd>⇧Tab</kbd> or <kbd>⌘.</kbd> (agent's tab) | Next approval mode: Default, Auto Edit, Plan, as the CLI's <kbd>⇧Tab</kbd> steps; never YOLO, and not Plan while a turn runs |
+| <kbd>Tab</kbd> (message box, while the agent works) | Queue the message for after this turn, as in the CLI |
 | <kbd>⌘Y</kbd> (agent's tab) | YOLO on, or back to the mode before it, as the CLI's <kbd>Ctrl+Y</kbd>; only where your admin allows YOLO |
 | <kbd>⌥⌘.</kbd> (agent's tab) | Switch the agent's model |
 | <kbd>esc</kbd> (chat input) | Cancel Enhance prompt |

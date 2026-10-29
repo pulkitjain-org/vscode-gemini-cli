@@ -27,7 +27,7 @@ You can write while the coordinator works. Your message shows above the input as
 
 If a coordinator turn fails, for example on a quota or network error, its error offers **Retry**, which sends the coordinator what that turn was given again. Your next message carries it too, so nothing you wrote is lost.
 
-**Compact** works in the project chat as in any chat: type `/compact`, use the **Compact** link in the usage popover, or the card offered once the context passes 40%. The coordinator's summary lists its threads, and its next turn gets its role and the project memory again.
+**Compress** works in the project chat as in any chat: type `/compress`, use the **Compress** link in the usage popover, or the card offered once the context passes 40%. The coordinator's summary lists its threads, and its next turn gets its role and the project memory again.
 
 ## Threads
 

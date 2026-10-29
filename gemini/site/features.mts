@@ -109,7 +109,7 @@ export const featurePages: readonly FeaturePage[] = [
 		hero: { name: 'showcase-review', alt: 'Keeping an agent\'s edits one by one, with Keep and Undo above each change', clip: true },
 		steps: [
 			{ title: 'Write the prompt', body: '`@` adds files, ⌘L the selection, and you can drop in files, images and PDFs. **Enhance prompt** turns plain words into a precise prompt.' },
-			{ title: 'Plan first, if you like', body: 'In Plan mode the agent reads and writes a plan. **Review Plan** opens it to edit and comment on, and nothing changes until you press **Build This Plan**.' },
+			{ title: 'Plan first, if you like', body: 'In Plan mode the agent reads and writes a plan. **Review Plan** opens it to edit and comment on, and nothing changes until you press **Approve Plan**.' },
 			{ title: 'Approve what runs', body: 'A command or an edit shows a card first: allow it once, for the session, or reject it. Pick a looser mode when you trust the task.' },
 			{ title: 'Keep or undo', body: 'Each change shows in its file with **Keep** and **Undo** above it. A reply that changed files undoes in one click, and **Rewind** goes back to before any message.' },
 		],
@@ -146,8 +146,8 @@ export const featurePages: readonly FeaturePage[] = [
 			},
 			{
 				title: 'Plan mode',
-				body: ['The agent reads the code and writes a plan that ends with **Build This Plan**. Nothing changes until you press it.'],
-				media: { name: 'showcase-plan', alt: 'An agent in Plan mode writing a plan that ends with Build This Plan', clip: true },
+				body: ['The agent reads the code and writes a plan that ends with **Approve Plan**. Nothing changes until you press it.'],
+				media: { name: 'showcase-plan', alt: 'An agent in Plan mode writing a plan that ends with Approve Plan', clip: true },
 			},
 			{
 				title: 'Review the plan',

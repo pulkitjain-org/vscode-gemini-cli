@@ -16,7 +16,7 @@
 // A prefix is the program and, for programs with subcommands, the subcommand:
 // allowing `git status` never covers `git grep -O…` or `git push`. Rules come
 // from the session ("Allow for this session") or from outside it
-// (`permanent`, for an "Always allow" kept by the host); both ask again once
+// and ask again once
 // the agent writes a file that changes what they run.
 
 import * as path from 'node:path';
@@ -614,13 +614,10 @@ export interface ApprovalRule {
 	readonly source: ApprovalSource;
 }
 
-/** One agent session's shell approvals: its own, in memory only, and the permanent ones the host gives it. */
+/** One agent session's shell approvals, in memory only; the CLI's own permanent allow (`proceed_always_and_save`) is the CLI's policy file, not a list here. */
 export class SessionApprovals {
 
 	private readonly session = new Set<string>();
-	private permanent = new Set<string>();
-	/** Permanent rules that lapsed this session, after the agent wrote what they run; asked again until approved. */
-	private readonly suspended = new Set<string>();
 	/** The redirect targets an approved command wrote, so later commands may write them too. */
 	private readonly targets = new Set<string>();
 
@@ -631,17 +628,9 @@ export class SessionApprovals {
 		return [...this.session];
 	}
 
-	/** Every rule in effect: this session's and the permanent ones that have not lapsed. */
+	/** Every rule in effect: this session's. */
 	get rules(): readonly ApprovalRule[] {
-		return [
-			...[...this.session].map(prefix => ({ prefix, source: 'session' as const })),
-			...[...this.permanent].filter(prefix => !this.suspended.has(prefix)).map(prefix => ({ prefix, source: 'permanent' as const })),
-		];
-	}
-
-	/** Replaces the permanent rules, such as a folder's "Always allow" list. */
-	setPermanent(prefixes: readonly string[]): void {
-		this.permanent = new Set(prefixes);
+		return [...this.session].map(prefix => ({ prefix, source: 'session' as const }));
 	}
 
 	/** The prefixes "Allow for this session" on `command` would record, or undefined when it can't be approved this way. */
@@ -658,7 +647,6 @@ export class SessionApprovals {
 		}
 		for (const prefix of parsed.prefixes) {
 			this.session.add(prefix);
-			this.suspended.delete(prefix);
 		}
 		parsed.redirects.filter(target => !parsed.outside.includes(target)).forEach(target => this.targets.add(target));
 		return [...new Set(parsed.prefixes)];
@@ -706,23 +694,19 @@ export class SessionApprovals {
 			}
 			return build && (taskRunners.has(name) || program.includes('/'));
 		};
-		const lapsed = [...this.session, ...[...this.permanent].filter(prefix => !this.suspended.has(prefix))].filter(lapses);
+		const lapsed = [...this.session].filter(lapses);
 		for (const prefix of lapsed) {
 			this.session.delete(prefix);
-			if (this.permanent.has(prefix)) {
-				this.suspended.add(prefix);
-			}
 		}
 		return [...new Set(lapsed)];
 	}
 
 	clear(): void {
 		this.session.clear();
-		this.suspended.clear();
 		this.targets.clear();
 	}
 
 	private allows(prefix: string): boolean {
-		return this.session.has(prefix) || (this.permanent.has(prefix) && !this.suspended.has(prefix));
+		return this.session.has(prefix);
 	}
 }

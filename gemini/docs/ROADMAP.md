@@ -59,7 +59,7 @@ The app reads `geminiDefaultProjectId` from `product.json`, but no build sets it
 
 ### Workspaces opened through a symbolic link
 
-The CLI keys a folder's chats by the path it is given, and the terminal always gives the real path. In a workspace opened through a link, chats started with `gemini` in the terminal are saved under another key, so a new agent's list of saved CLI sessions (and `/resume`) does not show them ([FINDINGS.md](FINDINGS.md#reopening-a-session-sessionload)). Running every session on the folder's real path would fix this, but chats saved under the linked path would then need a migration.
+The CLI keys a folder's chats by the path it is given, and the terminal always gives the real path. Since 1.7 GeminiCode opens every session on the folder's real path too (`realFolder` in `agentRuntime.ts`), so a terminal's and GeminiCode's sessions share one key, and reads both keys, so chats saved under a linked path before still show ([FINDINGS.md](FINDINGS.md#reopening-a-session-sessionload)). The second key can go a release later.
 
 ### Sessions are never closed
 

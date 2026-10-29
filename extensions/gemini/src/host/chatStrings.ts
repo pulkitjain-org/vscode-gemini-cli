@@ -333,6 +333,9 @@ export interface ChatStrings {
 	readonly run: RunStrings;
 	readonly mode: string;
 	readonly model: string;
+	/** The model menu's last row: makes the session's model the one the CLI starts on. */
+	readonly modelDefaultCli: string;
+	readonly modelDefaultCliDetail: string;
 	readonly noFiles: string;
 	readonly noCommands: string;
 	/** The composer's menus' names for screen readers: files to attach, and slash commands. */
@@ -454,12 +457,13 @@ export interface ChatStrings {
 	readonly retryTooltip: string;
 	readonly buildPlan: string;
 	readonly buildPlanTooltip: string;
-	/** Review Plan beside Build This Plan, opening the plan file in Plan Review. */
+	/** Review Plan beside Approve Plan, opening the plan file in Plan Review. */
 	readonly reviewPlan: string;
 	readonly reviewPlanTooltip: string;
-	/** Build This Plan's chevron and its menu: `{0}` is a mode's name; the hint names the build's model, then the plan's. */
+	/** Approve Plan's chevron and its menu, in the CLI's own words: `{0}` is a mode's name; the hint names the build's model, then the plan's. */
 	readonly planBuild: {
 		readonly more: string; readonly buildIn: string; readonly asking: string; readonly beforePlan: string; readonly defaultMode: string; readonly models: string;
+		readonly autoAccept: string; readonly manualAccept: string; readonly editFirst: string; readonly notYet: string;
 	};
 	/** `{0}` is the branch; the branch pill's tooltip. */
 	readonly switchBranch: string;

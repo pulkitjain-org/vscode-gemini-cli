@@ -7,7 +7,7 @@ import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { applyCliPreference, isKeepChats, keepChatsPeriod, readCliPreferences, setCliPreference } from '../../src/acp/cliPreferences';
+import { applyCliPreference, isKeepChats, keepChatsPeriod, readCliPreferences, setCliDefaultModel, setCliPreference } from '../../src/acp/cliPreferences';
 import { readSettingsFile } from '../../src/acp/projectSettings';
 
 let dir: string;
@@ -58,5 +58,12 @@ describe('cliPreferences', () => {
 		await fs.writeFile(file, '{\n  "a": \n}\n');
 		expect(await setCliPreference(file, 'usageStatistics', false)).toBe(false);
 		await expect(setCliPreference(file, 'keepChats', '1h')).rejects.toThrow();
+	});
+
+	it('sets the model the CLI starts on under model.name, keeping the rest of the model section', async () => {
+		const file = path.join(dir, 'settings.json');
+		await fs.writeFile(file, JSON.stringify({ model: { maxSessionTurns: 5 }, general: { vimMode: true } }));
+		expect(await setCliDefaultModel(file, 'gemini-3.1-pro-preview')).toBe(true);
+		expect(await readSettingsFile(file)).toEqual({ model: { maxSessionTurns: 5, name: 'gemini-3.1-pro-preview' }, general: { vimMode: true } });
 	});
 });

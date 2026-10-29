@@ -206,6 +206,8 @@ Read from `AcpFileSystemService` and the tool-confirmation code.
 - Before every shell command the CLI runs a taint check (`hasTaintedOrBuildFileRisk`). A command that reuses a path or a flag's value seen in earlier tool output, or a build command after build files changed, always asks, and its "Allow for this session" is accepted but not kept. ACP still offers the option and sends no taint details. GeminiCode keeps its own session approvals of shell programs (`sessionApprovals.ts`), which lapse for task runners when the agent writes a build file.
 - A shell request's title is the whole command.
 - The CLI reads its trusted folders once per process (`loadTrustedFolders`), so a folder trusted while it runs counts only after a restart.
+- `general.defaultApprovalMode` (0.66: `default`, `autoEdit` or `plan`; `yolo` is refused on purpose) is the mode `session/new` opens in, and the mode list it returns is the CLI's own: `default`, `autoEdit`, `plan` and, where policy allows it, `yolo`, in that order, with the CLI's names. GeminiCode lists them as they come and reads the default from the same key, so the composer, Agent Setup and the terminal's dialog show one list. The terminal's /model dialog saves its default under `model.name` in the user settings (`saveModelChange`); the model menu's Set as Default for the CLI writes the same key.
+- The CLI's permanent allow (`proceed_always_and_save`, offered only with `security.enablePermanentToolApproval`) writes its policy file with the mode the session is in, and the rule applies there and in every mode that approves more. ACP carries no scope with the option, so GeminiCode adds the scope to the option's label itself (`withPermanentScope`).
 
 ## The model list
 

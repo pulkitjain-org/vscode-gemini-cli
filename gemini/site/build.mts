@@ -832,7 +832,7 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 				</div>`).join('');
 	const flowSteps = [
 		['Plan', 'In Plan mode the agent reads and writes a plan. <b>Review Plan</b> opens it a section at a time to edit and comment on.'],
-		['Build', '<b>Build This Plan</b> starts the work, on a branch of its own if you like. Each edit and command asks first.'],
+		['Build', '<b>Approve Plan</b> starts the work, on a branch of its own if you like. Each edit and command asks first.'],
 		['Review', 'Each change shows in its file with <b>Keep</b> and <b>Undo</b>, and every changed file is in Changes beside the chat.'],
 		['Try', '<b>Try in Workspace</b> copies the changes into your checkout, unstaged. Run the app and the tests with them.'],
 		['Keep', '<b>Keep Changes</b> makes them your own change. <b>Take Back</b> removes them and leaves your own edits.'],

@@ -38,7 +38,7 @@ These show the app before 1.6 and are still on the site:
 - `project-threads` (landing page, Projects): thread cards with **Merge back** and a side panel saying "1 merged back". 1.6 offers **Try in Workspace**, and the side panel counts each thread's requests.
 - `project-merge` (Projects guide): a finished thread card with **Merge back**, **Review changes** and **Undo thread**. Retake it with the 1.6 card, and change its alt text in `gemini/docs/guide/projects.md`.
 - The `showcase-projects` clip (Projects guide and feature page): ends on a **Merge back** card.
-- The `showcase-plan` clip (Chat guide and feature page): the reply ends with only **Build This Plan**. 1.6 adds **Review Plan** beside it, and Build This Plan has a ⌄.
+- The `showcase-plan` clip (Chat guide and feature page): the reply ends with only **Approve Plan**. 1.6 adds **Review Plan** beside it, and Approve Plan has a ⌄.
 
 Possibly out of date, to check when retaking the ones above: `project-chat` (no request counts in the side panel), the `showcase-wait` clip's permission card, and `docs/project-settings` and `docs/project-memory`.
 

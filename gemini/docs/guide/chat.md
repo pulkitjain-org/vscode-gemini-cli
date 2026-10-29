@@ -11,7 +11,7 @@ The **+** menu at the bottom left of the composer holds:
 - **Mode**: Default, Auto Edit, Plan and, if your admin allows it, YOLO. See [Approval modes](review.md#approval-modes). In a trusted folder that is a Git repository with at least one commit, Auto Edit is tagged **Recommended here**: its edits apply at once and you review them with Keep and Undo, while commands still ask. The tag never switches the mode for you. `gemini.agents.defaultMode` sets the mode new agents start in.
 - **Files** and **Context**: attach files from anywhere, or workspace files with `@`.
 - **Follow the agent**: open each file the agent reads or edits.
-- **Model**: the models the terminal's `/model` shows, in the same order. The model you pick is used for every new or reopened agent.
+- **Model**: the models the terminal's `/model` shows, in the same order. The model you pick is used for every new or reopened agent. **Set as Default for the CLI**, the menu's last row, saves it as the model the Gemini CLI itself starts on (`model.name` in `~/.gemini/settings.json`), as the terminal's `/model` dialog does, so a `gemini` started in a terminal uses it too.
 - **Fork**: start a new agent from this conversation. See [Fork an agent](agents.md#fork-an-agent).
 - **Open Terminal**: the agent's own terminal, in its folder. See [Terminal](terminal.md).
 - **Usage and quota**: how full the chat is, what each turn carries, and today's quota.
@@ -40,7 +40,8 @@ GeminiCode has no inline (ghost text) completions as you type, and none are plan
 Type `/` at the start of the composer, or choose **Skills and commands** in the **+** menu, to list commands, under a heading for each source: GeminiCode's own first, then the team's, the skills and the CLI's. Keep typing to filter, then press <kbd>Tab</kbd> or <kbd>Enter</kbd> to complete the name and add arguments.
 
 - **Gemini CLI commands** such as `/init`, `/memory` and `/restore` run in the CLI.
-- **GeminiCode's own**: `/resume` reopens a saved session, `/compact` compacts the chat (below), `/context` shows what each turn carries (see [Usage and quota](#usage-and-quota)), `/btw` asks a [side question](#side-questions), `/research` reads widely in parallel ([Research](#research)), and `/fork` forks the agent.
+- **The Gemini CLI's commands, as GeminiCode offers them**, listed first under the names the terminal uses: `/resume` (also `/chat`) browses the saved sessions and restores one, `/rewind` goes back to before a message, `/plan [goal]` switches to Plan mode with a goal and `/plan copy` copies the latest plan, `/compress` summarizes the older work (below), `/context` (also `/stats`) shows what each turn carries (see [Usage and quota](#usage-and-quota)), and `/permissions trust` opens the folder trust dialog.
+- **GeminiCode's own**: `/btw` asks a [side question](#side-questions), `/research` reads widely in parallel ([Research](#research)), and `/fork` forks the agent.
 - **Team commands** are TOML files in `.gemini/commands/` in the workspace, or in `~/.gemini/commands/` for your own. It's the Gemini CLI's own format, so the same files work in the terminal: `git/commit.toml` becomes `/git:commit`.
 - **Skills** are folders with a `SKILL.md`, in `.gemini/skills/` (or `.agents/skills/`) in the workspace, or in `~/.gemini/skills/` for your own. Picking one asks the agent to load it, with what you typed after the name as the task.
 
@@ -65,7 +66,7 @@ The rewrite replaces your draft as Gemini writes it; **Cancel** or <kbd>esc</kbd
 
 ## Plan, then build
 
-In **Plan** mode the agent reads and proposes a plan without changing anything. When a reply ends in Plan mode, **Build This Plan** under it switches the chat back to the mode it was in before Plan (Default when it started in Plan) and asks Gemini to carry out the plan. The chevron beside it offers the other choice: **Build, Asking for Each Edit** in Default mode, or **Build in Auto Edit** when you planned from Default. When you switched to another model after planning, a line under the button names both: "Builds with … ; planned with …". The Gemini CLI doesn't say ahead which model Auto will pick, so with Auto there is no such line.
+In **Plan** mode the agent reads and proposes a plan without changing anything. When a reply ends in Plan mode, **Approve Plan** under it switches the chat back to the mode it was in before Plan (Default when it started in Plan) and asks Gemini to carry out the plan. The chevron beside it is the CLI's own approval dialog, in its words: **Yes, automatically accept edits** builds in Auto Edit, **Yes, manually accept edits** builds in Default, **Edit or comment the plan first** opens Plan Review, and **Not yet** leaves the plan as it is. When you switched to another model after planning, a line under the button names both: "Builds with … ; planned with …". The Gemini CLI doesn't say ahead which model Auto will pick, so with Auto there is no such line.
 
 ![An agent in Plan mode writing a plan that ends with Build This Plan](../../site/media/showcase-plan-dark.webp "clip")
 
@@ -73,14 +74,14 @@ With the model on Auto, Gemini plans with Pro and builds with Flash. Turn off **
 
 ### Review the plan
 
-When a Plan mode turn writes a plan file, **Review Plan** beside **Build This Plan** opens it on a page of its own, in the agent's side group; so does the plan's file chip while the agent is in Plan mode. The page shows the plan section by section.
+When a Plan mode turn writes a plan file, **Review Plan** beside **Approve Plan** opens it on a page of its own, in the agent's side group; so does the plan's file chip while the agent is in Plan mode. The page shows the plan section by section.
 
 ![Plan Review with a plan's sections, a comment beside one and Send Comments to Gemini](../../site/media/plan-review-dark.webp)
 
 - **Edit in place.** Click a section, or press Return on it, to edit its Markdown; **Done** (<kbd>⌘↩</kbd>) saves it to the plan file. Sections can't be edited while Gemini works on the plan.
 - **Comment.** The **+** beside a section, or **Comment** over selected text, adds a comment. Comments wait in a panel beside the plan, and are kept when you close the page.
 - **Send Comments to Gemini** sends every comment at once, with the sections you edited, and Gemini revises the plan. When its turn ends, the page says how many sections changed and marks them **changed**; **Show What Changed** finds them, and **Clear Sent Comments** tidies the panel.
-- **Build This Plan** builds it as it is now, edits included. With comments not yet sent, it asks first: **Send Comments First** or **Build As It Is**.
+- **Approve Plan** builds it as it is now, edits included. With comments not yet sent, it asks first: **Send Comments First** or **Build As It Is**.
 
 **Open as Text** opens the plan file in the editor. Plans stay with their session: reopening the session, after a restart for example, keeps the plan, and **Review Plan** still opens it.
 
@@ -113,7 +114,7 @@ Gemini sometimes refuses a session's request after a tool result, most often aft
 
 ## Sending while the agent works
 
-You don't have to wait for the agent to finish. While it works, the composer says **↩ to steer, ⌘↩ to queue · ⌥⌘; asks on the side**. With `gemini.chat.sendWith` set to `cmdEnter`, ⌘↩ sends, ⇧⌘↩ queues and ↩ makes a new line (Ctrl takes ⌘'s place on Windows and Linux).
+You don't have to wait for the agent to finish. While it works, the composer says **↩ to steer, Tab or ⌘↩ to queue · ⌥⌘; asks on the side**: <kbd>Tab</kbd> queues the message for after this turn, as it does in the Gemini CLI, and the strip under the composer shows it as **Queued**. With `gemini.chat.sendWith` set to `cmdEnter`, ⌘↩ sends, ⇧⌘↩ queues and ↩ makes a new line (Ctrl takes ⌘'s place on Windows and Linux).
 
 - **↩ sends now**, to steer the agent: "use pnpm, not npm", or "leave the tests alone". The message shows above the input as **Sending after the current step**. At the next safe point, the chat stops the turn and sends your message, telling the agent to adjust its plan and carry on. A safe point is when no command or edit is running and Gemini has answered the last tool's result, so no tool's work is lost. That is straight away while the agent is thinking or writing, or showing a permission card.
 - **⌘↩ queues** the message for after the turn. It shows as **Queued: goes after this turn**. Several queued messages go together as one.
@@ -176,7 +177,7 @@ To react from the keyboard, send `+` and one emoji, such as `+👍`: it reacts t
 
 | Reaction | What Gemini does |
 | --- | --- |
-| 👍 Go ahead | Carries on with what it proposed. On a plan, this is the same as **Build This Plan**. |
+| 👍 Go ahead | Carries on with what it proposed. On a plan, this is the same as **Approve Plan**. |
 | 👎 Not what I meant | Stops, says in one line what it understood, and asks what to change. While the agent works, 👎 stops the turn at the next safe point, as ↩ does. |
 | ❓ Explain more simply | Explains the reply again, more simply, with an example. |
 | ❤️ Thanks | Nothing. The reply is marked, and no message is sent. |
@@ -209,15 +210,15 @@ Hover the **Gemini** item in the status bar to see today's quota too; once a mod
 
 ## Long conversations
 
-### Compact
+### Compress
 
-When a session's history reaches half of the model's context window, the Gemini CLI summarises the older part and keeps the most recent 30% as it was. It does that only in memory: when the session is reopened, after a restart for example, it comes back whole.
+When a session's history reaches half of the model's context window, the Gemini CLI summarises the older part and keeps the most recent 30% as it was. Its `/compress` does the same on request. Both happen only in memory: when the session is reopened, after a restart for example, it comes back whole.
 
-**Compact** does the same when you ask, and the result is kept. Type `/compact`, or choose **Compact** in the usage popover, which offers it once the agent has answered and is idle. Once the context passes 40%, the chat also offers it, once.
+**Compress** in GeminiCode does the same when you ask, under the CLI's name, and the result is kept. Type `/compress`, or choose **Compress** in the usage popover, which offers it once the agent has answered and is idle. Once the context passes 40%, the chat also offers it, once.
 
 Gemini writes a summary of the work so far (goal, decisions, files, current state and next steps), and the chat moves to a new session made of that summary and your latest messages, as they were. A line across the chat shows the tokens before and after, with **View Summary** and **Undo**. Undo goes back to the full session, even after a restart. The conversation above the line stays in the chat either way.
 
-![A chat after /compact, with the Compacted line showing the tokens before and after, View Summary and Undo](../../site/media/compact-line-dark.webp)
+![A chat after /compress, with the Compressed line showing the tokens before and after, View Summary and Undo](../../site/media/compact-line-dark.webp)
 
 Writing the summary is a model turn, so it counts toward your quota.
 

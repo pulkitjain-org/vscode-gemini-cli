@@ -16,6 +16,7 @@
 // process started there, made when first needed, shared by that folder's
 // sessions and ended once none is left.
 
+import { promises as fs } from 'node:fs';
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import type * as acp from '@agentclientprotocol/sdk';
 import type { AgentClientHandlers, AgentConnection, SetupTimeouts } from './agentConnection';
@@ -147,6 +148,7 @@ export class AgentRuntime {
 	private readonly closedSessions = new Set<string>();
 	/** A session opened ahead of use (`prepareSession`), keyed by its folder and servers. */
 	private spare: { readonly key: string; readonly connection: AgentConnection; readonly session: Promise<RuntimeSession> } | undefined;
+	private readonly realFolders = new Map<string, Promise<string>>();
 	/** Shared by concurrent `session/new` calls so the user's settings are rewritten at most once. */
 	private authenticating: Promise<void> | undefined;
 	private readonly sidecarListener: { dispose(): void };
@@ -315,12 +317,28 @@ export class AgentRuntime {
 		return spare.session;
 	}
 
-	private async openNewSession(cwd: string, mcpServers: readonly acp.McpServer[]): Promise<RuntimeSession> {
+	/**
+	 * `folder` with its links resolved, as a terminal's CLI keys its sessions
+	 * (process.cwd() resolves links); the folder itself when that fails (it
+	 * may not exist yet). Resolved once per folder, so sessions opened in one
+	 * folder back to back start in the order they were asked for.
+	 */
+	private realFolder(folder: string): Promise<string> {
+		let real = this.realFolders.get(folder);
+		if (!real) {
+			real = fs.realpath(folder).catch(() => folder);
+			this.realFolders.set(folder, real);
+		}
+		return real;
+	}
+
+	private async openNewSession(given: string, mcpServers: readonly acp.McpServer[]): Promise<RuntimeSession> {
 		const state = this._state;
 		const connection = this.connection;
 		if (state.kind !== 'ready' || !connection) {
 			throw new AgentError({ kind: 'unknown', message: 'The agent is not ready.' });
 		}
+		const cwd = await this.realFolder(given);
 		try {
 			return { connection, agent: state.agent, session: this.noteCwd(await connection.newSession(cwd, mcpServers), cwd), mcpServers };
 		} catch (err) {
@@ -348,7 +366,7 @@ export class AgentRuntime {
 	 * `loadSession`. Rejects with an `AgentError` otherwise, or when the agent
 	 * cannot find it; the caller then opens a new session.
 	 */
-	async loadSession(cwd: string, sessionId: string, firstPrompt?: string, mcpServers: readonly acp.McpServer[] = []): Promise<RuntimeSession> {
+	async loadSession(given: string, sessionId: string, firstPrompt?: string, mcpServers: readonly acp.McpServer[] = []): Promise<RuntimeSession> {
 		const state = this._state;
 		const connection = this.connection;
 		if (state.kind !== 'ready' || !connection) {
@@ -364,6 +382,7 @@ export class AgentRuntime {
 		this.earlyUpdates.delete(sessionId);
 		this.closedSessions.delete(sessionId);
 		return this.noteOutcome((async () => {
+			const cwd = await this.realFolder(given);
 			const target = await this.processFor(cwd, connection, state.agent);
 			// The CLI deletes the session's plans as it reopens it: keep them (sessionFolder.ts).
 			const putBack = await keepSessionFolder(cwd, sessionId).catch(() => undefined);
@@ -734,3 +753,5 @@ function exitsWithin(child: ChildProcessWithoutNullStreams, ms: number): Promise
 		child.once('exit', onExit);
 	});
 }
+
+

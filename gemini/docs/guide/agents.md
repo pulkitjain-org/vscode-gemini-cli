@@ -101,7 +101,7 @@ The Fork dialog asks three things.
 **What the fork takes with it.** Each choice shows about how many tokens it sends with every request.
 
 - **Whole session** is an exact copy of the agent's session, tool output included.
-- **Compacted** has Gemini summarise the older work first and keeps the latest messages as they were. It is much smaller, and waits for the agent to finish its turn. Large sessions start on this choice.
+- **Compressed** has Gemini summarise the older work first and keeps the latest messages as they were. It is much smaller, and waits for the agent to finish its turn. Large sessions start on this choice.
 - **Conversation only** has your messages and the agent's replies, without tool output.
 
 **Where it works.**
@@ -214,7 +214,7 @@ An administrator can lock `gemini.index.enabled`, `gemini.docs.enabled` and `gem
 
 ## Pick up a Gemini CLI session
 
-A new, empty agent lists the three sessions the Gemini CLI saved most recently for its folder, including ones you started with `gemini` in a terminal, with a link to show them all. Pick one to continue it: its conversation appears in the chat, and the agent takes the session's title. Type `/resume` in the composer to open the same list at any time.
+A new, empty agent lists the three sessions the Gemini CLI saved most recently for its folder, including ones you started with `gemini` in a terminal, with a link to show them all. Pick one to continue it: its conversation appears in the chat, and the agent takes the session's title. Type `/resume` (or `/chat`, as the CLI also calls it) in the composer to open the session browser at any time: each session's first prompt, how many prompts it has and when it was last used, newest first; type to search them, and the trash icon on a row deletes the session's files, as the CLI's `--delete-session` does. GeminiCode opens sessions on the folder's real path, as a terminal does, so the two share one list.
 
 The CLI deletes saved sessions after 30 days. The list says when each one goes, and **Keep saved chats for** in [Agent Setup](helpers.md#gemini-cli-settings) changes how long they are kept.
 

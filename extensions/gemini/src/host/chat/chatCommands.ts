@@ -67,7 +67,9 @@ export class ChatCommands implements vscode.Disposable {
 		const teamNames = new Set(team.map(c => c.name));
 		const local: SlashCommand[] = [...team, ...skillList.filter(s => !teamNames.has(s.name)).map(s => ({ name: s.name, description: s.description, source: 'skill' as const }))];
 		const commands = mergeCommands(this.client.commands, local);
-		// The agent's own command wins over one of GeminiCode's with the same name.
-		this.post({ type: 'commands', commands: [...commands, ...this.appCommands.filter(app => !commands.some(c => c.name === app.name))] });
+		// The CLI's names first, as GeminiCode offers them (/resume, /rewind, /plan, /compress, /stats), then GeminiCode's own,
+		// then the commands the agent lists over ACP, then the team's commands and skills. The agent's own command wins over
+		// one of GeminiCode's with the same name.
+		this.post({ type: 'commands', commands: [...this.appCommands.filter(app => !commands.some(c => c.name === app.name)), ...commands] });
 	}
 }

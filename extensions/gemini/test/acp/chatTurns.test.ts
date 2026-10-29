@@ -120,7 +120,7 @@ describe('buildModeAfterPlan', () => {
 	});
 });
 
-describe('Build This Plan', () => {
+describe('Approve Plan', () => {
 	const modes = (currentId: string, ...ids: string[]) => ({ mode: { currentId, available: ids.map(id => ({ id, name: id })) } });
 
 	it('builds in the mode before Plan when the agent still offers it, else Default, with the other choice on its chevron', () => {

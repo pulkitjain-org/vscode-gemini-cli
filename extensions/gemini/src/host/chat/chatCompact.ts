@@ -219,9 +219,9 @@ export class ChatCompact {
 	}
 }
 
-/** /compact, in chats that can compact. */
+/** /compress, as the CLI names it, in chats that can compress. */
 export function compactCommand(): SlashCommand {
-	return { name: 'compact', description: vscode.l10n.t("Summarize the older work to free up context"), source: 'app' };
+	return { name: 'compress', description: vscode.l10n.t("Summarize the older work to free up context, as the CLI's /compress does; here the result is kept"), source: 'app' };
 }
 
 function isPromptMessage(message: MessageRecord): boolean {

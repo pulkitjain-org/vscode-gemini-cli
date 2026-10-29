@@ -7,7 +7,7 @@
 // place and open to comments. Edits are saved to the file as they are made;
 // comments are kept (per plan file, across reloads: planReviewStore.ts)
 // until Send hands them all to the agent in one message, after which the
-// page marks the sections that message's turn changed. Build This Plan asks first when comments
+// page marks the sections that message's turn changed. Approve Plan asks first when comments
 // were not sent. In dist/pages.js, loaded the first time a plan is reviewed:
 // what it needs of the agents comes through `PlanReviewHost`.
 
@@ -39,7 +39,7 @@ export interface PlanReviewHost {
 	 * went (taken out of the queue, or held back because the turn before it stopped).
 	 */
 	send(agentId: string, text: string): Promise<boolean>;
-	/** Build This Plan, telling the agent `text`; resolves whether the build started. */
+	/** Approve Plan, telling the agent `text`; resolves whether the build started. */
 	build(agentId: string, text: string): Promise<boolean>;
 	/** The plan as it was before the review was sent, beside the file as it is, in the agent's column. */
 	showDiff(agentId: string, file: string, before: string): Promise<void>;
@@ -451,9 +451,9 @@ export function planStrings(): PlanStrings {
 		showSection: vscode.l10n.t("Show the section this comment is on"),
 		changedTag: vscode.l10n.t("changed"),
 		foot: vscode.l10n.t("Your edits are saved to the plan file. Comments go to Gemini together, and it revises the plan."),
-		build: vscode.l10n.t("Build This Plan"),
+		build: vscode.l10n.t("Approve Plan"),
 		buildShort: vscode.l10n.t("Build"),
-		buildBusy: vscode.l10n.t("Build This Plan is offered once the agent's latest turn ends in Plan mode."),
+		buildBusy: vscode.l10n.t("Approve Plan is offered once the agent's latest turn ends in Plan mode."),
 		send: vscode.l10n.t("Send Comments to Gemini"),
 		sendShort: vscode.l10n.t("Send Comments"),
 		revising: vscode.l10n.t("Comments sent. Gemini is revising the plan; the page updates when it's done."),

@@ -192,27 +192,48 @@ export class ChatCheckpoints {
 		return true;
 	}
 
-	/** Esc twice in an empty message box, as in the CLI: picks one of the user's prompts to rewind to. */
+	/** The CLI's /rewind command, and its Esc Esc in an empty message box. */
+	async pickRewindCommand(): Promise<void> {
+		await this.pickRewind();
+	}
+
+	/** Esc twice in an empty message box, as in the CLI: picks one of the user's prompts to rewind to, each with the files changed since. */
 	private async pickRewind(): Promise<void> {
 		if (this.host.isBusy() || this.options.project) {
 			return;
 		}
-		const prompts = rewindPrompts(this.transcript.items);
+		const items = this.transcript.items;
+		const prompts = rewindPrompts(items);
 		if (!prompts.length) {
 			return;
 		}
-		const pick = await vscode.window.showQuickPick(prompts.map(item => ({
-			label: item.text.replace(/\s+/g, ' ').trim(),
-			...(item.at ? { description: new Date(item.at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) } : {}),
-			id: item.id,
-		})), {
+		const pick = await vscode.window.showQuickPick(prompts.map(item => {
+			const files = this.filesChangedSince(items.findIndex(each => each.id === item.id));
+			return {
+				label: item.text.replace(/\s+/g, ' ').trim(),
+				...(item.at ? { description: new Date(item.at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) } : {}),
+				detail: files === 1 ? vscode.l10n.t("1 file changed since") : files ? vscode.l10n.t("{0} files changed since", files) : vscode.l10n.t("No files changed since"),
+				id: item.id,
+			};
+		}), {
 			title: vscode.l10n.t("Rewind"),
-			placeHolder: vscode.l10n.t("Pick a message to rewind to, newest first. The conversation goes back to before it."),
+			placeHolder: vscode.l10n.t("Pick a message to rewind to, newest first. The next question asks whether the conversation, the code or both go back."),
 			matchOnDescription: true,
+			matchOnDetail: true,
 		});
 		if (pick) {
 			await this.rewind(pick.id);
 		}
+	}
+
+	/** How many files Gemini changed from the prompt at `index` on: what rewinding there would put back. */
+	private filesChangedSince(index: number): number {
+		if (index < 0) {
+			return 0;
+		}
+		const after = new Set(this.transcript.items.slice(index).map(item => item.id));
+		const firstTurn = this.checkpoints.turnIds.find(id => after.has(id));
+		return firstTurn ? this.checkpoints.plan(firstTurn)?.restores.length ?? 0 : 0;
 	}
 
 	/**
@@ -242,24 +263,27 @@ export class ChatCheckpoints {
 			void vscode.window.showWarningMessage(vscode.l10n.t("This message can't be rewound: it is not in the Gemini CLI's saved session, for example because it ran a team command or skill."));
 			return;
 		}
-		const rewind = vscode.l10n.t("Rewind");
-		const undoCode = vscode.l10n.t("Undo Code");
-		const answer = found
-			? await vscode.window.showWarningMessage(vscode.l10n.t("Rewind to before this message?"), {
-				modal: true,
-				detail: [vscode.l10n.t("This message and everything after it are removed from the chat and from Gemini's context, so Gemini forgets them. The message goes back in the message box, to edit and send again."), filesNote].filter(Boolean).join('\n\n'),
-			}, rewind)
-			: await vscode.window.showWarningMessage(vscode.l10n.t("Undo the code changes since this message?"), {
-				modal: true,
-				detail: [vscode.l10n.t("The conversation can't be rewound: this message is not in the Gemini CLI's saved session, for example because it ran a team command or skill."), filesNote].join('\n\n'),
-			}, undoCode);
+		// The CLI's three choices, in its words; the code ones only when code changed, as the CLI hides them then.
+		const both = vscode.l10n.t("Rewind conversation and revert code changes");
+		const conversation = vscode.l10n.t("Rewind conversation");
+		const code = vscode.l10n.t("Revert code changes");
+		const choices = [...found && plan ? [both] : [], ...found ? [conversation] : [], ...plan ? [code] : []];
+		const answer = await vscode.window.showWarningMessage(vscode.l10n.t("Rewind to before this message?"), {
+			modal: true,
+			detail: [
+				found
+					? vscode.l10n.t("Rewinding the conversation removes this message and everything after it from the chat and from Gemini's context, so Gemini forgets them; the message goes back in the message box, to edit and send again.")
+					: vscode.l10n.t("The conversation can't be rewound: this message is not in the Gemini CLI's saved session, for example because it ran a team command or skill."),
+				filesNote ? vscode.l10n.t("Reverting the code puts back only what Gemini's edit tools changed: your own edits and what commands changed stay. {0}", filesNote) : '',
+			].filter(Boolean).join('\n\n'),
+		}, ...choices);
 		if (!answer || this.host.isBusy() || this.transcript.items[index]?.id !== itemId) {
 			return;
 		}
-		if (firstTurn && plan && !await this.undoTurn(firstTurn, true)) {
+		if ((answer === both || answer === code) && firstTurn && plan && !await this.undoTurn(firstTurn, true)) {
 			return;
 		}
-		if (found) {
+		if ((answer === both || answer === conversation) && found) {
 			await this.rewindChat(itemId, prompt.text);
 		}
 	}

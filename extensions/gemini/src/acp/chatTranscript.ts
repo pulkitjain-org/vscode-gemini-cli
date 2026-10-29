@@ -130,7 +130,7 @@ export type TranscriptItem =
 		readonly retry?: boolean;
 		/** The latest turn ended in Plan mode: it offers to leave Plan mode and carry out the plan. */
 		readonly buildPlan?: boolean;
-		/** How Build This Plan builds: in `mode`, the mode before Plan; its chevron offers `other`; `models` when the build's model differs from the plan's. */
+		/** How Approve Plan builds: in `mode`, the mode before Plan; its chevron offers `other`; `models` when the build's model differs from the plan's. */
 		readonly build?: { readonly mode: string; readonly other?: string; readonly models?: { readonly plan: string; readonly build: string } };
 		/** Tokens the turn used per model, when the agent reported them. */
 		readonly usage?: readonly ModelTokens[];

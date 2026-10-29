@@ -81,7 +81,7 @@ export const featureIndex: readonly { readonly name: string; readonly items: rea
 			{ icon: 'at-sign', title: 'Context', body: 'Type @ for files, ⌘L for the selection, or drop in files and images.', href: 'chat.html#attaching-context' },
 			{ icon: 'terminal', title: 'Slash commands and skills', body: 'Team commands, skills and the CLI\'s own, from /.', href: 'chat.html#slash-commands-and-skills' },
 			{ icon: 'wand-sparkles', title: 'Enhance prompt', body: 'Plain words in, a precise prompt out. ⌥⌘E.', href: 'chat.html#enhance-prompt' },
-			{ icon: 'list-checks', title: 'Plan, then build', body: 'Plan mode reads and plans. Build This Plan starts the work.', href: 'chat.html#plan-then-build' },
+			{ icon: 'list-checks', title: 'Plan, then build', body: 'Plan mode reads and plans. Approve Plan starts the work.', href: 'chat.html#plan-then-build' },
 			{ icon: 'pencil', title: 'Review the plan', body: 'Edit the plan by section, comment, and send every comment at once.', href: 'chat.html#review-the-plan' },
 			{ icon: 'list-tree', title: 'Folded turns and subagents', body: 'Each finished turn folds under one line, with subagents as rows.', href: 'chat.html#watching-the-agent-work' },
 			{ icon: 'sigma', title: 'Replies that read well', body: 'Typeset math, coloured code, file links and spell check.', href: 'chat.html#replies' },

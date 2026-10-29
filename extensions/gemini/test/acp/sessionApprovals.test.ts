@@ -210,17 +210,6 @@ describe('SessionApprovals', () => {
 		expect(['/w/src/hooks/useCart.ts', '/w/docs/config.md'].map(isGitHookFile)).toEqual([false, false]);
 	});
 
-	it('takes permanent rules from outside, which lapse for the session like its own', () => {
-		const approvals = new SessionApprovals();
-		approvals.setPermanent(['npm test', 'git status']);
-		expect(approvals.covers('npm test -- --watch=false').kind).toBe('covered');
-		expect(approvals.noteWrite('/w/package.json')).toEqual(['npm test']);
-		expect({ npm: approvals.covers('npm test').kind, rules: approvals.rules }).toEqual({ npm: 'asks', rules: [{ prefix: 'git status', source: 'permanent' }] });
-		approvals.approve('npm test');
-		expect(approvals.rules).toEqual([{ prefix: 'npm test', source: 'session' }, { prefix: 'npm test', source: 'permanent' }, { prefix: 'git status', source: 'permanent' }]);
-		expect(approvals.prefixesOf('git status && grep x a | head')).toEqual(['git status', 'grep', 'head']);
-	});
-
 	it('names the settings an agent\'s write always asks for, the ignore files among them', () => {
 		expect(['/w/.gemini/worktree-setup.sh', '/w/.gemini/settings.json', '/w/.vscode/settings.json', '/w/.vscode/tasks.json', '/w/.gitignore', '/w/sub/.gitignore', '/w/.geminiignore', '/w/.git/info/exclude', '/w/.gemini/GEMINI.md', '/w/.vscode/launch.json', '/w/src/settings.json', '/w/gitignore.md'].map(isProtectedSetting))
 			.toEqual([true, true, true, true, true, true, true, true, false, false, false, false]);

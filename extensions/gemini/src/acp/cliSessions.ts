@@ -81,15 +81,28 @@ export interface SessionTokens {
 	readonly cached: number;
 }
 
+/**
+ * The keys the CLI may file `cwd`'s sessions under: the path as given, and
+ * its real path, which a terminal's CLI uses (`process.cwd()` resolves links)
+ * and GeminiCode sends since 1.7. Both are read, so sessions from before are
+ * still found.
+ */
+async function folderKeys(cwd: string): Promise<string[]> {
+	const given = path.resolve(cwd);
+	const real = await fs.realpath(given).catch(() => given);
+	return real === given ? [given] : [real, given];
+}
+
 /** The folder the CLI saves `cwd`'s sessions in, if it ever saved any. */
 export async function chatsFolder(cwd: string, home = cliHome()): Promise<string | undefined> {
-	const key = path.resolve(cwd);
 	const candidates: string[] = [];
-	const registered = await registeredProject(key, home);
-	if (registered) {
-		candidates.push(registered);
+	for (const key of await folderKeys(cwd)) {
+		const registered = await registeredProject(key, home);
+		if (registered) {
+			candidates.push(registered);
+		}
+		candidates.push(projectHash(key));
 	}
-	candidates.push(projectHash(key));
 	for (const id of candidates) {
 		const folder = path.join(home, projectTempDirName, id, chatsDirName);
 		if (await isFolder(folder)) {
@@ -105,8 +118,13 @@ export async function chatsFolder(cwd: string, home = cliHome()): Promise<string
  * does when it first opens a session there.
  */
 export async function registeredChatsFolder(cwd: string, home = cliHome()): Promise<string | undefined> {
-	const id = await registeredProject(path.resolve(cwd), home);
-	return id && path.join(home, projectTempDirName, id, chatsDirName);
+	for (const key of await folderKeys(cwd)) {
+		const id = await registeredProject(key, home);
+		if (id) {
+			return path.join(home, projectTempDirName, id, chatsDirName);
+		}
+	}
+	return undefined;
 }
 
 /** The CLI's id for folder `key` in its registry; undefined when it has none. */
@@ -643,6 +661,32 @@ export async function readSessionMessages(cwd: string, id: string, home?: string
 	}
 	const { meta, all } = parseSessionRecords(await fs.readFile(newest.file, 'utf8'), newest.file.endsWith('.json'));
 	return { meta, messages: all };
+}
+
+/** Removes every file of session `id` in `cwd`, as the CLI's `--delete-session` does; resolves with how many went. */
+export async function deleteCliSession(cwd: string, id: string, home?: string): Promise<number> {
+	const files = await sessionFilesOf(cwd, id, home);
+	for (const file of files) {
+		await fs.rm(file, { force: true });
+	}
+	return files.length;
+}
+
+/** The files that hold session `id` in `cwd`, newest first. */
+async function sessionFilesOf(cwd: string, id: string, home?: string): Promise<string[]> {
+	const folder = await chatsFolder(cwd, home);
+	if (!folder || !id) {
+		return [];
+	}
+	let names: string[];
+	try {
+		const suffix = `-${id.slice(0, 8)}.json`;
+		names = (await fs.readdir(folder)).filter(name => name.startsWith(sessionFilePrefix) && (name.endsWith(suffix) || name.endsWith(`${suffix}l`)));
+	} catch {
+		return [];
+	}
+	const files = await mapLimited(names, readConcurrency, async name => ({ file: path.join(folder, name), session: await readSessionFile(path.join(folder, name)) }));
+	return files.filter(f => f.session?.id === id).sort((a, b) => (b.session?.updatedAt ?? 0) - (a.session?.updatedAt ?? 0)).map(f => f.file);
 }
 
 /** Session `id` in `cwd` from its newest file, reading only that session's files; undefined when there is none. */

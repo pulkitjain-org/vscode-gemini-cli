@@ -22,7 +22,7 @@ import type { PendingPromptView } from '../acp/promptQueue';
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 47;
+export const chatProtocolVersion = 48;
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.signIn', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog', 'gemini.agents.openTerminal', 'gemini.designSystem.sync'] as const;
@@ -336,6 +336,8 @@ export type FromWebview =
 	| { readonly type: 'command'; readonly command: StatusCommand }
 	| { readonly type: 'setMode'; readonly id: string }
 	| { readonly type: 'setModel'; readonly id: string }
+	/** Set as Default for the CLI on the model menu: the model the Gemini CLI starts on, in the terminal too. */
+	| { readonly type: 'setCliDefaultModel'; readonly id: string }
 	/** The user picked one of a permission request's options. */
 	| { readonly type: 'permission'; readonly id: string; readonly optionId: string }
 	/** Retry or Continue on a failed or cut-short turn's notice (`itemId`). */

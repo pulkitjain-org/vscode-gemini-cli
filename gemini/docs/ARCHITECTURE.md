@@ -181,7 +181,7 @@ These always ask again:
 - an environment prefix other than locale and colour variables;
 - arguments and subcommands that run code: `find -exec` or `-delete`; `awk` with `-f`, `system(` or a pipe; `sed -f` or `e`/`w`; `make -f`, `-E`, `--eval` or a variable naming a program; `npm`/`pnpm`/`yarn` `exec`, `x`, `dlx`, `create` or npm settings; `go -exec`, `-toolexec` and `go env -w`; `kubectl exec`; and in git `-c`, `--git-dir`, `--upload-pack`, `--receive-pack`, `--exec`, `grep -O`, `clone -u`, `--template`, `--output`, `credential`.
 
-`builtinPrefixes` names the test and read-only prefixes one approval may cover although their program otherwise always asks (`npx vitest`, `npx tsc --noEmit`, `npx eslint`, `python -m pytest`, `./gradlew test`, and read-only git and listing). Each rule has a source, `session` or `permanent`; `setPermanent` takes a permanent list from the host, for an "Always allow" that is not built yet. The CLI's `tools.allowed` is no place for one: gemini-cli 0.64 adds a deny rule for every other shell command once it lists a narrowed `run_shell_command(...)`, and calls the setting deprecated.
+`builtinPrefixes` names the test and read-only prefixes one approval may cover although their program otherwise always asks (`npx vitest`, `npx tsc --noEmit`, `npx eslint`, `python -m pytest`, `./gradlew test`, and read-only git and listing). Each rule's source is `session`. The CLI's own permanent allow (`proceed_always_and_save`, offered when `security.enablePermanentToolApproval` is on) writes the CLI's policy file, not a list here; the card shows it with its scope, the mode the session is in and the ones that approve more (`withPermanentScope`). The CLI's `tools.allowed` is no place for one: gemini-cli 0.64 adds a deny rule for every other shell command once it lists a narrowed `run_shell_command(...)`, and calls the setting deprecated.
 
 Approvals of task runners (`npm`, `make`, `gradle`, `cargo`, `go`, `npx` and the like) and of git commands that run hooks lapse when the agent writes a build file through the editor (`package.json`, a `Makefile`, `build.gradle`, `Cargo.toml`, a tool's config such as `vitest.config.ts`, anything in `node_modules` and so on), since the next run would run what the agent wrote. Every git approval lapses when it writes a git hook (any file named as one, wherever `core.hooksPath` points), a hook manager's settings, a `.git` file or a bare repository's `config` or `HEAD`. A lapsed permanent rule asks again for the rest of the session.
 
@@ -314,7 +314,7 @@ Folders, missing files, files outside the agent's folder and files that `secretP
 
 Files: `src/acp/promptQueue.ts`, `webview-src/queueStrip.ts`.
 
-The composer stays open during a turn. Return sends now and ⌘Return queues (`isQueueShortcut`). The view sends the prompt with `when`, and `ChatController.send` keeps it in the chat's `PromptQueue` instead of dropping it.
+The composer stays open during a turn. Return sends now; Tab, as the CLI's own Tab does, and ⌘Return queue (`isQueueShortcut`). The view sends the prompt with `when`, and `ChatController.send` keeps it in the chat's `PromptQueue` instead of dropping it.
 
 - **Queued.** A queued message waits for the turn to end. All queued messages go together as the next prompt, as the CLI's terminal UI sends its queue.
 - **Sent now (steering).** `trySteer` runs on every tool-call update and permission change. Once no tool call of the turn is running and the model has answered since the last one finished (`atSafePoint`; one waiting for permission has not started), it cancels the turn. Until the model has answered, the CLI holds the tool's result back from the history, and a cancel would replace it with "Response was lost or interrupted". After `steerWaitMs` (15 s) without a safe point, the strip offers Stop Now, which cancels at once. When the turn comes back `cancelled`, it ends without a "Stopped." notice and the messages go at once as the next turn, with `steeringNote()` ahead of them: the CLI's own steering instruction, in a `<steering_note>` tag that a replayed session leaves out (`withoutSteeringNote`). gemini-cli's ACP mode has no way to add a message to a running turn ([FINDINGS.md](FINDINGS.md#steering-a-running-turn)), so this is the closest it gets without patching the CLI.
@@ -343,7 +343,7 @@ The user can react with an emoji to any of the agent's replies in an agent's or 
 **When it is sent** (`routeReaction`):
 
 - the heart, unless its meaning is edited, is only a chip;
-- a thumbs up on a reply that offers Build This Plan builds the plan;
+- a thumbs up on a reply that offers Approve Plan approves it, in the mode the chat was in before Plan;
 - when the agent is idle, the reaction starts a turn;
 - while a turn runs, a thumbs down steers it at the next safe point (the note then warns that the last step may not have finished), and any other reaction waits in the queue. A second reaction to the same reply replaces one still waiting (`PromptQueue.addReaction`).
 
@@ -385,15 +385,15 @@ On load the CLI skips the saved `<session_context>` and puts a fresh one first, 
 
 A compacted copy is a summary, the model's acknowledgement, then the latest prompts that fit in 30% of the session (at most four, `compactSplit`). It leaves out the token counts the CLI saved, which describe the whole session. `realSessionSnapshot.test.ts` checks whole, compacted and cut copies against the real CLI.
 
-#### Compact
+#### Compress
 
-`/compact`, the usage popover's button, or the card the chat shows once a session passes 40% of the window (`shouldSuggestCompact`) runs Compact (`chat/chatCompact.ts`):
+`/compress`, the CLI's name for it, the usage popover's button, or the card the chat shows once a session passes 40% of the window (`shouldSuggestCompact`) runs Compress (`chat/chatCompact.ts`; the code keeps the older name inside):
 
 1. A summary turn runs whose updates stay out of the transcript (`ChatController.quietly`).
 2. That turn is rewound out of the session.
 3. The compacted copy is written and the chat moves to it with `session/load`.
 
-The `compact` item keeps both session ids, so Undo moves back to the full session, also after a restart. If the agent can't open the copy, the chat goes back to its session. The CLI's own compression (at half the window, keeping 30%) lives only in memory and is lost when a session is reopened.
+The `compact` item keeps both session ids, so Undo moves back to the full session, also after a restart. If the agent can't open the copy, the chat goes back to its session. The CLI's own `/compress` (and its automatic compression at half the window, keeping 30%) lives only in memory and is lost when a session is reopened, which is why GeminiCode's writes a copy session instead.
 
 #### Fork Agent
 
@@ -424,7 +424,7 @@ After each turn, the text every file had before the agent first edited it in tha
 
 ACP has no rewind. Rewind appends the record the CLI's own `/rewind` writes (`{"$rewindTo": <message id>}`, `rewindCliSession` in `cliSessions.ts`) to the session's `.jsonl`, then loads the session again over ACP in the same process. The CLI rebuilds its history without that message and what followed.
 
-Rewind always does both: it undoes the code from the first kept turn after the message, then rewinds the session. The message is found by its text; if it can't be (a team command's prompt), only the code can be undone. `realRewind.test.ts` checks this against the real CLI.
+Rewind offers the CLI's three choices in its words, "Rewind conversation and revert code changes", "Rewind conversation" and "Revert code changes" (the code ones only when code changed since, as the CLI hides them then): the code side undoes from the first kept turn after the message, the conversation side rewinds the session. The picker lists each prompt with the files changed since it, as the CLI's does. The message is found by its text; if it can't be (a team command's prompt), only the code can be reverted. As in the CLI, only what the agent's edit tools changed goes back: the user's own edits and what commands changed stay. `/rewind` opens the same picker as Esc Esc. `realRewind.test.ts` checks this against the real CLI.
 
 ### Changes, Git and worktrees
 
@@ -1013,22 +1013,22 @@ When direct requests are off, cannot use the sign-in, or fail (for five minutes 
 
 The usage meter (`usageMeter.ts`) makes the same `retrieveUserQuota` request the CLI makes, with the same project, at most every 10 minutes and only while the window is in front. The Gemini status bar item's tooltip lists each model's share of today's quota and when it resets, and the item shows the percentage once a model passes 80%. API key sign-ins have no quota to read, so it shows nothing. `GeminiUsageMeter` turns it off.
 
-### Review My Changes and Build This Plan
+### Review My Changes and Approve Plan
 
 **Review My Changes** (`reviewPrompt.ts`, `AgentsView.reviewChanges`) starts an ordinary agent whose session opens in Plan mode (`setModeOnNextSession('plan')`), so the CLI itself refuses edits. The `git diff HEAD` (cut at 100,000 characters) goes as an `uncommitted.diff` document attachment, which keeps the chat bubble short and reaches the model as an embedded resource.
 
-**Build This Plan** appears on the latest turn end when the session's mode is `plan` and the agent offers `default`. It sets the mode with `session/set_mode` and sends a short prompt.
+**Approve Plan** appears on the latest turn end when the session's mode is `plan` and the agent offers `default`. It sets the mode with `session/set_mode` and sends a short prompt. Its chevron is the CLI's own approval dialog in the CLI's words: "Yes, automatically accept edits" (Auto Edit), "Yes, manually accept edits" (Default), "Edit or comment the plan first" (Plan Review, when the turn wrote a plan file) and "Not yet"; a mode policy turns off is left out. When the CLI itself asks through `exit_plan_mode`, its request's own options show on the permission card as they arrive. A thread card's Approve Plan and the thumbs-up reaction call the same handler. `/plan [goal]` switches to Plan mode and sends the goal, `/plan copy` copies the latest plan file to the clipboard.
 
 ### Plan Review
 
 Files: `src/host/planReviewPage.ts` (in `dist/pages.js`), `src/acp/planReview.ts`, `src/acp/planReviewStore.ts`, `webview-src/planReview.ts`.
 
-A Plan mode turn that writes a plan file gets Review Plan beside Build This Plan, and the plan's chip opens the same page while the session is in Plan mode. The page opens in the agent's side group and renders the plan by section (`planSections`, the Markdown through the `draftMarkdown.js` chunk, so the page carries no parser).
+A Plan mode turn that writes a plan file gets Review Plan beside Approve Plan, and the plan's chip opens the same page while the session is in Plan mode. The page opens in the agent's side group and renders the plan by section (`planSections`, the Markdown through the `draftMarkdown.js` chunk, so the page carries no parser).
 
 - **Edits** replace one section's text in the file (`replaceSection`), refused while the agent works. When the agent changed the section meanwhile, the edit isn't saved and the user's text is kept to copy or save over it.
 - **Comments** are kept per plan file in global storage (`planReviewStore.ts`) until Send hands them all to the agent in one message (`reviewMessage`), with the sections the user edited. They count as sent only once that message's turn is over; one taken out of the queue, or held because the turn before stopped, is unsent again.
 - **Revisions.** When the turn ends, `changedSections` compares the plan with the text the comments were sent against, and the page marks what changed.
-- Build This Plan from the page asks first when comments weren't sent.
+- Approve Plan from the page asks first when comments weren't sent.
 
 **Plans across reloads.** gemini-cli 0.64 deletes a session's own folder (`~/.gemini/tmp/<project>/<session>/`, which holds `plans/`) on `session/load`. `keepSessionFolder` (`src/acp/sessionFolder.ts`) copies the folder aside around each load and puts back what the load removed, and `rebuildSessionFile` (`sessionReplay.ts`) rebuilds a plan lost earlier from the write and replace calls the session saved, saying so in the chat.
 

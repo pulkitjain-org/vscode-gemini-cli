@@ -272,6 +272,12 @@ input.addEventListener('keydown', event => {
 		event.stopPropagation();
 		return;
 	}
+	if (!event.isComposing && event.key === 'Tab' && !event.shiftKey && !event.altKey && !event.metaKey && !event.ctrlKey && state.busy && (input.value.trim() || state.attachments.length)) {
+		// Tab queues the message for after this turn, as the CLI's own Tab does.
+		event.preventDefault();
+		submit('queue');
+		return;
+	}
 	if (event.key === 'Escape' && state.busy) {
 		// Esc twice stops, so an Esc meant for a menu or a pop-up doesn't stop the agent.
 		event.preventDefault();

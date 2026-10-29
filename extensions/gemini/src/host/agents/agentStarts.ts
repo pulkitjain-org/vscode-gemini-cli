@@ -7,6 +7,7 @@
 // task from Agent Home, the team flows, the browser's New Agent dialog and
 // Review My Changes. Each adds the agent to the list and opens its tab.
 
+import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { Attachment } from '../../acp/attachments';
@@ -249,8 +250,11 @@ export class AgentStarts {
 			return workspaces[0].folder;
 		}
 		const addWorkspace = vscode.l10n.t("Add Workspace...");
+		// The CLI's own worktrees (`gemini --worktree <name>`, under .gemini/worktrees/), so a terminal's work can be picked up here.
+		const cliWorktrees = (await Promise.all(workspaces.map(w => cliWorktreesOf(w.folder)))).flat();
 		const picks: (vscode.QuickPickItem & { folder?: string })[] = [
 			...workspaces.map(w => ({ label: path.basename(w.folder), description: tildify(w.folder), folder: w.folder })),
+			...cliWorktrees.length ? [{ label: vscode.l10n.t("Gemini CLI worktrees"), kind: vscode.QuickPickItemKind.Separator }, ...cliWorktrees.map(folder => ({ label: path.basename(folder), description: vscode.l10n.t("gemini --worktree, in {0}", tildify(path.dirname(path.dirname(path.dirname(folder))))), folder }))] : [],
 			{ label: '', kind: vscode.QuickPickItemKind.Separator },
 			{ label: `$(new-folder) ${addWorkspace}` },
 		];
@@ -280,4 +284,19 @@ async function reviewFolder(): Promise<string | undefined> {
 		return (active ?? folders[0])?.uri.fsPath;
 	}
 	return (await vscode.window.showWorkspaceFolderPick({ placeHolder: vscode.l10n.t("Review the changes in which folder?") }))?.uri.fsPath;
+}
+
+/** The folders under `<repository>/.gemini/worktrees/`, where `gemini --worktree` keeps its branches; none outside a repository. */
+async function cliWorktreesOf(folder: string): Promise<string[]> {
+	const repository = await repositoryRoot(folder);
+	if (!repository) {
+		return [];
+	}
+	const home = path.join(repository, '.gemini', 'worktrees');
+	try {
+		const entries = await fs.readdir(home, { withFileTypes: true });
+		return entries.filter(entry => entry.isDirectory()).map(entry => path.join(home, entry.name));
+	} catch {
+		return [];
+	}
 }
