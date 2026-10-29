@@ -10,13 +10,12 @@
 
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { HTMLElement } from 'happy-dom';
-import type { FromSettingsPage, StorageView } from '../../src/host/panelProtocol';
-import type { SettingsPageStrings } from '../../src/host/panelStrings';
+import type { StorageMessage, StorageStrings, StorageView } from '../../src/host/panelProtocol';
 import { page, startScript } from './pages';
 
-type StorageSection = (view: StorageView, strings: Partial<SettingsPageStrings>, post: (message: FromSettingsPage) => void) => HTMLElement;
+type StorageSection = (view: StorageView, strings: StorageStrings, post: (message: StorageMessage) => void) => HTMLElement;
 
-const strings: Partial<SettingsPageStrings> = { storage: 'Storage', storageHint: 'What GeminiCode keeps on this Mac.', storageMeasuring: 'Measuring…', keepLogs: 'Keep logs for' };
+const strings: StorageStrings = { storage: 'Storage', storageHint: 'What GeminiCode keeps on this Mac.', storageMeasuring: 'Measuring…', keepLogs: 'Keep logs for' };
 const keepLogs = { value: '90', choices: [{ value: '30', label: 'Keep for 30 days' }, { value: '90', label: 'Keep for 90 days (default)' }, { value: '0', label: 'Keep everything' }] };
 const rows: StorageView['rows'] = [
 	{ id: 'worktrees', label: 'Agent worktrees', detail: '12 folders in ~/.geminicode/worktrees · 4 belong to merged or removed agents', size: '2.3 GB' },
@@ -53,7 +52,7 @@ function buttonNamed(root: HTMLElement, text: string): HTMLElement | undefined {
 
 describe('the Storage section', () => {
 	it('asks for the sizes only once it scrolls into view', () => {
-		const sent: FromSettingsPage[] = [];
+		const sent: StorageMessage[] = [];
 		const node = storageSection({ state: 'waiting', rows: rows.map(row => ({ ...row, detail: '', size: '' })), keepLogs }, strings, message => sent.push(message));
 		page.document.body.append(node);
 		const before = [...sent];
@@ -62,7 +61,7 @@ describe('the Storage section', () => {
 	});
 
 	it('shows each area with its size, and sends Clean Up, Show, Open Folder and the days kept', () => {
-		const sent: FromSettingsPage[] = [];
+		const sent: StorageMessage[] = [];
 		const watching = observers.length;
 		const node = storageSection({ state: 'ready', rows, cleanup: 'Clean Up 4...', keepLogs }, strings, message => sent.push(message));
 		buttonNamed(node, 'Clean Up 4...')?.click();

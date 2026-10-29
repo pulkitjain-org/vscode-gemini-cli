@@ -16,6 +16,8 @@ import { ConnectionState, createTokenUrl, TeamConnections } from './teamConnecti
 import { connectConfluence, connectJiraSite, disconnectConfluence, disconnectJira, removeJiraSite } from './siteConnections';
 import { takeOverTeamServers } from './teamTakeover';
 import { PagePanel, PageShell, SinglePage } from './pagePanel';
+import { agentSetupTabs, agentSetupTabsLabel, agentSetupTitle, openAgentSetupTab } from './agentSetupTabs';
+import { developerToolsOn } from './developerTools';
 import { showError } from './errorNotice';
 
 const viewType = 'gemini.connections';
@@ -55,7 +57,7 @@ export class ConnectionsPage implements vscode.Disposable {
 	}
 
 	private create(): PagePanel<ToConnections, FromConnections> {
-		const page = new PagePanel<ToConnections, FromConnections>(this.extensionUri, { viewType, title: vscode.l10n.t("Connections"), icon: new vscode.ThemeIcon('plug') }, this.shell(), message => this.onMessage(message));
+		const page = new PagePanel<ToConnections, FromConnections>(this.extensionUri, { viewType, title: agentSetupTitle('connections'), icon: new vscode.ThemeIcon('plug'), openTab: tab => void openAgentSetupTab(tab).then(() => this.page.dispose()) }, this.shell(), message => this.onMessage(message));
 		page.onDidChangeVisibility(visible => visible && this.scheduleUpdate());
 		return page;
 	}
@@ -260,7 +262,8 @@ export class ConnectionsPage implements vscode.Disposable {
 			canCreateToken: needsToken && (tool === 'jira' || !!url),
 			...tool === 'jira' && saved ? { siteName: this.connections.jiraName(), sites: this.connections.jiraSiteList().map(site => this.siteRow(site.id, site.name, site.url, site.email)) } : {},
 			...tool === 'confluence' ? this.confluenceSites() : {},
-			...tool === 'figma' && this.defaults.figma?.designSystem ? { designSystem: designSystemTip(this.defaults.figma.designSystem.name) } : {},
+			// Sync Design System is a developer's button.
+			...tool === 'figma' && this.defaults.figma?.designSystem && developerToolsOn() ? { designSystem: designSystemTip(this.defaults.figma.designSystem.name) } : {},
 		};
 	}
 
@@ -357,7 +360,7 @@ export class ConnectionsPage implements vscode.Disposable {
 			openFile: vscode.l10n.t("Open File"),
 			close: vscode.l10n.t("Close"),
 		};
-		return { script: 'connections.js', styles: ['connections.css'], title: strings.title, bodyClass: 'settings-page connections-page', mainClass: 'settings connections', strings };
+		return { script: 'connections.js', styles: ['connections.css'], title: strings.title, bodyClass: 'settings-page connections-page', mainClass: 'settings connections', strings, tabs: agentSetupTabs('connections'), tabsLabel: agentSetupTabsLabel() };
 	}
 }
 

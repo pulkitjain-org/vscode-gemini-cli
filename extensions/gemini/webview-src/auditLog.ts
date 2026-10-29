@@ -10,6 +10,7 @@
 import type { AuditPageView, AuditRowView, AuditStrings, FromAudit, ToAudit } from '../src/host/auditProtocol';
 import { bootPage } from './panelBoot';
 import { button, el, format } from './panelDom';
+import { storageSection } from './settingsStorage';
 import { toolLogo } from './toolLogos';
 
 const { strings, post, main: page, start } = bootPage<ToAudit, FromAudit, AuditStrings>();
@@ -29,9 +30,15 @@ function render(): void {
 	const hint = el('p', 'hint');
 	const [before, after] = strings.subtitle.split('{0}');
 	hint.append(before ?? '', el('code', 'mono', view.folder), after ?? '');
-	intro.append(el('h1', undefined, strings.title), hint);
+	intro.append(el('h1', undefined, strings.title));
 	header.append(intro);
 	page.append(header);
+	if (view.storage) {
+		page.append(storageSection(view.storage, strings, post));
+	}
+	const log = el('div', 'settings-section');
+	log.append(el('h2', undefined, strings.auditTitle), hint);
+	page.append(log);
 
 	// Day, tool, and only the open intents; Export and Open Folder at the end.
 	const filters = el('div', 'audit-filters');

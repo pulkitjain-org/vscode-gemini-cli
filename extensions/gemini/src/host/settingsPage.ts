@@ -24,10 +24,10 @@ import { developerToolsOn } from './developerTools';
 import { tildify } from './displayText';
 import { CliReport, ContextCostView, ExtensionView, FromSettingsPage, HookView, McpServerView, MemoryFileView, PreferencesView, RulesFileView, SettingsPageView, SkillView, ToSettingsPage, TrustRowView, TrustView } from './panelProtocol';
 import { SettingsPageStrings } from './panelStrings';
-import { StorageSection, type StorageHost } from './storageSection';
 import type { forgetSkills } from './teamCommands';
 import { cliModeList } from '../acp/sessionSettings';
 import { PagePanel, PageShell, SinglePage } from './pagePanel';
+import { agentSetupTabs, agentSetupTabsLabel, agentSetupTitle, openAgentSetupTab } from './agentSetupTabs';
 import { ContextCost, estimateTokens, heavyContextTokens, heavyServerTokens, measureCalls, measureTokens } from '../acp/contextCost';
 import type { ContextMeasures } from './chat/chatContext';
 import { showError } from './errorNotice';
@@ -57,7 +57,6 @@ export interface SettingsHost {
 	/** Drops the cached skills, so a skill turned on or off shows in the next list. */
 	readonly forgetSkills: typeof forgetSkills;
 	/** What the Storage section measures and cleans up; without it, the section isn't shown. */
-	readonly storage?: StorageHost;
 	/** The team tools' audit log, where Trusted Folders records each change; without it, changes are only logged. */
 	readonly audit?: AuditLog;
 }
@@ -77,15 +76,11 @@ export class SettingsPage implements vscode.Disposable {
 	private cliStale = false;
 	private readonly disposables: vscode.Disposable[] = [];
 
-	/** The Storage section, measured the first time it scrolls into view. */
-	private readonly storage: StorageSection | undefined;
-
 	/** The folder Context per model call shows, when the user picked one of a multi-root window's. */
 	private contextFolder: string | undefined;
 
 	/** `contextCost` measures what every model call carries in each folder and keeps the results (chatContext.ts). */
 	constructor(private readonly extensionUri: vscode.Uri, private readonly service: AgentService, private readonly host: SettingsHost, private readonly contextCost?: SettingsContextCost) {
-		this.storage = host.storage && new StorageSection(host.storage, () => void this.update());
 		this.disposables.push(
 			// A measure started here or from a chat's usage popover.
 			...contextCost ? [contextCost.onDidChange(folder => folder === this.measuredFolder() && void this.update())] : [],
@@ -116,7 +111,7 @@ export class SettingsPage implements vscode.Disposable {
 	}
 
 	private create(): PagePanel<ToSettingsPage, FromSettingsPage> {
-		const page = new PagePanel<ToSettingsPage, FromSettingsPage>(this.extensionUri, { viewType, title: vscode.l10n.t("Agent Setup"), icon: new vscode.ThemeIcon('server-environment') }, this.shell(), message => this.onMessage(message));
+		const page = new PagePanel<ToSettingsPage, FromSettingsPage>(this.extensionUri, { viewType, title: agentSetupTitle('loads'), icon: new vscode.ThemeIcon('server-environment'), openTab: tab => void openAgentSetupTab(tab).then(() => this.page.dispose()) }, this.shell(), message => this.onMessage(message));
 		page.onDidChangeVisibility(visible => {
 			if (visible && this.cliStale) {
 				this.cliStale = false;
@@ -269,7 +264,6 @@ export class SettingsPage implements vscode.Disposable {
 			// Measuring costs model calls: a developer's button. The measures the chat made still show.
 			developer: developerToolsOn(),
 			trust: await trust,
-			...this.storage ? { storage: this.storage.view() } : {},
 		};
 	}
 
@@ -419,20 +413,6 @@ export class SettingsPage implements vscode.Disposable {
 					if (workspaceFolderPaths().includes(message.folder)) {
 						this.contextFolder = message.folder;
 						await this.update();
-					}
-					return;
-				case 'measureStorage':
-					void this.storage?.measure();
-					return;
-				case 'cleanUp':
-					await this.storage?.cleanUp();
-					return;
-				case 'setKeepLogs':
-					await this.storage?.setKeepLogs(message.days);
-					return;
-				case 'storageAction':
-					if (message.action === 'showIndex' || message.action === 'openFolder') {
-						await this.storage?.action(message.action);
 					}
 					return;
 				case 'restart':
@@ -869,11 +849,6 @@ export class SettingsPage implements vscode.Disposable {
 			usageStatisticsHint: vscode.l10n.t("The Gemini CLI sends anonymous usage statistics to Google to improve it."),
 			keepChats: vscode.l10n.t("Keep saved chats for"),
 			keepChatsHint: vscode.l10n.t("The Gemini CLI deletes saved chats older than this, so they no longer show under Restore Session."),
-			storage: vscode.l10n.t("Storage"),
-			storageHint: vscode.l10n.t("What GeminiCode keeps on this Mac, and how much room each part takes."),
-			storageMeasuring: vscode.l10n.t("Measuring\u2026"),
-			cleanUp: vscode.l10n.t("Clean Up..."),
-			keepLogs: vscode.l10n.t("Keep logs for"),
 			trust: vscode.l10n.t("Trusted Folders"),
 			trustHint: vscode.l10n.t("Where the Gemini CLI loads a folder's own settings, hooks and MCP servers. Shared with the terminal."),
 			trustFolder: vscode.l10n.t("Trust Folder..."),
@@ -882,7 +857,7 @@ export class SettingsPage implements vscode.Disposable {
 			removeTrust: vscode.l10n.t("Remove"),
 			noTrust: vscode.l10n.t("No trusted folders yet."),
 		};
-		return { script: 'settings.js', styles: [], title: strings.title, bodyClass: 'settings-page', mainClass: 'settings', strings };
+		return { script: 'settings.js', styles: [], title: strings.title, bodyClass: 'settings-page', mainClass: 'settings', strings, tabs: agentSetupTabs('loads'), tabsLabel: agentSetupTabsLabel() };
 	}
 }
 

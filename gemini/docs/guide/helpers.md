@@ -4,7 +4,7 @@
 
 ![Agent Setup with the context per model call, MCP servers, skills each with a switch, hooks, extensions and memory](../../site/media/docs/project-helpers-dark.webp)
 
-Open it with **Gemini: Agent Setup**, or **Agent Setup** on Home, or from the Agents pane's **...** menu. Changes apply to agents started afterwards; **Restart Agent** applies them now. Opening the page never starts the Gemini CLI.
+Open it with **Gemini: Agent Setup**, or **Agent Setup** on Home, the **Gemini** status bar item's menu, or the Agents pane's **...** menu. It has four tabs: **Loads**, this page; **Index & Docs** ([Workspace index and docs](agents.md#workspace-index-and-docs)); **Connections** ([Team tools](team-tools.md)); and **Storage & Audit** ([Storage](settings.md#storage), [Audit log](team-tools.md#audit-log)). Changes apply to agents started afterwards; **Restart Agent** applies them now. Opening the page never starts the Gemini CLI.
 
 ## Context per model call
 

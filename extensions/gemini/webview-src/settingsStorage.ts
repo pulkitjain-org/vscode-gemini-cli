@@ -3,12 +3,12 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// Project Helpers' Storage section (src/host/storageSection.ts): a row per
-// place GeminiCode keeps data, with its size. The sizes are asked for the
-// first time the section scrolls into view, never as the page opens.
+// Agent Setup's Storage section (src/host/storageSection.ts), on its Storage &
+// Audit tab: a row per place GeminiCode keeps data, with its size. The sizes
+// are asked for the first time the section scrolls into view, never as the
+// page opens.
 
-import type { FromSettingsPage, StorageView } from '../src/host/panelProtocol';
-import type { SettingsPageStrings } from '../src/host/panelStrings';
+import type { StorageMessage, StorageStrings, StorageView } from '../src/host/panelProtocol';
 import { button, el, icon } from './panelDom';
 import { selectMenu, type SelectMenu } from './selectMenu';
 
@@ -17,7 +17,7 @@ let keepLogsMenu: SelectMenu | undefined;
 let watching: IntersectionObserver | undefined;
 
 /** The section; `post` asks the extension, which measures once the section is in view while `view` is still waiting. */
-export function storageSection(view: StorageView, strings: SettingsPageStrings, post: (message: FromSettingsPage) => void): HTMLElement {
+export function storageSection(view: StorageView, strings: StorageStrings, post: (message: StorageMessage) => void): HTMLElement {
 	const node = el('section', 'settings-section storage');
 	const header = el('div', 'section-header');
 	const text = el('div');

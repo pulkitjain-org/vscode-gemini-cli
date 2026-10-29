@@ -482,6 +482,20 @@ export interface StorageRowView {
 }
 
 /** The Storage section: measured the first time it scrolls into view, never at startup. */
+/** The Storage section's messages (webview-src/settingsStorage.ts), on the Storage & Audit tab. */
+export type StorageMessage =
+	| { readonly type: 'measureStorage' | 'cleanUp' }
+	| { readonly type: 'storageAction'; readonly action: 'showIndex' | 'openFolder' }
+	| { readonly type: 'setKeepLogs'; readonly days: string };
+
+/** The Storage section's words. */
+export interface StorageStrings {
+	readonly storage: string;
+	readonly storageHint: string;
+	readonly storageMeasuring: string;
+	readonly keepLogs: string;
+}
+
 export interface StorageView {
 	readonly state: 'waiting' | 'measuring' | 'ready';
 	readonly rows: readonly StorageRowView[];
@@ -521,16 +535,12 @@ export interface SettingsPageView {
 	/** `gemini.developer.showTools`: the Measure buttons show. */
 	readonly developer: boolean;
 	readonly trust: TrustView;
-	/** Unset when the page has nothing to measure it with. */
-	readonly storage?: StorageView;
 }
 
 export type ToSettingsPage = { readonly type: 'view'; readonly view: SettingsPageView };
 
 export type FromSettingsPage =
-	| { readonly type: 'ready' | 'restart' | 'addServer' | 'connections' | 'newSkill' | 'addHook' | 'installExtension' | 'addMemory' | 'refreshMemory' | 'measureContext' | 'measureStorage' | 'cleanUp' }
-	| { readonly type: 'storageAction'; readonly action: 'showIndex' | 'openFolder' }
-	| { readonly type: 'setKeepLogs'; readonly days: string }
+	| { readonly type: 'ready' | 'restart' | 'addServer' | 'connections' | 'newSkill' | 'addHook' | 'installExtension' | 'addMemory' | 'refreshMemory' | 'measureContext' }
 	/** The folder Context per model call shows, by path. */
 	| { readonly type: 'contextFolder'; readonly folder: string }
 	| { readonly type: 'toggle'; readonly name: string; readonly enabled: boolean }

@@ -61,7 +61,8 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// An agent's Files page: Recents, search and the folder tree, about 6 KB.
 	'media/agentFiles.js': 7_000,
 	// The audit log page, about 8 KB.
-	'media/auditLog.js': 10_000,
+	// The Storage section (settingsStorage.ts, with its select menu) moved here from Agent Setup's Loads tab, about 7 KB.
+	'media/auditLog.js': 18_500,
 	// The Index page, about 19 KB: workspaces' indexes, attached docs, the Add Docs and Files Left Out popups,
 	// with the shared select menu and tooltips.
 	'media/indexPage.js': 22_000,
@@ -87,7 +88,7 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	'media/sideChat.js': 5_000,
 	// Home's menus (+, folder, mode, From Your Tools, a row's "...") with the menu class, about 7.6 KB, loaded once
 	// Home has settled or on the first click on a menu's button.
-	'media/homeMenus.js': 9_000,
+	'media/homeMenus.js': 9_500,
 	// The emoji picker, about 97 KB, loaded the first time a reaction button is hovered or focused: about 88 KB
 	// of emoji data (1,923 emoji with their names and three search words each) and its own code.
 	'media/emojiPicker.js': 105_000,
@@ -114,7 +115,8 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// An agent's Files page (agentFilesPage.ts, agentFiles.ts), about 7 KB, loaded the first time one opens.
 	// Sync Design System on Figma's row in Connections added about 0.4 KB. The Index page with its docs suggestions
 	// (indexPage.ts, docs/suggest.ts), about 21 KB, moved here from dist/extension.js.
-	'dist/pages.js': 168_000,
+	// The Storage section's host (storageSection.ts) moved to dist/onDemand.js with the audit page, about 10 KB.
+	'dist/pages.js': 160_000,
 	// Confluence, about 27 KB, loaded the first time an agent or a page uses it (src/confluence.ts): its client, the
 	// agents' calls, the drafts and the Review Page's host, with publishing only the changes kept (draftReview.ts,
 	// blockMerge.ts) and the page's localized strings.
@@ -132,7 +134,7 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// index tools (editorToolsHost.ts), about 4 KB, loaded the first time an agent asks one. The research engine
 	// (research.ts), about 9 KB, loaded with the first side question that reads the code. The docs crawler (docs/crawler.ts), about 9 KB,
 	// moved here from dist/extension.js and loaded with the first docs fetch.
-	'dist/onDemand.js': 156_000,
+	'dist/onDemand.js': 170_000,
 	// The indexer process, about 66 KB: parsing, SQLite queries and docs conversion, forked on first use, never
 	// loaded in the extension host.
 	'dist/indexer.js': 120_000,

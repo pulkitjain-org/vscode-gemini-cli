@@ -17,16 +17,16 @@ In the Agents layout the top of the window is a single row: the Home button, the
 
 **Home** is where you start agents and see what needs you. It opens when no tab is open in the Agents layout, and in front of your restored tabs each time GeminiCode starts.
 
-To start an agent, describe the task in **Start Agent** and press Return. Under the task, choose where it works: **Here**, in this folder on your current branch; **On Its Own Branch**, a new branch and folder (see [Agents on their own branch](#agents-on-their-own-branch)); or **To a Project**, which sends the task to a project's coordinator, which makes it a thread or passes it on (see [Projects](projects.md)). Hold the pointer over a choice to see what it does. A branch and a project need a Git repository, and **To a Project** shows while Projects are on.
+To start an agent, describe the task in **Start Agent** and press Return. Under the task, choose where it works: **Here**, in this folder on your current branch, or **On a Branch**, a new branch and folder (see [Agents on their own branch](#agents-on-their-own-branch)). Hold the pointer over a choice to see what it does. A branch needs a Git repository; outside one the chooser is gone and the agent works here.
 
-With **To a Project**, a picker beside the chooser lists the projects of the folder's repository first, then those of other repositories, and **New Project in** the folder. The button then reads **Send to Project**, or **Start Project** for a new one.
+While Projects are on, the chevron beside **On a Branch** offers **On its own branch** or a project: the projects of the folder's repository first, then those of other repositories, and **New Project in** the folder. A project's branch is a thread of that project: its coordinator makes it one or passes the task on (see [Projects](projects.md)). The choice then names the project, and the button reads **Send to Project**, or **Start Project** for a new one.
 
-The bar under the composer shows the folder, with a drum for its index (full when indexed, half while indexing, empty when not yet), the approval mode and the model the agent starts with, and **From Your Tools…** lists your tickets and merge requests to start from one. The folder picker marks each folder **Trusted**, **Trusted by parent** or **Needs trust**, and **Open Folder...** adds a folder for agents without adding it to the window. **On Its Own Branch** and **To a Project** need a trusted folder: in one that isn't, Home says so in place, with **Trust...**. See [Folder trust](review.md#folder-trust).
+The bar under the composer shows the folder, with a drum for its index (full when indexed, half while indexing, empty when not yet), the approval mode and the model the agent starts with, and **From Your Tools…** lists your tickets and merge requests to start from one. The folder picker marks each folder **Trusted**, **Trusted by parent** or **Needs trust**, and **Open Folder...** adds a folder for agents without adding it to the window. **On a Branch**, alone or in a project, needs a trusted folder: in one that isn't, Home says so in place, with **Trust...**. See [Folder trust](review.md#folder-trust).
 
 Below the composer:
 
 - **Agent Setup**, on the right, opens the MCP servers, skills, rules and hooks your agents load. See [Agent Setup](helpers.md).
-- **Index**, beside it, opens the workspace index. A drum icon beside the workspace shows its state. See [Workspace index and docs](#workspace-index-and-docs).
+- The drum icon beside the workspace shows its index's state and opens Agent Setup's **Index & Docs** tab. See [Workspace index and docs](#workspace-index-and-docs).
 - **Needs you** lists what is waiting on you, most pressing first, such as an agent asking for permission or an agent's work ready to try. See [Team tools](team-tools.md#home) for the rest.
 - Cards follow for your agents and, once you connect your team's tools, your tickets, the merge requests waiting on you and your own, quality checks, and Gemini's usage. See [Team tools](team-tools.md#home).
 
@@ -83,7 +83,7 @@ The chevron beside **Try in Workspace** offers the other ways to take the work, 
 
 A new copy has no `node_modules` or build output. To get it ready before the agent starts, set **Gemini › Agents: Worktree Setup** in your user settings to a command such as `npm ci` (a repository's own settings can't set it), or commit a `.gemini/worktree-setup.sh` to the repository. Before a repository's script runs the first time, GeminiCode shows it and asks: **Don't Run**, **Run Once** or **Run and Remember**. It asks again whenever the script changes, and runs none in a workspace you haven't trusted. The command can use `GEMINI_SOURCE_REPOSITORY`, the repository the copy came from, to copy files Git doesn't carry, such as `.env`. If setup fails, the agent starts anyway, and the output is in the **Gemini Worktree Setup** output channel.
 
-To start every new agent on its own branch, turn on `gemini.agents.ownBranch`: Home's chooser then starts on **On Its Own Branch**.
+To start every new agent on its own branch, turn on `gemini.agents.ownBranch`: Home's chooser then starts on **On a Branch**.
 
 ## Fork an agent
 
@@ -121,7 +121,7 @@ GeminiCode keeps an index of the code in each workspace, and of any documentatio
 
 ![The Index page with two indexed workspaces and attached documentation](../../site/media/index-page-dark.webp)
 
-Open the **Index** page from **Index** on Home, beside Agent Setup, or with **Gemini: Manage Index**. On Home, a drum icon beside the workspace shows its state: full when it is indexed, half full while it is indexing, and empty when it has no index yet. Click it to open the Index page.
+The index is Agent Setup's **Index & Docs** tab: open it with **Gemini: Manage Index**, from the **Gemini** status bar item's menu, or from Home, where a drum icon beside the workspace shows its state: full when it is indexed, half full while it is indexing, and empty when it has no index yet. Click it to open the tab.
 
 ### Index tools for agents
 

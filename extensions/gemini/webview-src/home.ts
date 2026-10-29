@@ -71,15 +71,10 @@ const helpers = document.getElementById('helpers') as HTMLButtonElement;
 helpers.querySelector('span')!.textContent = strings.agentSetup;
 setTip(helpers, strings.agentSetupHint);
 helpers.addEventListener('click', () => vscode.postMessage({ type: 'agentSetup' }));
-const indexButton = document.getElementById('index') as HTMLButtonElement;
-indexButton.querySelector('span')!.textContent = strings.index;
-setTip(indexButton, strings.indexHint);
 const indexState = document.getElementById('index-state') as HTMLButtonElement;
 // A database drum: its outline, and a fill the state's class shows full, half or not at all. Static markup, never page data.
 indexState.innerHTML = '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path class="fill-full" d="M3 4v8.5c0 1.1 2.2 2 5 2s5-.9 5-2V4c0 1.1-2.2 2-5 2S3 5.1 3 4z"/><path class="fill-half" d="M3 8.5v4c0 1.1 2.2 2 5 2s5-.9 5-2v-4c0 1.1-2.2 2-5 2s-5-.9-5-2z"/><ellipse cx="8" cy="4" rx="5" ry="2"/><path d="M3 4v8.5c0 1.1 2.2 2 5 2s5-.9 5-2V4"/></svg>';
-for (const button of [indexButton, indexState]) {
-	button.addEventListener('click', () => vscode.postMessage({ type: 'openIndex' }));
-}
+indexState.addEventListener('click', () => vscode.postMessage({ type: 'openIndex' }));
 setTip(plusButton, strings.plusMenu);
 plusButton.setAttribute('aria-label', strings.plusMenu);
 coordinatorNote.textContent = strings.coordinatorSettings;
@@ -102,15 +97,16 @@ function currentProject(): string {
 	return picked === 'new' || list.some(p => p.id === picked) ? picked : list.find(p => p.folder === folder)?.id ?? 'new';
 }
 
-/** Where the next task goes: an agent here, one on its own branch, or a project's coordinator. */
+/** Where the next task goes: an agent here, one on its own branch, or a project's coordinator (On a Branch's chevron, once a project exists). */
 type StartAs = 'here' | 'branch' | 'project';
 /** The user's pick; until they pick, `gemini.agents.ownBranch` decides. */
 let startAsPicked: StartAs | undefined;
 let startAs: StartAs = 'here';
-const startChoices = ([['here', strings.startHere, strings.startHereHint], ['branch', strings.startOwnBranch, strings.startOwnBranchHint], ['project', strings.startProject, strings.startProjectHint]] as const)
+const startChoices = ([['here', strings.startHere, strings.startHereHint], ['branch', strings.startOwnBranch, strings.startOwnBranchHint]] as const)
 	.map(([id, label, hint]) => {
 		const node = button('start-as-option', label, () => {
-			startAsPicked = id;
+			// On a Branch keeps a project picked from its chevron.
+			startAsPicked = id === 'branch' && startAs === 'project' ? 'project' : id;
 			updateControls();
 			reportTyping();
 		});
@@ -119,7 +115,10 @@ const startChoices = ([['here', strings.startHere, strings.startHereHint], ['bra
 		return { id, node };
 	});
 startAsGroup.setAttribute('aria-label', strings.startAs);
-startAsGroup.append(...startChoices.map(choice => choice.node));
+// The chevron and its menu are in the markup, after the choices.
+startAsGroup.prepend(...startChoices.map(choice => choice.node));
+setTip(projectButton, strings.branchMenu);
+projectButton.setAttribute('aria-label', strings.branchMenu);
 // The arrow keys move between the choices, as in any radio group.
 startAsGroup.addEventListener('keydown', e => {
 	const step = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0;
@@ -136,15 +135,20 @@ startAsGroup.addEventListener('keydown', e => {
 function updateStartAs(git: boolean): void {
 	const offered = (id: StartAs) => id === 'here' || git && (id === 'branch' || !!view?.projects);
 	const wanted = startAsPicked ?? (view?.ownBranch ? 'branch' : 'here');
-	startAs = offered(wanted) ? wanted : 'here';
-	let count = 0;
+	startAs = offered(wanted) ? wanted : wanted === 'project' && offered('branch') ? 'branch' : 'here';
+	const branch = startChoices[1].node;
+	branch.hidden = !offered('branch');
+	// A project is a branch in that project: the branch choice names it.
+	const projectTitle = startAs === 'project' ? view?.projects?.find(p => p.id === currentProject())?.title ?? strings.newProject : undefined;
+	branch.textContent = projectTitle ?? strings.startOwnBranch;
+	setTip(branch, projectTitle ? strings.startProjectHint : strings.startOwnBranchHint);
 	for (const { id, node } of startChoices) {
-		node.hidden = !offered(id);
-		count += Number(!node.hidden);
-		node.setAttribute('aria-checked', String(id === startAs));
-		node.tabIndex = id === startAs ? 0 : -1;
+		const checked = id === 'branch' ? startAs !== 'here' : id === startAs;
+		node.setAttribute('aria-checked', String(checked));
+		node.tabIndex = checked ? 0 : -1;
 	}
-	startAsGroup.hidden = count < 2;
+	projectButton.parentElement!.hidden = !offered('project');
+	startAsGroup.hidden = !offered('branch');
 }
 
 type HomeMenusModule = typeof import('./homeMenus');
@@ -171,10 +175,18 @@ function loadMenus(): Promise<HomeMenus> {
 		addFolder: () => vscode.postMessage({ type: 'addFolder' }),
 		trust: each => vscode.postMessage({ type: 'trust', folder: each }),
 		project: currentProject,
+		toProject: () => startAs === 'project',
 		pickProject: id => {
 			projectPicks = { ...projectPicks, [folder]: id };
+			startAsPicked = 'project';
 			save();
 			updateControls();
+			reportTyping();
+		},
+		pickBranch: () => {
+			startAsPicked = 'branch';
+			updateControls();
+			reportTyping();
 		},
 		run,
 		logo: (tool, size) => toolLogo(tool, size),
@@ -228,9 +240,6 @@ function updateControls(): void {
 	const toProject = startAs === 'project';
 	const project = toProject ? currentProject() : undefined;
 	const projectTitle = view?.projects?.find(p => p.id === project)?.title;
-	projectButton.parentElement!.hidden = !toProject;
-	projectButton.querySelector('span')!.textContent = projectTitle ?? strings.newProject;
-	setTip(projectButton, `${strings.project}: ${projectTitle ?? strings.newProject}`);
 	coordinatorNote.hidden = !toProject;
 	fromToolsButton.parentElement!.hidden = toProject;
 	const startLabel = !toProject ? strings.start : projectTitle ? strings.sendToProject : strings.startNewProject;

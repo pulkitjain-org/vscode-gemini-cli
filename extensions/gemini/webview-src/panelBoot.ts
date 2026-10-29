@@ -27,6 +27,10 @@ export interface BootedPage<To, From, Strings, State = never> {
 
 export function bootPage<To, From extends { readonly type: string }, Strings, State = never>(mainId = 'page'): BootedPage<To, From, Strings, State> {
 	const vscode = acquireVsCodeApi();
+	// The shell's tabs, when the page has them: the host opens the tab's page.
+	for (const tab of document.querySelectorAll<HTMLElement>('.page-tab')) {
+		tab.addEventListener('click', () => vscode.postMessage({ type: 'openTab', tab: tab.dataset.tab }));
+	}
 	return {
 		strings: pageStrings<Strings>(),
 		post: message => vscode.postMessage(message),

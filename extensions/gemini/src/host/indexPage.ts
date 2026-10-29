@@ -16,6 +16,7 @@ import type { DocsSources, SourceView } from './docsSources';
 import { tildify } from './displayText';
 import type { DocsSourceView, FromIndexPage, IndexPageStrings, IndexPageView, IndexWorkspaceView, ToIndexPage } from './indexProtocol';
 import { PagePanel, PageShell, SinglePage } from './pagePanel';
+import { agentSetupTabs, agentSetupTabsLabel, agentSetupTitle, openAgentSetupTab } from './agentSetupTabs';
 import type { WorkspaceIndex } from './workspaceIndex';
 
 const viewType = 'gemini.index';
@@ -86,7 +87,7 @@ export class IndexPage implements vscode.Disposable {
 	}
 
 	private create(): PagePanel<ToIndexPage, FromIndexPage> {
-		const page = new PagePanel<ToIndexPage, FromIndexPage>(this.extensionUri, { viewType, title: vscode.l10n.t("Index"), icon: new vscode.ThemeIcon('database') }, this.shell(), message => this.onMessage(message));
+		const page = new PagePanel<ToIndexPage, FromIndexPage>(this.extensionUri, { viewType, title: agentSetupTitle('index'), icon: new vscode.ThemeIcon('database'), openTab: tab => void openAgentSetupTab(tab).then(() => this.page.dispose()) }, this.shell(), message => this.onMessage(message));
 		page.onDidChangeVisibility(visible => visible && this.redrawSoon());
 		return page;
 	}
@@ -359,7 +360,7 @@ export class IndexPage implements vscode.Disposable {
 			openIgnoreFile: vscode.l10n.t("Open .geminiignore"),
 			editInclude: vscode.l10n.t("Edit Included Files"),
 		};
-		return { script: 'indexPage.js', styles: [], title: strings.title, bodyClass: 'settings-page index-page', mainClass: 'settings', strings, data: { 'max-pages': String(defaultMaxPages) } };
+		return { script: 'indexPage.js', styles: [], title: strings.title, bodyClass: 'settings-page index-page', mainClass: 'settings', strings, data: { 'max-pages': String(defaultMaxPages) }, tabs: agentSetupTabs('index'), tabsLabel: agentSetupTabsLabel() };
 	}
 }
 

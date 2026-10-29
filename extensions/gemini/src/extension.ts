@@ -243,13 +243,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 			getAgentCommand,
 			forgetSkills,
 			audit: teamTools.audit,
-			storage: {
-				globalStorage: context.globalStorageUri.fsPath,
-				agents: () => agentsView.storageAgents(),
-				worktrees: () => agentsView.storageWorktrees(),
-				removeWorktree: (repository, worktree, item) => agentsView.removeStorageWorktree(repository, worktree, item),
-				cliVersion: () => service.status.agentVersion,
-			},
 		}, contextMeasures)),
 		contextMeasures,
 		// A quick fix on every problem: attach it, and the code around it, to the agent in front.
@@ -309,7 +302,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 			figma: () => teamTools.connectors.figma,
 			defaults: folder => folder ? teamTools.defaults(folder) : teamTools.workspaceDefaults(),
 		}, log)),
-		new LazyFeature(['gemini.openAuditLog'], () => new (onDemand().AuditPage)(context.extensionUri, teamTools.audit, id => agentsView.summaries().find(agent => agent.id === id)?.title)),
+		new LazyFeature(['gemini.openAuditLog'], () => new (onDemand().AuditPage)(context.extensionUri, teamTools.audit, id => agentsView.summaries().find(agent => agent.id === id)?.title, {
+			globalStorage: context.globalStorageUri.fsPath,
+			agents: () => agentsView.storageAgents(),
+			worktrees: () => agentsView.storageWorktrees(),
+			removeWorktree: (repository, worktree, item) => agentsView.removeStorageWorktree(repository, worktree, item),
+			cliVersion: () => service.status.agentVersion,
+		})),
 		vscode.commands.registerCommand('gemini.checkAgent', async () => onDemand().checkAgent(log, {
 			command: await getAgentCommand(),
 			cwd: getWorkspaceCwd(),

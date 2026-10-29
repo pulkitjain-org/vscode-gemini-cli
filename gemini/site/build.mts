@@ -952,7 +952,7 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 				<div class="mock home-mock" aria-hidden="true">
 					<p class="task">Make the upload client retry twice with backoff, and cover it with a test<span class="mini-caret"></span></p>
 					<div class="opts">
-						<span class="where"><span>Here</span><span class="on">On Its Own Branch</span><span>To a Project</span></span>
+						<span class="where"><span>Here</span><span class="on">On a Branch</span></span>
 						<span class="start">Start <kbd>↩</kbd></span>
 					</div>
 				</div>

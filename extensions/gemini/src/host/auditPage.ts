@@ -12,6 +12,8 @@ import { teamConfirmTools } from '../acp/teamTools';
 import type { AuditPageView, AuditRowView, AuditStrings, FromAudit, ToAudit } from './auditProtocol';
 import { tildify } from './displayText';
 import { PagePanel, PageShell, SinglePage } from './pagePanel';
+import { agentSetupTabs, agentSetupTabsLabel, agentSetupTitle, openAgentSetupTab } from './agentSetupTabs';
+import { StorageSection, type StorageHost } from './storageSection';
 
 const viewType = 'gemini.auditLog';
 const confirmTools = new Set(teamConfirmTools.map(tool => tool.name));
@@ -29,7 +31,11 @@ export class AuditPage implements vscode.Disposable {
 	private updating = false;
 	private readonly disposables: vscode.Disposable[] = [];
 
-	constructor(private readonly extensionUri: vscode.Uri, private readonly audit: AuditLog, private readonly agentTitle: (id: string) => string | undefined) {
+	/** The Storage section, measured the first time it scrolls into view. */
+	private readonly storage: StorageSection | undefined;
+
+	constructor(private readonly extensionUri: vscode.Uri, private readonly audit: AuditLog, private readonly agentTitle: (id: string) => string | undefined, storageHost?: StorageHost) {
+		this.storage = storageHost && new StorageSection(storageHost, () => this.scheduleUpdate());
 		this.disposables.push(
 			vscode.commands.registerCommand('gemini.openAuditLog', () => this.show()),
 			audit.onDidAppend(() => this.scheduleUpdate()),
@@ -48,7 +54,7 @@ export class AuditPage implements vscode.Disposable {
 	}
 
 	private create(): PagePanel<ToAudit, FromAudit> {
-		const page = new PagePanel<ToAudit, FromAudit>(this.extensionUri, { viewType, title: vscode.l10n.t("Audit log"), icon: new vscode.ThemeIcon('list-unordered') }, this.shell(), message => this.onMessage(message));
+		const page = new PagePanel<ToAudit, FromAudit>(this.extensionUri, { viewType, title: agentSetupTitle('audit'), icon: new vscode.ThemeIcon('list-unordered'), openTab: tab => void openAgentSetupTab(tab).then(() => this.page.dispose()) }, this.shell(), message => this.onMessage(message));
 		page.onDidChangeVisibility(visible => visible && this.scheduleUpdate());
 		return page;
 	}
@@ -94,6 +100,18 @@ export class AuditPage implements vscode.Disposable {
 				await fs.mkdir(this.audit.dir, { recursive: true });
 				await vscode.env.openExternal(vscode.Uri.file(this.audit.dir));
 				return;
+			case 'measureStorage':
+				void this.storage?.measure();
+				return;
+			case 'cleanUp':
+				await this.storage?.cleanUp();
+				return;
+			case 'setKeepLogs':
+				await this.storage?.setKeepLogs(message.days);
+				return;
+			case 'storageAction':
+				await this.storage?.action(message.action);
+				return;
 		}
 	}
 
@@ -108,12 +126,18 @@ export class AuditPage implements vscode.Disposable {
 			folder: tildify(this.audit.dir),
 			rows: auditRows(entries, this.agentTitle),
 			unfinished: unfinished.length,
+			...this.storage ? { storage: this.storage.view() } : {},
 		};
 	}
 
 	private shell(): PageShell {
 		const strings: AuditStrings = {
-			title: vscode.l10n.t("Audit log"),
+			title: vscode.l10n.t("Storage & Audit"),
+			auditTitle: vscode.l10n.t("Audit log"),
+			storage: vscode.l10n.t("Storage"),
+			storageHint: vscode.l10n.t("What GeminiCode keeps on this Mac, and how much room each part takes."),
+			storageMeasuring: vscode.l10n.t("Measuring\u2026"),
+			keepLogs: vscode.l10n.t("Keep logs for"),
 			subtitle: vscode.l10n.t("Every write to Jira or GitLab made from GeminiCode, by you or by an agent you approved. Append-only, on this Mac: {0}"),
 			day: vscode.l10n.t("Day"),
 			tool: vscode.l10n.t("Tool"),
@@ -133,7 +157,7 @@ export class AuditPage implements vscode.Disposable {
 			nothing: vscode.l10n.t("Nothing recorded on this day."),
 			unfinished: vscode.l10n.t("{0} unfinished"),
 		};
-		return { script: 'auditLog.js', styles: ['auditLog.css'], title: strings.title, bodyClass: 'settings-page audit-page', mainClass: 'settings audit', strings };
+		return { script: 'auditLog.js', styles: ['auditLog.css'], title: strings.title, bodyClass: 'settings-page audit-page', mainClass: 'settings audit', strings, tabs: agentSetupTabs('audit'), tabsLabel: agentSetupTabsLabel() };
 	}
 }
 

@@ -55,7 +55,7 @@ export const featurePages: readonly FeaturePage[] = [
 		lead: 'Each agent is a tab with its own chat, files and changes, in the folder it works in or on a branch of its own. A local index of every workspace lets agents go straight to the code that matters, instead of reading file by file.',
 		hero: { name: 'showcase-work', alt: 'An agent at work in Agents layout: the agent list on the left, its chat in the middle and its changes on the right', clip: true },
 		steps: [
-			{ title: 'Describe the task', body: 'Type it on Home and press Return. **Here** works in your folder, **On Its Own Branch** gives the agent a copy of the repository on a new branch, and **To a Project** hands the task to a project.' },
+			{ title: 'Describe the task', body: 'Type it on Home and press Return. **Here** works in your folder, **On a Branch** gives the agent a copy of the repository on a new branch, and its chevron hands the task to a project.' },
 			{ title: 'Watch, or step away', body: 'A status dot per agent: a spinner while it works, amber when it waits for you, green when done. A Mac notification says when one needs you.' },
 			{ title: 'Review its changes', body: 'Every file it changed is in Changes, beside its chat. Keep or undo each change in the file, or all at once.' },
 			{ title: 'Bring the work back', body: '**Merge Back** puts an agent\'s changes in your checkout, unstaged, to run and test. **Keep Changes** makes them yours; **Take Back** removes them.' },

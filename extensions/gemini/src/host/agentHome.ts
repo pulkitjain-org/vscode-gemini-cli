@@ -656,10 +656,12 @@ export class AgentHome implements vscode.Disposable {
 			startAs: vscode.l10n.t("Where the agent works"),
 			startHere: vscode.l10n.t("Here"),
 			startHereHint: vscode.l10n.t("Works in this folder, on your current branch."),
-			startOwnBranch: vscode.l10n.t("On Its Own Branch"),
-			startOwnBranchHint: vscode.l10n.t("A new branch and folder, merged back when done."),
-			startProject: vscode.l10n.t("To a Project"),
+			startOwnBranch: vscode.l10n.t("On a Branch"),
+			startOwnBranchHint: vscode.l10n.t("A new branch and folder. Take the work with Try in Workspace, Merge Back or a merge request when it's done."),
+			startProject: vscode.l10n.t("In a project"),
 			startProjectHint: vscode.l10n.t("Goes to a project's coordinator, which makes it a thread or passes it on."),
+			branchAlone: vscode.l10n.t("On its own branch"),
+			branchMenu: vscode.l10n.t("On its own branch, or in a project"),
 			project: vscode.l10n.t("Project"),
 			projectsIn: vscode.l10n.t("Projects in {0}"),
 			otherProjects: vscode.l10n.t("Other repositories"),
@@ -679,8 +681,6 @@ export class AgentHome implements vscode.Disposable {
 			addFolder: vscode.l10n.t("Open Folder..."),
 			agentSetup: vscode.l10n.t("Agent Setup"),
 			agentSetupHint: vscode.l10n.t("MCP servers, skills, rules and hooks your agents load"),
-			index: vscode.l10n.t("Index"),
-			indexHint: vscode.l10n.t("What agents can look up without searching file by file: each workspace's index and the docs you attach"),
 			plusMenu: vscode.l10n.t("Add files and pick a mode"),
 			mode: vscode.l10n.t("Mode"),
 			files: vscode.l10n.t("Files"),
@@ -810,7 +810,7 @@ export class AgentHome implements vscode.Disposable {
 				<div class="composer-tabs" role="tablist"><button type="button" id="tab-write" class="composer-tab" role="tab" aria-selected="true" aria-controls="prompt"></button><button type="button" id="tab-preview" class="composer-tab" role="tab" aria-selected="false" aria-controls="preview"></button></div>
 				<textarea id="prompt" rows="4" spellcheck="${spellCheckOn()}"></textarea>
 				<div id="preview" class="composer-preview markdown" role="tabpanel" tabindex="0" hidden></div>
-				<div class="home-start-row"><div id="start-as" class="home-start-as" role="radiogroup" hidden></div><span class="home-project" hidden><button type="button" id="project" class="option-button" aria-haspopup="menu" aria-expanded="false"><i class="codicon codicon-project" aria-hidden="true"></i><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button><div id="project-menu" class="home-menu" hidden></div></span><span id="needs-trust" class="needs-trust" hidden><i class="codicon codicon-workspace-untrusted" aria-hidden="true"></i><span></span><button type="button" class="primary"></button></span></div>
+				<div class="home-start-row"><div id="start-as" class="home-start-as" role="radiogroup" hidden><span class="home-project" hidden><button type="button" id="project" class="start-as-chevron" aria-haspopup="menu" aria-expanded="false"><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button><div id="project-menu" class="home-menu" hidden></div></span></div><span id="needs-trust" class="needs-trust" hidden><i class="codicon codicon-workspace-untrusted" aria-hidden="true"></i><span></span><button type="button" class="primary"></button></span></div>
 				<div class="home-composer-bar">
 					<span class="home-plus"><button type="button" id="plus" class="plus-button" aria-haspopup="menu" aria-expanded="false"><i class="codicon codicon-add" aria-hidden="true"></i></button><div id="plus-menu" class="home-menu" hidden></div></span>
 					<span class="home-folder"><button type="button" id="workspace" class="option-button" aria-haspopup="menu" aria-expanded="false"><i class="codicon codicon-folder" aria-hidden="true"></i><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button><div id="workspace-menu" class="home-menu" hidden></div></span><button type="button" id="index-state" class="index-state" hidden></button>
@@ -822,7 +822,7 @@ export class AgentHome implements vscode.Disposable {
 					<button type="submit" id="start" class="primary"><span></span></button>
 				</div>
 			</form>
-			<div class="dash-quick-row"><div id="quick" class="dash-quick"></div><button type="button" id="index" class="option-button helpers-button"><i class="codicon codicon-database" aria-hidden="true"></i><span></span></button><button type="button" id="helpers" class="option-button helpers-button"><i class="codicon codicon-tools" aria-hidden="true"></i><span></span></button></div>
+			<div class="dash-quick-row"><div id="quick" class="dash-quick"></div><button type="button" id="helpers" class="option-button helpers-button"><i class="codicon codicon-tools" aria-hidden="true"></i><span></span></button></div>
 		</section>
 		<section id="setup" class="dash-setup" hidden></section>
 		<section id="needs" class="dash-needs" hidden></section>

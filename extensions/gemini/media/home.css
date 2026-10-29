@@ -164,6 +164,23 @@ button.link-button:hover {
 	display: inline-flex;
 }
 
+/* On a Branch's chevron: the branch of its own, or a project. */
+button.start-as-chevron {
+	height: 22px;
+	padding: 0 4px;
+	margin-left: -4px;
+	border: none;
+	border-radius: var(--gemini-radius-small);
+	background: none;
+	color: var(--gemini-muted);
+	cursor: pointer;
+}
+
+button.start-as-chevron:hover,
+button.start-as-chevron[aria-expanded="true"] {
+	color: var(--vscode-foreground);
+}
+
 .home-project[hidden],
 .needs-trust[hidden] {
 	display: none;

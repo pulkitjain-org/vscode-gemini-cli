@@ -39,6 +39,16 @@ export interface PageShell {
 	readonly media?: Readonly<Record<string, string>>;
 	/** Whether the page loads more from `media/` than its script and styles: a chunk of its own, or images. */
 	readonly loadsMedia?: boolean;
+	/** The tabs of a page that is one of several, such as Agent Setup's, drawn above `<main>`; a click posts `openTab`. */
+	readonly tabs?: readonly PageTab[];
+	/** What the tab strip is, for screen readers. */
+	readonly tabsLabel?: string;
+}
+
+export interface PageTab {
+	readonly id: string;
+	readonly label: string;
+	readonly active?: boolean;
 }
 
 /** The HTML document for `shell`, with one policy: nothing but the page's own script, the stylesheets from `media/`, and data: fonts and images. */
@@ -60,11 +70,20 @@ export function pageHtml(webview: vscode.Webview, media: vscode.Uri, shell: Page
 	${styles}
 	<title>${escapeAttribute(shell.title)}</title>
 </head>
-<body class="${escapeAttribute(shell.bodyClass)}">
+<body class="${escapeAttribute(shell.bodyClass)}">${tabsHtml(shell)}
 	<main id="${escapeAttribute(shell.mainId ?? 'page')}"${shell.mainClass ? ` class="${escapeAttribute(shell.mainClass)}"` : ''}></main>
 	<script nonce="${nonce}" type="module" src="${uri(shell.script)}" data-strings="${escapeAttribute(JSON.stringify(shell.strings))}"${data}></script>
 </body>
 </html>`;
+}
+
+/** The tab strip of a page that is one of several, or nothing. */
+function tabsHtml(shell: PageShell): string {
+	if (!shell.tabs?.length) {
+		return '';
+	}
+	const tabs = shell.tabs.map(tab => `<button type="button" class="page-tab${tab.active ? ' active' : ''}" data-tab="${escapeAttribute(tab.id)}"${tab.active ? ' aria-current="page"' : ''}>${escapeAttribute(tab.label)}</button>`).join('');
+	return `\n\t<nav class="page-tabs" aria-label="${escapeAttribute(shell.tabsLabel ?? '')}">${tabs}</nav>`;
 }
 
 export interface PagePanelOptions {
@@ -76,6 +95,8 @@ export interface PagePanelOptions {
 	readonly column?: vscode.ViewColumn | { readonly viewColumn: vscode.ViewColumn; readonly preserveFocus?: boolean };
 	/** Whether the page keeps its state while hidden; off for a page that rebuilds its view from the host each time it shows. */
 	readonly retainContextWhenHidden?: boolean;
+	/** A click on one of the shell's tabs (`PageShell.tabs`), by its id. */
+	openTab?(tab: string): void;
 }
 
 /**
@@ -116,6 +137,10 @@ export class PagePanel<To, From extends { readonly type: string }> implements vs
 		}
 		this.panel.webview.html = typeof shell === 'function' ? shell(this.panel.webview, media) : pageHtml(this.panel.webview, media, shell);
 		this.panel.webview.onDidReceiveMessage((message: From) => {
+			if (message.type === 'openTab') {
+				options.openTab?.((message as unknown as { readonly tab: string }).tab);
+				return;
+			}
 			try {
 				const result = onMessage(message);
 				if (result && typeof (result as Promise<void>).catch === 'function') {

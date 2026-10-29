@@ -46,7 +46,7 @@ function view(options: { git?: boolean; projects?: boolean | HomeProject[]; ownB
 /** The chooser as the user sees it: the choices shown, the one checked, and the checked one's tooltip. */
 function chooser() {
 	const group = byId('start-as');
-	const checked = [...group.querySelectorAll('[aria-checked="true"]')] as HTMLElement[];
+	const checked = [...group.querySelectorAll('[role="radio"][aria-checked="true"]')] as HTMLElement[];
 	return {
 		shown: group.hidden ? [] : [...group.querySelectorAll('[role="radio"]')].filter(node => !(node as HTMLElement).hidden).map(node => node.textContent),
 		checked: checked.map(node => node.textContent),
@@ -56,6 +56,14 @@ function chooser() {
 
 function choice(label: string): HTMLElement {
 	return [...document.querySelectorAll('#start-as [role="radio"]')].find(node => node.textContent === label) as HTMLElement;
+}
+
+/** Picks a row of On a Branch's chevron menu: a branch of its own, or a project. */
+async function pickFromBranchMenu(name: string): Promise<void> {
+	byId('project').click();
+	const menu = byId('project-menu');
+	await expect.poll(() => menu.hidden).toBe(false);
+	([...menu.querySelectorAll('.menu-row')].find(row => row.querySelector('.menu-name')?.textContent?.startsWith(name)) as HTMLElement).click();
 }
 
 function startTask(text: string): { type: string;[key: string]: unknown } | undefined {
@@ -77,20 +85,20 @@ beforeAll(async () => {
 });
 
 describe('Home\'s new-agent chooser', () => {
-	it('offers Here, On Its Own Branch and To a Project in a Git folder, with a line on the one picked', () => {
+	it('offers Here and On a Branch in a Git folder, with a line on the one picked', () => {
 		sendToPage({ type: 'view', view: view() });
 		const before = chooser();
-		choice('On Its Own Branch').click();
+		choice('On a Branch').click();
 		expect({ before, after: chooser() }).toEqual({
-			before: { shown: ['Here', 'On Its Own Branch', 'To a Project'], checked: ['Here'], hint: 'Works in this folder, on your current branch.' },
-			after: { shown: ['Here', 'On Its Own Branch', 'To a Project'], checked: ['On Its Own Branch'], hint: 'A new branch and folder, merged back when done.' },
+			before: { shown: ['Here', 'On a Branch'], checked: ['Here'], hint: 'Works in this folder, on your current branch.' },
+			after: { shown: ['Here', 'On a Branch'], checked: ['On a Branch'], hint: 'A new branch and folder. Take the work with Try in Workspace, Merge Back or a merge request when it\'s done.' },
 		});
 	});
 
-	it('starts the agent the way picked: on its own branch, as a project, or here', () => {
-		choice('On Its Own Branch').click();
+	it('starts the agent the way picked: on its own branch, in a project from the chevron, or here', async () => {
+		choice('On a Branch').click();
 		const branch = startTask('Fix the cart');
-		choice('To a Project').click();
+		await pickFromBranchMenu('New Project in shop');
 		const project = startTask('Split checkout');
 		choice('Here').click();
 		const here = startTask('Add a test');
@@ -107,18 +115,18 @@ describe('Home\'s new-agent chooser', () => {
 		const once = chooser().checked;
 		byId('start-as').dispatchEvent(new page.KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
 		byId('start-as').dispatchEvent(new page.KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
-		expect({ once, wrapped: chooser().checked, focused: document.activeElement?.textContent }).toEqual({ once: ['On Its Own Branch'], wrapped: ['To a Project'], focused: 'To a Project' });
+		expect({ once, wrapped: chooser().checked, focused: document.activeElement?.textContent }).toEqual({ once: ['On a Branch'], wrapped: ['On a Branch'], focused: 'On a Branch' });
 	});
 
-	it('leaves out what the folder can\'t do: no project while Projects are off, and no choice at all outside Git', () => {
-		choice('To a Project').click();
+	it('leaves out what the folder can\'t do: a project picked falls back to a branch while Projects are off, and no choice at all outside Git', async () => {
+		await pickFromBranchMenu('New Project in shop');
 		sendToPage({ type: 'view', view: view({ projects: false }) });
 		const noProjects = chooser();
 		sendToPage({ type: 'view', view: view({ git: false }) });
 		const noGit = chooser();
 		const message = startTask('Rename a file');
 		expect({ noProjects, noGit, ownBranch: message?.ownBranch, project: message?.project }).toEqual({
-			noProjects: { shown: ['Here', 'On Its Own Branch'], checked: ['Here'], hint: 'Works in this folder, on your current branch.' },
+			noProjects: { shown: ['Here', 'On a Branch'], checked: ['On a Branch'], hint: 'A new branch and folder. Take the work with Try in Workspace, Merge Back or a merge request when it\'s done.' },
 			noGit: { shown: [], checked: ['Here'], hint: '' },
 			ownBranch: false,
 			project: undefined,
@@ -131,11 +139,12 @@ const projects: HomeProject[] = [
 	{ id: 'p2', title: 'CMS migration', workspace: 'cms', folder: '/work/cms', state: 'idle', threads: '1 thread', updated: 'yesterday' },
 ];
 
-/** The composer's bar as the user sees it with To a Project picked. */
+/** The composer's bar as the user sees it with a project picked from On a Branch's chevron. */
 function bar() {
 	const shown = (id: string) => !byId(id).hidden && !(byId(id).parentElement as HTMLElement).hidden;
+	const branchOption = [...document.querySelectorAll('#start-as [role="radio"]')][1] as HTMLElement;
 	return {
-		project: shown('project') ? byId('project').textContent : undefined,
+		project: shown('project') && branchOption.getAttribute('aria-checked') === 'true' ? branchOption.textContent : undefined,
 		start: byId('start').textContent,
 		placeholder: (byId('prompt') as unknown as HTMLTextAreaElement).placeholder,
 		mode: shown('mode'),
@@ -145,9 +154,9 @@ function bar() {
 }
 
 describe('To a Project', () => {
-	it('sends the task to the folder\'s latest project, with the coordinator\'s mode and model in place of the pickers', () => {
+	it('sends the task to the project picked from the chevron, with the coordinator\'s mode and model in place of the pickers', async () => {
 		sendToPage({ type: 'view', view: view({ projects }) });
-		choice('To a Project').click();
+		await pickFromBranchMenu('Checkout redesign');
 		const shown = bar();
 		const message = startTask('Add the coupon field');
 		expect({ shown, project: message?.project, ownBranch: message?.ownBranch }).toEqual({
@@ -165,21 +174,21 @@ describe('To a Project', () => {
 		const rows = [...menu.querySelectorAll('.menu-row')] as HTMLElement[];
 		const names = rows.map(row => row.querySelector('.menu-name')?.textContent);
 		posted.length = 0;
-		rows[1].click();
+		rows[2].click();
 		const picked = posted.find(m => m.type === 'folderPicked');
 		const message = startTask('Move the media library');
 		expect({ headings, names, picked, folder: message?.folder, project: message?.project }).toEqual({
 			headings: ['Projects in shop', 'Other repositories'],
-			names: ['Checkout redesign', 'CMS migration', 'New Project in shop'],
+			names: ['On its own branch', 'Checkout redesign', 'CMS migration', 'New Project in shop'],
 			picked: { type: 'folderPicked', folder: '/work/cms' },
 			folder: '/work/cms',
 			project: 'p2',
 		});
 	});
 
-	it('starts a new project where the folder has none', () => {
+	it('starts a new project where the folder has none', async () => {
 		sendToPage({ type: 'view', view: view() });
-		choice('To a Project').click();
+		await pickFromBranchMenu('New Project in');
 		const shown = bar();
 		const message = startTask('Split checkout');
 		expect({ project: shown.project, start: shown.start, sent: message?.project }).toEqual({ project: 'New Project', start: 'Start Project', sent: 'new' });
@@ -200,7 +209,7 @@ describe('Home and folder trust', () => {
 		await pickShop();
 		choice('Here').click();
 		const here = { chip: !byId('needs-trust').hidden, start: !!startTask('Add a test') };
-		choice('On Its Own Branch').click();
+		choice('On a Branch').click();
 		const branch = { chip: byId('needs-trust').hidden ? undefined : byId('needs-trust').textContent, start: !!startTask('Fix the cart') };
 		posted.length = 0;
 		(byId('needs-trust').querySelector('button') as HTMLElement).click();

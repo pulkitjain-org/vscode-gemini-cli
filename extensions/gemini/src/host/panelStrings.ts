@@ -61,8 +61,11 @@ export interface HomeStrings {
 	readonly startHereHint: string;
 	readonly startOwnBranch: string;
 	readonly startOwnBranchHint: string;
+	/** The branch chevron's menu: its heading for the projects, the row for a plain branch, and the chevron's label. */
 	readonly startProject: string;
 	readonly startProjectHint: string;
+	readonly branchAlone: string;
+	readonly branchMenu: string;
 	/** The project picker beside the chooser, and its menu. */
 	readonly project: string;
 	readonly projectsIn: string;
@@ -87,8 +90,6 @@ export interface HomeStrings {
 	readonly addFolder: string;
 	readonly agentSetup: string;
 	readonly agentSetupHint: string;
-	readonly index: string;
-	readonly indexHint: string;
 	readonly plusMenu: string;
 	readonly mode: string;
 	readonly files: string;
@@ -257,11 +258,6 @@ export interface SettingsPageStrings {
 	readonly usageStatisticsHint: string;
 	readonly keepChats: string;
 	readonly keepChatsHint: string;
-	readonly storage: string;
-	readonly storageHint: string;
-	readonly storageMeasuring: string;
-	readonly cleanUp: string;
-	readonly keepLogs: string;
 	readonly trust: string;
 	readonly trustHint: string;
 	readonly trustFolder: string;

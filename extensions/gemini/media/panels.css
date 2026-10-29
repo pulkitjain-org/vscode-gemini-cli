@@ -735,6 +735,41 @@ button.option-button .codicon-chevron-down {
 	color: var(--gemini-faint);
 }
 
+/* Agent Setup's tab strip, above the page: Loads, Index & Docs, Connections, Storage & Audit. */
+.page-tabs {
+	display: flex;
+	gap: 4px;
+	max-width: 760px;
+	margin: 0 auto;
+	padding: 16px 24px 0;
+}
+
+.page-tab {
+	height: 28px;
+	padding: 0 12px;
+	border: none;
+	border-bottom: 2px solid transparent;
+	background: none;
+	color: var(--gemini-muted);
+	font: inherit;
+	font-size: 13px;
+	cursor: pointer;
+}
+
+.page-tab:hover {
+	color: var(--vscode-foreground);
+}
+
+.page-tab.active {
+	color: var(--vscode-foreground);
+	border-bottom-color: var(--vscode-focusBorder);
+}
+
+.page-tab:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
+
 /* MCP Servers and Rules */
 
 .settings {

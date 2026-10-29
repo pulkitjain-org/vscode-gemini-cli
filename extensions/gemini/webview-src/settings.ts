@@ -10,7 +10,6 @@ import type { SettingsPageStrings } from '../src/host/panelStrings';
 import { button, el, format, icon } from './panelDom';
 import { bootPage } from './panelBoot';
 import { selectMenu, type SelectMenu } from './selectMenu';
-import { storageSection } from './settingsStorage';
 
 const { strings, post, main: page, start } = bootPage<ToSettingsPage, FromSettingsPage, SettingsPageStrings>();
 
@@ -368,7 +367,7 @@ function render(view: SettingsPageView): void {
 
 	// Re-rendering replaces every element; keep keyboard focus on the same control.
 	const focused = document.activeElement instanceof HTMLElement && page.contains(document.activeElement) ? document.activeElement.getAttribute('aria-label') ?? document.activeElement.textContent : undefined;
-	page.replaceChildren(header, contextSection(view.contextCost, view.developer), servers, skills, hooks, extensions, memory, rules, trustSection(view.trust), preferencesSection(view.preferences), ...view.storage ? [storageSection(view.storage, strings, post)] : []);
+	page.replaceChildren(header, contextSection(view.contextCost, view.developer), servers, skills, hooks, extensions, memory, rules, trustSection(view.trust), preferencesSection(view.preferences));
 	if (focused) {
 		[...page.querySelectorAll<HTMLElement>('button')].find(b => (b.getAttribute('aria-label') ?? b.textContent) === focused)?.focus();
 	}
