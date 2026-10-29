@@ -78,7 +78,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	const ownTrust = setTimeout(() => void service.trust.startup(), 3000);
 	context.subscriptions.push({ dispose: () => clearTimeout(ownTrust) });
 	const diffPreview = new DiffPreview();
-	const fileIndex = new WorkspaceFileIndex();
+	// The @ picker's list comes from the workspace index once it is built (set below), else from the host's own walk.
+	let indexForFiles: WorkspaceIndex | undefined;
+	const fileIndex = new WorkspaceFileIndex(folder => indexForFiles?.files(folder) ?? Promise.resolve(undefined));
 	// Rewrites run on the agent process every chat shares, in an empty folder of their own.
 	const enhancer = new PromptEnhancer(service.runtime, {
 		cwd: vscode.Uri.joinPath(context.globalStorageUri, 'enhance').fsPath,
@@ -146,6 +148,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	// The indexer runs from indexer.js beside this file, in out/ or dist/.
 	const workspaceIndex = new WorkspaceIndex({ script: path.join(__dirname, 'indexer.js'), version: String(context.extension.packageJSON.version ?? ''), log });
 	agentsView.index = workspaceIndex;
+	indexForFiles = workspaceIndex;
 	const docsSources = workspaceIndex.docs = new DocsSources(workspaceIndex, log);
 	// A tool connecting, or the browser or the index turned on or off, changes what a new session gets: the spare follows.
 	context.subscriptions.push(
