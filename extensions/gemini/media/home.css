@@ -1057,3 +1057,11 @@ html:has(.dash-comment-dialog[open]) {
 .dash-toast[hidden] {
 	display: none;
 }
+
+/* The chevron beside an agent card's Try button: the other ways to take the work. */
+.card-actions button.try-menu {
+	margin-left: -4px;
+	padding-left: 4px;
+	padding-right: 4px;
+	min-width: 0;
+}

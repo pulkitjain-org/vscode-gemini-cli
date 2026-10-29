@@ -282,6 +282,7 @@ export class AgentHome implements vscode.Disposable {
 			...(a.changes?.files ? { changes: a.changes.files === 1 ? vscode.l10n.t("{0} in 1 file", formatCounts(a.changes)) : vscode.l10n.t("{0} in {1} files", formatCounts(a.changes), a.changes.files) } : {}),
 			...(a.worktree ? { branch: a.worktree.branch } : {}),
 			...(a.trying ? { trying: true } : {}),
+			...(a.tryChoice ? { tryChoice: a.tryChoice } : {}),
 			updated: relativeTime(a.updatedAt, now),
 		});
 		return {
@@ -593,6 +594,9 @@ export class AgentHome implements vscode.Disposable {
 			case 'mergeBack':
 				await this.agents.mergeBack(message.id);
 				return;
+			case 'tryMenu':
+				await this.agents.pickTryChoice(message.id);
+				return;
 			case 'action':
 				await this.runAction(message.action);
 				return;
@@ -690,7 +694,10 @@ export class AgentHome implements vscode.Disposable {
 			open: vscode.l10n.t("Open"),
 			stop: vscode.l10n.t("Stop"),
 			review: vscode.l10n.t("Review"),
-			mergeBack: vscode.workspace.getConfiguration(configSection).get<string>('agents.mergeBack') === 'commit' ? vscode.l10n.t("Merge Back") : vscode.l10n.t("Try in Workspace"),
+			tryIn: vscode.l10n.t("Try in Workspace"),
+			mergeBack: vscode.l10n.t("Merge Back"),
+			openMr: vscode.l10n.t("Open Merge Request"),
+			tryMenu: vscode.l10n.t("Other ways to take the work"),
 			trying: vscode.l10n.t("Keep or Take Back…"),
 			noAgents: vscode.l10n.t("No agents are running. Start one above."),
 			noWorkspace: vscode.l10n.t("Add a workspace folder for agents to work in."),

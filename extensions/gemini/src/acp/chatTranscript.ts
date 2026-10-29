@@ -185,8 +185,8 @@ export interface ThreadCard {
 	readonly restorable?: boolean;
 	/** Shows the first-try guide under the card. */
 	readonly guide?: boolean;
-	/** Merge Back makes a merge commit (`gemini.agents.mergeBack` set to "commit"): the card offers it instead of Try in Workspace. */
-	readonly mergeCommits?: boolean;
+	/** What the card's Try button does when not Try in Workspace: the choice remembered for the repository (`tryChoices.ts`). */
+	readonly tryChoice?: 'merge' | 'mr';
 }
 
 /** A thread card's try: how many files, what the last update did, and what the user changed. */

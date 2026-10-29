@@ -69,7 +69,7 @@ export function renderThreadCard(item: ThreadCard, d: ThreadCardDeps, card: HTML
 	meta.append(d.el('span', 'thread-meta-end', extra));
 	card.append(meta);
 
-	const tryFlow = !item.mergeCommits;
+	const tryFlow = item.tryChoice !== 'merge';
 	const hasWork = !!item.tried || !!item.changes?.files || repos.some(repo => repo.files);
 	// Where the work is, for a thread that has some: in its folder, being tried in the workspace, or kept.
 	if (tryFlow && hasWork && !item.removed && !item.discarded) {
@@ -105,13 +105,21 @@ export function renderThreadCard(item: ThreadCard, d: ThreadCardDeps, card: HTML
 		}
 		const label = action === 'open' && item.state === 'waiting' ? p.openToAnswer
 			: action === 'open' && item.tried && item.state === 'done' ? p.askForChanges
-				: p.actions[action];
+				: action === 'try' && item.tryChoice === 'mr' ? p.openMr
+					: p.actions[action];
 		const node = d.button(primary ? 'primary' : 'secondary', label, () => send(action));
 		const tip = p.tips[action];
 		if (tip) {
 			d.setTip(node, tip);
 		}
 		row.append(node);
+		if (action === 'try' || action === 'merge') {
+			// The chevron: the other ways to take the work, remembered for the repository.
+			const menu = d.button(`${primary ? 'primary' : 'secondary'} thread-try-menu`, '', () => send('tryMenu'), 'chevron-down');
+			menu.setAttribute('aria-label', p.actions.tryMenu);
+			d.setTip(menu, p.tips.tryMenu ?? '');
+			row.append(menu);
+		}
 	}
 	card.append(row);
 
@@ -149,7 +157,7 @@ function buttons(item: ThreadCard): readonly CardButton[] {
 	if (item.discarded) {
 		return [['restore', true], ['open', false], ['remove', false]];
 	}
-	if (item.mergeCommits) {
+	if (item.tryChoice === 'merge') {
 		return item.merged ? [['open', false]]
 			: item.changes?.files ? (item.repos?.length ? [['review', true], ['remove', false]] : [['merge', true], ['review', false], ['remove', false]])
 				: [['open', true], ['remove', false]];
@@ -208,7 +216,7 @@ function line(item: ThreadCard, d: ThreadCardDeps): string {
 	if (mergedRepos > 0) {
 		return d.format(p.mergedCount, mergedRepos, repos.length);
 	}
-	if (item.state === 'done' && !item.mergeCommits && item.changes?.files) {
+	if (item.state === 'done' && item.tryChoice !== 'merge' && item.changes?.files) {
 		return item.changes.files === 1 ? lines.doneOne : d.format(lines.done, item.changes.files);
 	}
 	return item.detail ? `${state} · ${item.detail}` : state;

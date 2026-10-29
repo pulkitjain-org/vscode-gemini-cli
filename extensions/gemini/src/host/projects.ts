@@ -98,8 +98,12 @@ export interface ProjectAgents {
 	undoThread(id: string): Promise<boolean>;
 	/** Tries a thread's work in the user's checkout, keeps it, takes it back... (agentTries.ts, loaded on first use); returns whether it did. */
 	tryAction(id: string, action: TryAction): Promise<boolean>;
-	/** Whether Merge Back makes a merge commit (`gemini.agents.mergeBack` set to "commit") rather than trying the work. */
-	mergeCommits(): boolean;
+	/** Whether the thread's Try button merges with a commit (the choice remembered for its repository, `tryChoices.ts`). */
+	mergeCommits(id: string): boolean;
+	/** The thread's Try button's choice. */
+	tryChoice(id: string): 'try' | 'merge' | 'mr';
+	/** The chevron beside the Try button: pick and remember the choice, then run it. */
+	pickTryChoice(id: string): Promise<void>;
 	/** Whether the person has read the first-try guide; setting it shows or hides it on cards. */
 	guideSeen(): boolean;
 	setGuideSeen(seen: boolean): Promise<void>;
@@ -270,11 +274,11 @@ export class Projects implements vscode.Disposable {
 	mergeThread(thread: string): Promise<void> {
 		const record = this.agents.record(thread);
 		const role = record?.project;
-		if (!this.agents.mergeCommits() && record?.tried?.state === 'trying') {
+		if (!this.agents.mergeCommits(thread) && record?.tried?.state === 'trying') {
 			// Once tried, the fork card's one button offers Keep Changes, Take Back and the rest.
 			return this.agents.mergeBack(thread).then(() => undefined);
 		}
-		const action = this.agents.mergeCommits() ? 'merge' : 'try';
+		const action = this.agents.mergeCommits(thread) ? 'merge' : 'try';
 		return role?.role === 'thread' ? this.threadAction(role.coordinator, thread, action) : Promise.resolve();
 	}
 
@@ -1022,7 +1026,7 @@ export class Projects implements vscode.Disposable {
 			discarded: offer === 'restore' ? true : undefined,
 			restorable: offer === 'menu' ? true : undefined,
 			guide: record.tried?.state === 'trying' && !this.agents.guideSeen() ? true : undefined,
-			mergeCommits: this.agents.mergeCommits() ? true : undefined,
+			tryChoice: this.agents.tryChoice(thread) === 'try' ? undefined : this.agents.tryChoice(thread) as 'merge' | 'mr',
 		});
 		this.schedulePanel(project);
 	}
@@ -1131,6 +1135,8 @@ export class Projects implements vscode.Disposable {
 				// threadRemoved updates the card and the hub.
 				await this.agents.undoThread(thread);
 				return;
+			case 'tryMenu':
+				return this.agents.pickTryChoice(thread);
 			case 'try':
 			case 'keep':
 			case 'takeBack':

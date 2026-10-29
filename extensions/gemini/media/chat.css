@@ -5544,3 +5544,11 @@ textarea.new-thread-input {
 	text-transform: uppercase;
 	color: var(--gemini-faint);
 }
+
+/* The chevron beside a thread card's Try button: the other ways to take the work. */
+.permission-actions button.thread-try-menu {
+	margin-left: -6px;
+	padding-left: 4px;
+	padding-right: 4px;
+	min-width: 0;
+}

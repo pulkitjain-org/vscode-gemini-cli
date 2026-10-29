@@ -52,6 +52,8 @@ export interface ChangesPanelView {
 		readonly canCommit: boolean;
 		/** Its work is being tried in the user's checkout: Keep Changes and Take Back instead of Merge Back. */
 		readonly trying?: boolean;
+		/** What the Try button does, when not Try in Workspace. */
+		readonly tryChoice?: 'merge' | 'mr';
 	};
 	readonly totals: ChangeTotals;
 	readonly files: readonly ChangedFileView[];
@@ -65,7 +67,7 @@ export type FromChangesPanel =
 	| { readonly type: 'ready' }
 	| { readonly type: 'keep' | 'undo'; readonly path: string; readonly index: number }
 	| { readonly type: 'keepFile' | 'undoFile' | 'openFile'; readonly path: string }
-	| { readonly type: 'keepAll' | 'undoAll' | 'openAll' | 'commit' | 'mergeBack' | 'keepTried' | 'takeBack' }
+	| { readonly type: 'keepAll' | 'undoAll' | 'openAll' | 'commit' | 'mergeBack' | 'tryMenu' | 'keepTried' | 'takeBack' }
 	| FromChangesTeam;
 
 // --- Agent Home
@@ -81,6 +83,8 @@ export interface HomeAgent {
 	readonly branch?: string;
 	/** Its work is being tried in the user's checkout: Merge Back's button offers Keep Changes and Take Back. */
 	readonly trying?: boolean;
+	/** What its Try button does, when not Try in Workspace. */
+	readonly tryChoice?: 'merge' | 'mr';
 	/** "5m" */
 	readonly updated: string;
 }
@@ -324,7 +328,7 @@ export type FromHome =
 	/** The user is typing a task, so the agent and a session for it can get ready. */
 	| { readonly type: 'typing'; readonly folder: string; readonly ownBranch: boolean }
 	| { readonly type: 'addFolder' | 'agentSetup' | 'openIndex' | 'pickFiles' | 'newProject' }
-	| { readonly type: 'open' | 'stop' | 'review' | 'mergeBack'; readonly id: string }
+	| { readonly type: 'open' | 'stop' | 'review' | 'mergeBack' | 'tryMenu'; readonly id: string }
 	| { readonly type: 'action'; readonly action: HomeAction }
 	| { readonly type: 'refresh' }
 	| { readonly type: 'layout'; readonly card: HomeCardId; readonly visible?: boolean; readonly move?: number }

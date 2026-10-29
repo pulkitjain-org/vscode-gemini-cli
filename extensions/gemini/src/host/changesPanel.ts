@@ -10,7 +10,6 @@ import { reviewBase } from '../acp/agentChanges';
 import { errorMessage } from '../acp/errors';
 import { diffLines, hunkLines, splitLines } from '../acp/lineDiff';
 import { ChangesSource } from './changesView';
-import { configSection } from './configuration';
 import { undoForeignMessage } from './reviewController';
 import { createNonce, escapeAttribute } from './webviewHtml';
 import { ChangedFileView, ChangesPanelView, FromChangesPanel, ToChangesPanel } from './panelProtocol';
@@ -197,7 +196,7 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 		const busy = source.busy();
 		const team = this.mrPanel?.view(source);
 		return {
-			agent: { title: source.title, busy, ...(source.branch ? { branch: source.branch } : {}), ...(source.trying ? { trying: true } : {}), canCommit: !!source.commit && !busy && files.length > 0 },
+			agent: { title: source.title, busy, ...(source.branch ? { branch: source.branch } : {}), ...(source.trying ? { trying: true } : {}), ...(source.tryChoice?.() && source.tryChoice() !== 'try' ? { tryChoice: source.tryChoice() as 'merge' | 'mr' } : {}), canCommit: !!source.commit && !busy && files.length > 0 },
 			totals: source.changes.totals,
 			files,
 			...team ? { team } : {},
@@ -247,6 +246,8 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 				return source?.commit?.();
 			case 'mergeBack':
 				return source?.mergeBack?.();
+			case 'tryMenu':
+				return source?.tryMenu?.();
 			case 'keepTried':
 				return source?.keep?.();
 			case 'takeBack':
@@ -301,7 +302,6 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 
 	private html(webview: vscode.Webview, media: vscode.Uri): string {
 		const nonce = createNonce();
-		const mergeCommits = vscode.workspace.getConfiguration(configSection).get<string>('agents.mergeBack') === 'commit';
 		const strings: ChangesPanelStrings = {
 			empty: vscode.l10n.t("No changes yet. Files the agent changes show here as it works."),
 			noAgent: vscode.l10n.t("Open an agent to see what it changed."),
@@ -314,13 +314,14 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 			openFile: vscode.l10n.t("Open the file"),
 			openAll: vscode.l10n.t("Open all changes in the editor"),
 			commit: vscode.l10n.t("Commit"),
-			...mergeCommits ? {
-				mergeBack: vscode.l10n.t("Merge Back"),
-				mergeBackTip: vscode.l10n.t("Commit the agent's work on its branch and merge the branch into yours."),
-			} : {
-				mergeBack: vscode.l10n.t("Try in Workspace"),
-				mergeBackTip: vscode.l10n.t("Copy the agent's changes into your workspace as unstaged files, so your local server and tests use them. They update each time the agent finishes a turn. Take Back removes them."),
-			},
+			tryIn: vscode.l10n.t("Try in Workspace"),
+			tryInTip: vscode.l10n.t("Copy the agent's changes into your workspace as unstaged files, so your local server and tests use them. They update each time the agent finishes a turn. Take Back removes them."),
+			mergeBack: vscode.l10n.t("Merge Back"),
+			mergeBackTip: vscode.l10n.t("Commit the agent's work on its branch and merge the branch into yours."),
+			openMr: vscode.l10n.t("Open Merge Request"),
+			openMrTip: vscode.l10n.t("Push the branch and open a merge request with a title and description Gemini drafts."),
+			tryMenu: vscode.l10n.t("Other ways to take the work"),
+			tryMenuTip: vscode.l10n.t("Try in Workspace, Merge Back or Open Merge Request; your pick is remembered for this repository."),
 			keepChanges: vscode.l10n.t("Keep Changes"),
 			keepChangesTip: vscode.l10n.t("Make these changes yours. Nothing is staged or committed; commit them when you're ready."),
 			takeBack: vscode.l10n.t("Take Back"),

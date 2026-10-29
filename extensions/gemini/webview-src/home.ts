@@ -392,7 +392,7 @@ function renderProjects(next: HomeView): void {
 }
 
 /** What an agent's card's buttons do, and how they are drawn: the message, its label and icon. */
-type AgentButton = readonly ['stop' | 'review' | 'mergeBack' | 'open', string, string?];
+type AgentButton = readonly ['stop' | 'review' | 'mergeBack' | 'tryMenu' | 'open', string, string?];
 
 /**
  * An agent's card, or `old` brought up to date in place. A click anywhere on
@@ -426,11 +426,20 @@ function card(agent: HomeAgent, old?: HTMLElement): HTMLElement {
 	const shown: AgentButton[] = [
 		...agent.state === 'working' || agent.state === 'waiting' ? [['stop', strings.stop, 'debug-stop'] as const] : [],
 		...agent.changes ? [['review', strings.review, 'diff'] as const] : [],
-		...agent.branch && agent.changes && agent.state !== 'working' ? [['mergeBack', agent.trying ? strings.trying : strings.mergeBack, agent.trying ? 'beaker' : 'git-merge'] as const] : [],
+		...agent.branch && agent.changes && agent.state !== 'working' ? [
+			['mergeBack', agent.trying ? strings.trying : agent.tryChoice === 'merge' ? strings.mergeBack : agent.tryChoice === 'mr' ? strings.openMr : strings.tryIn, agent.trying ? 'beaker' : agent.tryChoice === 'merge' ? 'git-merge' : agent.tryChoice === 'mr' ? 'git-pull-request' : 'beaker'] as const,
+			...agent.trying ? [] : [['tryMenu', '', 'chevron-down'] as const],
+		] : [],
 		['open', strings.open],
 	];
 	if (changed(actions, shown)) {
-		actions.replaceChildren(...shown.map(([type, label, iconName]) => button(type === 'open' ? 'primary' : 'secondary', label, () => vscode.postMessage({ type, id: agent.id }), iconName)));
+		actions.replaceChildren(...shown.map(([type, label, iconName]) => {
+			const node = button(type === 'open' ? 'primary' : type === 'tryMenu' ? 'secondary try-menu' : 'secondary', label, () => vscode.postMessage({ type, id: agent.id }), iconName);
+			if (type === 'tryMenu') {
+				node.setAttribute('aria-label', strings.tryMenu);
+			}
+			return node;
+		}));
 	}
 	return node;
 }

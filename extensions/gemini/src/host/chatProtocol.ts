@@ -48,11 +48,12 @@ export type ProjectSettingsAction = 'pickRepository' | 'addFiles' | 'newFile' | 
 
 /**
  * `startAnyway`: the side panel's Start Anyway, which starts the threads
- * today's quota holds. `merge` is Merge Back's merge commit, with
- * `gemini.agents.mergeBack` set to "commit"; the rest of the try actions are
- * `TryAction`s. `guide` shows the first-try guide, `dismissGuide` hides it.
+ * today's quota holds. `merge` is Merge Back's merge commit; `tryMenu` is
+ * the chevron beside the Try button, which picks what it does and remembers
+ * it for the repository; the rest of the try actions are `TryAction`s.
+ * `guide` shows the first-try guide, `dismissGuide` hides it.
  */
-export type ThreadAction = 'open' | 'stop' | 'merge' | 'review' | 'remove' | 'approve' | 'retry' | 'startAnyway' | TryAction | 'guide' | 'dismissGuide' | 'terminal' | 'checks';
+export type ThreadAction = 'open' | 'stop' | 'merge' | 'review' | 'remove' | 'approve' | 'retry' | 'startAnyway' | TryAction | 'tryMenu' | 'guide' | 'dismissGuide' | 'terminal' | 'checks';
 
 /** Trying an agent's work in the user's checkout (agentTries.ts). */
 export type TryAction = 'try' | 'keep' | 'takeBack' | 'send' | 'resolve' | 'discard' | 'restore';

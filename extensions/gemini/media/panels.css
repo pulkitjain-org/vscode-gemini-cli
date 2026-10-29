@@ -1462,3 +1462,11 @@ button.option-button .codicon-chevron-down {
 .settings .trust-note.problem {
 	color: var(--gemini-warn);
 }
+
+/* The chevron beside the Changes panel's Try button: the other ways to take the work. */
+.actions button.try-menu {
+	margin-left: -4px;
+	padding-left: 4px;
+	padding-right: 4px;
+	min-width: 0;
+}

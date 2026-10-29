@@ -124,6 +124,8 @@ export interface ProjectChatStrings {
 	};
 	readonly states: { readonly starting: string; readonly working: string; readonly waiting: string; readonly planned: string; readonly done: string; readonly error: string };
 	readonly actions: { readonly [action in ThreadAction]: string };
+	/** The Try button's label when the repository's remembered choice is a merge request. */
+	readonly openMr: string;
 	/** Each action's tooltip, for the buttons that have one. */
 	readonly tips: { readonly [action in ThreadAction]?: string };
 	readonly openToAnswer: string;

@@ -27,8 +27,12 @@ export interface ChangesSource {
 	readonly branch?: string;
 	/** Commits the changed files on a new branch (agents in the workspace folder). */
 	commit?(): Promise<void>;
-	/** Merge Back (agents on their own branch): Try in Workspace, or the merge with `gemini.agents.mergeBack` set to "commit". */
+	/** The Try button (agents on their own branch): Try in Workspace, Merge Back or Open Merge Request, as remembered for the repository (`tryChoices.ts`). */
 	mergeBack?(): Promise<void>;
+	/** What the Try button does now. */
+	tryChoice?(): 'try' | 'merge' | 'mr';
+	/** The chevron beside it: pick and remember the choice, then run it. */
+	tryMenu?(): Promise<void>;
 	/** Its work is being tried in the user's checkout: Keep Changes and Take Back instead of Merge Back. */
 	readonly trying?: boolean;
 	keep?(): Promise<void>;

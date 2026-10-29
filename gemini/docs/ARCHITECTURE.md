@@ -247,7 +247,7 @@ In Agents layout the title bar carries a search button, which opens Quick Open i
 
 Agent Home (`agentHome.ts`, `webview-src/home.ts`) opens in Agents layout whenever the editor area is empty (except right after closing Agent Home itself), and from the house at the start of the title bar (`geminiModes.ts`, which runs `gemini.home`). The page loads only when first shown.
 
-Its composer starts an agent in a chosen workspace and sends the prompt in one step: Here, On Its Own Branch (a branch named after the prompt), or To a Project, which sends the prompt to a project's coordinator picked beside the chooser, the folder's repository's projects first, or starts a new project. The folder picker shows each folder's trust (`FolderTrust.label`), and Open Folder... adds a folder for agents without adding it to the window. Cards show the agents that are working, waiting, done or have changes, with Stop, Review, Try in Workspace (Merge Back with merge commits) and Open. Earlier agents can be resumed. Projects are listed apart from agents.
+Its composer starts an agent in a chosen workspace and sends the prompt in one step: Here, On Its Own Branch (a branch named after the prompt), or To a Project, which sends the prompt to a project's coordinator picked beside the chooser, the folder's repository's projects first, or starts a new project. The folder picker shows each folder's trust (`FolderTrust.label`), and Open Folder... adds a folder for agents without adding it to the window. Cards show the agents that are working, waiting, done or have changes, with Stop, Review, the Try button with its chevron, and Open. Earlier agents can be resumed. Projects are listed apart from agents.
 
 Needs you (`needsYou` in `src/acp/dashboard.ts`) orders what waits on the user: agents asking, unresolved threads on their own merge requests, failed pipelines, merge requests ready to merge, agents' work ready to try, reviews asked of them, reopened tickets. Reviews are ranked (`rankReviews`: ones the user started, then ones where they are the only reviewer, then the longest waiting, with the ones the author must fix first last), at most `shownReviews` (2) show, and the rest are one "more reviews waiting" row, so a team's many reviews don't fill the strip.
 
@@ -413,7 +413,7 @@ The Agents pane gives the fork a folder in one of two ways:
 
 It has the CLI register the fork's folder with a session it closes again, writes the copy there, and starts the fork with `sessionId` set to the copy, the parent's chat shown, a `fork` line, and a note with its first prompt saying where it works now (`forkNote`).
 
-Forks are listed under their parent (`AgentRecord.forkedFrom`), and the parent's chat gets a card per fork. With merge commits, Merge Back of a fork whose parent works on a branch of its own asks where to merge (`AgentMerge.mergeTarget`); Try in Workspace always tries a fork's work in the user's checkout. A fork of a single-repository project thread is described under [Projects](#projects).
+Forks are listed under their parent (`AgentRecord.forkedFrom`), and the parent's chat gets a card per fork. Merge Back of a fork whose parent works on a branch of its own asks where to merge (`AgentMerge.mergeTarget`); Try in Workspace always tries a fork's work in the user's checkout. A fork of a single-repository project thread is described under [Projects](#projects).
 
 #### Undo and Rewind
 
@@ -429,7 +429,7 @@ Rewind offers the CLI's three choices in its words, "Rewind conversation and rev
 
 #### Changes panel and Changes view
 
-The **Changes panel** (`changesPanel.ts`, `webview-src/changes.ts`) is Agents layout's live diff of what the agent in front changed. Each change shows as a unified diff with Keep and Undo, which run the same commands as the editor's CodeLenses, plus Keep All, Undo All and Commit (for an agent on its own branch, Try in Workspace, then Keep Changes and Take Back while it is tried, or Merge Back with merge commits). Diffs are worked out with `lineDiff.ts` against the open document's text, 150 ms after the last edit, and only while the panel is visible.
+The **Changes panel** (`changesPanel.ts`, `webview-src/changes.ts`) is Agents layout's live diff of what the agent in front changed. Each change shows as a unified diff with Keep and Undo, which run the same commands as the editor's CodeLenses, plus Keep All, Undo All and Commit (for an agent on its own branch, the Try button with its chevron, then Keep Changes and Take Back while it is tried). Diffs are worked out with `lineDiff.ts` against the open document's text, 150 ms after the last edit, and only while the panel is visible.
 
 The list keeps what the agent last wrote to each file (`agentText`, from the ACP diffs). Edits made after it, by the user or another agent, are moved into the baseline where they don't touch the agent's lines (`rebaseOriginal`), so the panel and the editor show only the agent's changes, and Undo All asks first when it would lose such edits. When two agents changed one file, the editor reviews the one whose text the file has, else the latest to edit it (`reviewOrder`). `CommitSettler` watches the git directory of each folder with changes to review; when HEAD or a branch moves, files whose text is what HEAD has (`filesMatchingHead`) leave the list, however they were committed.
 
@@ -447,7 +447,7 @@ An agent can work on its own branch in a Git worktree (`src/acp/worktrees.ts`, p
 
 The agent's session gets the worktree (or the workspace's matching subfolder in it) as its `cwd`, and the agent record keeps the folder, branch and base. Creating one costs a checkout of the repository's files, shown as progress, and nothing on later prompts.
 
-With `gemini.agents.mergeBack` set to `commit`, **Merge Back** commits leftovers with a message written the same way (the agent's name when none is) and runs `git merge --no-ff` in the workspace's repository, leaving conflicts for Source Control. By default the same buttons run Try in Workspace (below).
+The Try button is one button on every surface (the Changes panel, Home's cards, thread and fork cards, the pane's row) with a chevron that offers Try in Workspace, Merge Back and, with GitLab connected, Open Merge Request; the pick is remembered per repository in global state (`agents/tryChoices.ts`, `AgentsView.pickTryChoice`), and the button then does that. `gemini.agents.mergeBack` is removed; until a pick is made in a repository, its old "commit" still means Merge Back. **Merge Back** commits leftovers with a message written the same way (the agent's name when none is) and runs `git merge --no-ff` in the workspace's repository, leaving conflicts for Source Control. By default the button runs Try in Workspace (below).
 
 #### Try in Workspace
 
@@ -508,7 +508,7 @@ The coordinator's session runs in an empty folder of its own (`~/.geminicode/pro
 
 #### Threads
 
-Threads show as cards in the project chat that update in place (`webview-src/threadCard.ts`, a chunk loaded with the first card). Each card has one main button for the next step (Approve Plan, Try in Workspace, Keep Changes, Open the Conflict, Restore Discarded Work), Review Changes and Take Back beside it, a three-step line (in the thread, trying in your workspace, kept) and a More menu for the rest, Remove Thread… among them. With merge commits, Merge Back replaces Try in Workspace. Approvals stay in the thread that asked. A thread's chat has a bar back to its project chat, and the project chat's side panel lists every thread to open.
+Threads show as cards in the project chat that update in place (`webview-src/threadCard.ts`, a chunk loaded with the first card). Each card has one main button for the next step (Approve Plan, Try in Workspace, Keep Changes, Open the Conflict, Restore Discarded Work), Review Changes and Take Back beside it, a three-step line (in the thread, trying in your workspace, kept) and a More menu for the rest, Remove Thread… among them. The Try button's chevron offers Merge Back and Open Merge Request, remembered per repository, and the button follows the pick. Approvals stay in the thread that asked. A thread's chat has a bar back to its project chat, and the project chat's side panel lists every thread to open.
 
 "New thread" in the + menu opens a dialog in the chat's webview (title, brief, branch, model, Plan first). The thread starts at once and the coordinator hears afterwards.
 
@@ -588,7 +588,7 @@ One thread holds every repository a task touches. Its agent runs in its own fold
 
 That folder needs trusting too, so a project with several repositories also asks to trust `~/.geminicode/threads`. A thread that needs another repository calls `add_repo`, which only multi-repository threads are offered.
 
-Try in Workspace tries each repository's work in the user's checkout of that repository. With merge commits, each repository merges back on its own from the thread's card (or a pick in Merge Back), committing only that worktree's work, and the thread is resolved once no repository has work left. Undo and Remove delete every worktree, then the thread's folder. The New thread dialog offers the repositories as checkboxes, and takes its model, Plan first and branch prefix from the project's defaults.
+Try in Workspace tries each repository's work in the user's checkout of that repository. With Merge Back remembered for the repository, each repository merges back on its own from the thread's card (or a pick in Merge Back), committing only that worktree's work, and the thread is resolved once no repository has work left. Undo and Remove delete every worktree, then the thread's folder. The New thread dialog offers the repositories as checkboxes, and takes its model, Plan first and branch prefix from the project's defaults.
 
 ### The GeminiCode browser
 

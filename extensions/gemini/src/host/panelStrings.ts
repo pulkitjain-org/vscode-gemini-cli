@@ -19,9 +19,15 @@ export interface ChangesPanelStrings {
 	readonly openFile: string;
 	readonly openAll: string;
 	readonly commit: string;
-	/** Merge Back's label: Try in Workspace, or Merge Back with merge commits. */
+	/** The Try button's three labels, by the choice remembered for the repository, and its chevron. */
+	readonly tryIn: string;
+	readonly tryInTip: string;
 	readonly mergeBack: string;
 	readonly mergeBackTip: string;
+	readonly openMr: string;
+	readonly openMrTip: string;
+	readonly tryMenu: string;
+	readonly tryMenuTip: string;
 	readonly keepChanges: string;
 	readonly keepChangesTip: string;
 	readonly takeBack: string;
@@ -96,8 +102,11 @@ export interface HomeStrings {
 	readonly open: string;
 	readonly stop: string;
 	readonly review: string;
-	/** Merge Back's label: Try in Workspace, or Merge Back with merge commits. */
+	/** The Try button's labels by the choice remembered for the repository, and its chevron. */
+	readonly tryIn: string;
 	readonly mergeBack: string;
+	readonly openMr: string;
+	readonly tryMenu: string;
 	/** The button of an agent whose work is tried: Keep Changes, Take Back and the rest. */
 	readonly trying: string;
 	readonly noAgents: string;

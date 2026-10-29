@@ -60,7 +60,11 @@ function render(view: ChangesPanelView): void {
 			tip(button('primary', strings.keepChanges, () => post({ type: 'keepTried' }), 'check'), strings.keepChangesTip),
 		);
 	} else if (view.agent.branch) {
-		actions.append(tip(button('primary', strings.mergeBack, () => post({ type: 'mergeBack' }), 'git-merge'), strings.mergeBackTip));
+		const choice = view.agent.tryChoice;
+		const [label, hint, iconName] = choice === 'merge' ? [strings.mergeBack, strings.mergeBackTip, 'git-merge'] : choice === 'mr' ? [strings.openMr, strings.openMrTip, 'git-pull-request'] : [strings.tryIn, strings.tryInTip, 'beaker'];
+		const menu = button('primary try-menu', '', () => post({ type: 'tryMenu' }), 'chevron-down');
+		menu.setAttribute('aria-label', strings.tryMenu);
+		actions.append(tip(button('primary', label, () => post({ type: 'mergeBack' }), iconName), hint), tip(menu, strings.tryMenuTip));
 	} else {
 		const commit = button('primary', strings.commit, () => post({ type: 'commit' }), 'git-commit');
 		commit.disabled = !view.agent.canCommit;

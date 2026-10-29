@@ -129,6 +129,7 @@ export function projectStrings(): ProjectChatStrings {
 			retry: vscode.l10n.t("Retry"),
 			startAnyway: vscode.l10n.t("Start Anyway"),
 			try: vscode.l10n.t("Try in Workspace"),
+			tryMenu: vscode.l10n.t("Other Ways to Take the Work"),
 			keep: vscode.l10n.t("Keep Changes"),
 			takeBack: vscode.l10n.t("Take Back"),
 			send: vscode.l10n.t("Send My Edits to the Thread"),
@@ -153,7 +154,9 @@ export function projectStrings(): ProjectChatStrings {
 			restore: vscode.l10n.t("Put the discarded work back in the thread's folder."),
 			remove: vscode.l10n.t("Delete the thread with its folder and branch."),
 			merge: vscode.l10n.t("Commit the thread's work on its branch and merge the branch into yours."),
+			tryMenu: vscode.l10n.t("Try in Workspace, Merge Back or Open Merge Request; your pick is remembered for this repository."),
 		},
+		openMr: vscode.l10n.t("Open Merge Request"),
 		openToAnswer: vscode.l10n.t("Open to Answer"),
 		steps: {
 			thread: vscode.l10n.t("In the thread"),

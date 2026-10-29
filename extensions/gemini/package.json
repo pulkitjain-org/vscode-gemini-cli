@@ -901,13 +901,8 @@
           "group": "inline"
         },
         {
-          "command": "gemini.agents.mergeBack",
-          "when": "view == gemini.agents && viewItem =~ /\\.worktree/ && config.gemini.agents.mergeBack == commit",
-          "group": "inline"
-        },
-        {
           "command": "gemini.agents.tryInWorkspace",
-          "when": "view == gemini.agents && viewItem =~ /\\.worktree/ && config.gemini.agents.mergeBack != commit",
+          "when": "view == gemini.agents && viewItem =~ /\\.worktree/",
           "group": "inline"
         },
         {
@@ -977,12 +972,12 @@
         },
         {
           "command": "gemini.agents.mergeBack",
-          "when": "view == gemini.agents && viewItem =~ /\\.worktree/ && config.gemini.agents.mergeBack == commit",
+          "when": "view == gemini.agents && viewItem =~ /\\.worktree/",
           "group": "1_agent@4"
         },
         {
           "command": "gemini.agents.tryInWorkspace",
-          "when": "view == gemini.agents && viewItem =~ /\\.worktree/ && config.gemini.agents.mergeBack != commit",
+          "when": "view == gemini.agents && viewItem =~ /\\.worktree/",
           "group": "1_agent@4"
         },
         {
@@ -1354,12 +1349,9 @@
               "try",
               "commit"
             ],
-            "enumDescriptions": [
-              "%configuration.agents.mergeBack.try%",
-              "%configuration.agents.mergeBack.commit%"
-            ],
             "default": "try",
-            "markdownDescription": "%configuration.agents.mergeBack%"
+            "markdownDescription": "%configuration.agents.mergeBack%",
+            "deprecationMessage": "%configuration.agents.mergeBack.deprecated%"
           },
           "gemini.agents.defaultMode": {
             "type": "string",
