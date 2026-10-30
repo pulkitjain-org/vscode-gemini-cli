@@ -23,7 +23,7 @@ import type { TryChoice } from './panelProtocol';
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 50;
+export const chatProtocolVersion = 51;
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.signIn', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog', 'gemini.agents.openTerminal', 'gemini.designSystem.sync'] as const;
@@ -322,6 +322,8 @@ export type FromWebview =
 	| { readonly type: 'ready'; readonly protocol?: number }
 	/** The transcript from `reset` is on screen. */
 	| { readonly type: 'shown' }
+	/** A turn ended: how long the view spent rendering its live updates (streamed chunks, steps), for the turn's log line. */
+	| { readonly type: 'turnRendered'; readonly turnEnd: string; readonly renderMs: number; readonly updates: number }
 	/** `when` matters only while the agent works: `now` steers the running turn, `queue` waits for it to end. */
 	/** `includeEdits`: the message box's "Include your edits", sending the user's edits to tried files to the agent first. */
 	| { readonly type: 'prompt'; readonly text: string; readonly attachments: readonly Attachment[]; readonly when?: 'now' | 'queue'; readonly includeEdits?: boolean }

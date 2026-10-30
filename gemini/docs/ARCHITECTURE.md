@@ -37,7 +37,8 @@ extensions/gemini/
   scripts/          bundle-cli.mts (fetches the pinned CLI into cli/ for release builds), build-file-icons.py,
                     build-emoji-data.mts (the emoji picker's data), bench-run.mts (the benchmark outside
                     the app), and the measurements FINDINGS.md quotes: perf-real.mts (a real account),
-                    perf-first-reply.mts and perf-threads.mts, probe-enhance.mts and coordinator-spike.mts.
+                    perf-first-reply.mts and perf-threads.mts, probe-enhance.mts and coordinator-spike.mts,
+                    and startup-log.mts, which reads the app's own startup lines across launches.
   test/             Vitest unit tests, a scripted fake ACP agent and MCP server, real-CLI tests,
                     performance budgets, and theme and webview tests.
 src/vs/workbench/contrib/gemini/

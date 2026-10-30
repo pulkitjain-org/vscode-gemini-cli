@@ -119,6 +119,9 @@ export type TranscriptItem =
 		readonly at?: number;
 		/** From the prompt's send to the agent's first reply text, in ms. */
 		readonly firstTokenMs?: number;
+		/** How long the view spent rendering the turn's live updates, in ms, and how many there were; set by the view once the turn ends. */
+		readonly renderMs?: number;
+		readonly renderedUpdates?: number;
 		/** How many files the turn changed. */
 		readonly files?: number;
 		/** `available` while the turn's changes can be undone in this window; `undone` once they were. */
@@ -418,7 +421,7 @@ export class ChatTranscript {
 	}
 
 	/** Changes what a turnEnd item offers. */
-	updateTurnEnd(id: string, patch: Pick<TurnEndItem, 'files' | 'undo' | 'retry' | 'buildPlan' | 'build' | 'firstTokenMs' | 'unfinished'>): void {
+	updateTurnEnd(id: string, patch: Pick<TurnEndItem, 'files' | 'undo' | 'retry' | 'buildPlan' | 'build' | 'firstTokenMs' | 'renderMs' | 'renderedUpdates' | 'unfinished'>): void {
 		const item = this._items.find(i => i.id === id);
 		if (item?.kind === 'turnEnd') {
 			const next: Record<string, unknown> = { ...item, ...patch };

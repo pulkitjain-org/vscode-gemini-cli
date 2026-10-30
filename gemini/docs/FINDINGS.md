@@ -40,7 +40,21 @@ Re-check both kinds when GeminiCode moves to a new CLI version.
   - The CLI asks its wrapper to restart it by exiting with code 199 (`RELAUNCH_EXIT_CODE`). The sidecar restarts it at once on that code, at most three times in a row.
   - The wrapper forwards admin settings over IPC between relaunches. The CLI does that only when `process.send` exists, so it is skipped.
 - In ACP mode the CLI ends when its standard input closes: `runAcpClient` awaits the connection's end and runs its exit cleanup. Measured with 0.64.0: it exits within about 10 ms of the end of input, with and without a `session/new` before it. So the CLI dies with the extension host however the host ends; on an ordinary exit the sidecar also kills it.
-- GeminiCode logs one line per launch, "Startup: services up … ms after activation; agent spawned …, process ready … ms after spawn, first session ready … ms after spawn", to measure this on real machines.
+- GeminiCode logs one line per launch, "Startup: product loaded … ms, records loaded …, services up …, home shown …, agent spawned …, agent ready …, first session …, first prompt sent …, first text … after activation", to measure this on real machines: once when the first session opens and again, with every mark, after the first reply's text. `scripts/startup-log.mts` reads the installed app's logs and shows each mark's median across launches. Each chat turn logs one line too, "Turn: … ms, first output … ms after send; the view rendered … updates in … ms".
+
+### Startup on a real machine
+
+`startup-log.mts` over the seven launches of GeminiCode 1.7 logged on a developer's Mac before the marks above existed (so only the four marks that line had), ms after activation, median and range:
+
+| Mark | Median | Range |
+| --- | --- | --- |
+| Services up (the end of `activate`) | 1,658 | 253 to 1,924 |
+| Agent spawned | 4,868 | 3,560 to 5,403 |
+| Agent ready (`initialize` answered) | 15,252 | 11,433 to 24,641 |
+
+- The agent is spawned about 3 s after services are up: the warm-up's delay (`agentWarmup.ts`), there so the window's own startup goes first.
+- From spawn to `initialize` took 6 to 21 s (median 9.8 s), against 2.9 s for `perf-real.mts` on the same CLI. The difference is what the window is doing meanwhile (the index, the team tools' keychain reads, Home) and the sign-in.
+- The first session opens when the user opens a chat, so its mark says when they did, not what they waited; the first prompt's marks are the ones to read for that.
 - The real start takes about 2.1 s longer than the stand-in's. The stand-in uses an API key, so the difference is the Google sign-in's own work at start (inferred from the two setups, not traced). GeminiCode hides it by starting the agent a few seconds after the window opens when a sign-in is saved.
 
 ## Sessions

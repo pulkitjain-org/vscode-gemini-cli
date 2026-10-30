@@ -50,6 +50,7 @@ import { FixWithGemini } from './host/quickFix';
 import { parseMemoryList, runCliCommands } from './acp/cliCommands';
 import { disposeGitIgnore } from './host/workspaceFileSystem';
 import { logErrorCommand } from './host/errorNotice';
+import { beginStartup } from './host/startup';
 
 /** Finishes the writes that must outlive the window; set by activate. */
 let saveBeforeExit: (() => Promise<void>) | undefined;
@@ -59,9 +60,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	// Modules that load a chunk find it beside this file, which in a development build is not beside them.
 	setExtensionDir(__dirname);
 	const log = vscode.window.createOutputChannel('Gemini', { log: true });
+	// One line per launch, to measure startup on real machines (FINDINGS.md, startup marks): once the first
+	// session opens, and again with every mark once the first reply's text arrives. scripts/startup-log.mts reads them.
+	const marks = beginStartup(activationStart, () => log.info(marks.line()));
 	// The agent list is read while the product info loads.
 	const savedAgents = loadSavedAgents(context);
 	await loadProductInfo();
+	marks.mark('product loaded');
 	initModelPreference(context.globalState);
 	initReactionRecents(context.globalState);
 	setStorageDirs({
@@ -88,7 +93,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		onDirectFailed: err => log.info(`Prompt enhancement's direct request failed (${errorMessage(err)}); asking the CLI`),
 		onDidEnhance: ({ ms, model }) => log.info(`Prompt enhanced in ${ms} ms with ${model ?? 'the default model'}`),
 	});
-	const agentsView = new AgentsView(context, service, diffPreview, fileIndex, enhancer, await savedAgents);
+	const agents = await savedAgents;
+	marks.mark('records loaded');
+	const agentsView = new AgentsView(context, service, diffPreview, fileIndex, enhancer, agents);
 	saveBeforeExit = () => agentsView.saveAll();
 	// Agents mode's Changes panel follows the agent in front, as the Changes view does.
 	const changesPanel = new ChangesPanel(context.extensionUri);
@@ -320,11 +327,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		vscode.commands.registerCommand('gemini.setProjectId', () => setProjectId()),
 		vscode.commands.registerCommand('gemini.signIn', () => setup.signIn()),
 	);
-	// One line per launch, to measure startup on real machines (FINDINGS.md, starting the agent).
-	const servicesUpMs = Date.now() - activationStart;
+	marks.mark('services up');
 	const started = service.onDidStart(times => {
 		started.dispose();
-		log.info(`Startup: services up ${servicesUpMs} ms after activation; agent spawned ${times.spawnedAt - activationStart} ms after activation, process ready ${times.processReadyMs} ms after spawn, first session ready ${times.firstSessionMs} ms after spawn`);
+		marks.mark('agent spawned', times.spawnedAt);
+		marks.mark('agent ready', times.spawnedAt + times.processReadyMs);
+		marks.mark('first session', times.spawnedAt + times.firstSessionMs);
+		log.info(marks.line());
 	});
 	context.subscriptions.push(started);
 }

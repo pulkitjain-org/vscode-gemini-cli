@@ -46,7 +46,7 @@ import { onSide } from './sideChatLoader';
 import { setRunState, setRunView } from './runButtons';
 import { updateOutline } from './promptNav';
 import { setSideLinks } from './sideLinks';
-import { appended, applyItem, isNearBottom, reset, setFoldWork, setStall, settleScroll, updateWorking } from './transcript';
+import { appended, applyItem, isNearBottom, reset, setFoldWork, setStall, settleScroll, takeRenderStats, updateWorking } from './transcript';
 import { showBreakdown, showContext, showQuota, toggleUsage, updateUsage } from './usage';
 import { state, strings, ui, vscode } from './view';
 
@@ -102,8 +102,12 @@ function applyUpdates(updates: readonly ItemUpdate[]): void {
 	if (updates.some(update => update.kind === 'user')) {
 		updateOutline();
 	}
-	if (updates.some(update => update.kind === 'turnEnd')) {
+	const turnEnd = updates.findLast(update => update.kind === 'turnEnd');
+	if (turnEnd) {
 		updateUsage();
+		// What the view spent on the turn, for its line in the Gemini log.
+		const { ms, updates: rendered } = takeRenderStats();
+		vscode.postMessage({ type: 'turnRendered', turnEnd: turnEnd.id, renderMs: ms, updates: rendered });
 	}
 	updatePlaceholder();
 }

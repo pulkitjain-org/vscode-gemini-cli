@@ -39,6 +39,7 @@ import { agentsColumn } from './editorPlacement';
 import { createNonce, escapeAttribute } from './webviewHtml';
 import { openTeamLink } from './teamLinks';
 import { showError } from './errorNotice';
+import { markStartup } from './startup';
 
 const homeViewType = 'gemini.agentHome';
 const layoutKey = 'gemini.home.layout';
@@ -161,6 +162,7 @@ export class AgentHome implements vscode.Disposable {
 		});
 		panel.iconPath = vscode.Uri.joinPath(this.extensionUri, 'media', 'gemini.svg');
 		panel.webview.html = this.html(panel.webview, media);
+		markStartup('home shown');
 		panel.webview.onDidReceiveMessage((message: FromHome) => this.onMessage(message).catch(err => void showError(errorMessage(err))));
 		panel.onDidChangeViewState(e => {
 			if (e.webviewPanel.visible) {

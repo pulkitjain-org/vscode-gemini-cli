@@ -143,11 +143,28 @@ function keepFocus<T>(change: () => T): T {
  * scroll to the bottom whatever its position (the user's own message).
  */
 export function applyItem(item: TranscriptItem, live: boolean): boolean {
+	const timed = live && state.busy;
+	const started = timed ? performance.now() : 0;
 	const scroll = keepFocus(() => addOrUpdate(item, live));
+	if (timed) {
+		renderStats.ms += performance.now() - started;
+		renderStats.updates++;
+	}
 	if (item.kind === 'permission') {
 		markNewestCard();
 	}
 	return scroll;
+}
+
+/** The time spent on live updates while the agent works, summed until a turn ends (`takeRenderStats`). */
+const renderStats = { ms: 0, updates: 0 };
+
+/** The turn's render time and update count so far, which start again from zero. */
+export function takeRenderStats(): { readonly ms: number; readonly updates: number } {
+	const taken = { ms: Math.round(renderStats.ms), updates: renderStats.updates };
+	renderStats.ms = 0;
+	renderStats.updates = 0;
+	return taken;
 }
 
 function addOrUpdate(item: TranscriptItem, live: boolean): boolean {

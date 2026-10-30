@@ -64,6 +64,7 @@ import { ChatSettings, onDidChangeSendWith, sendsWithCmdEnter } from './chat/cha
 import { SharedPageChip } from './chat/chatSharedPage';
 import { SideLinksColumn } from './chat/chatSideLinks';
 import { ChatUsage, contextCommand, statsCommand } from './chat/chatUsage';
+import { markStartup } from './startup';
 
 export type { ChatControllerOptions, ChatEnhancer, ChatGit, ChatHost, ChatProject, ChatSharedPage, ChatTerminal, ChatWorkspace, FileSearch } from './chat/chatOptions';
 
@@ -315,6 +316,7 @@ export class ChatController implements vscode.Disposable {
 						}
 						if (this.timing.firstText === undefined && event.kind === 'text' && event.role === 'agent') {
 							this.timing.firstText = Date.now();
+							markStartup('first text');
 						}
 					}
 					this.transcript.apply(event);
@@ -870,6 +872,7 @@ export class ChatController implements vscode.Disposable {
 				page: page?.note,
 			});
 			this.timing.sent = Date.now();
+			markStartup('first prompt sent');
 			promptAt = this.transcript.items.length;
 			const { stopReason, usage } = await this.promptRecovering(content);
 			delivered = true;
@@ -1450,6 +1453,16 @@ export class ChatController implements vscode.Disposable {
 			case 'shown':
 				this.service.open?.();
 				break;
+			case 'turnRendered': {
+				// One line per turn in the Gemini log: the agent's time, the model's first output, and the view's share.
+				const item = this.transcript.items.find(i => i.id === message.turnEnd);
+				if (item?.kind === 'turnEnd') {
+					this.transcript.updateTurnEnd(item.id, { renderMs: message.renderMs, renderedUpdates: message.updates });
+					const firstToken = item.firstTokenMs === undefined ? '' : `, first output ${item.firstTokenMs} ms after send`;
+					this.service.writeLog?.(`Turn: ${item.durationMs} ms${firstToken}; the view rendered ${message.updates} updates in ${message.renderMs} ms`);
+				}
+				break;
+			}
 			case 'ready':
 				if (message.protocol !== chatProtocolVersion) {
 					void vscode.window.showWarningMessage(vscode.l10n.t("The Gemini chat view's script is out of date. Rebuild it with \"npm run gulp compile-extension-media\" (or keep \"npm run watch\" running) and reload the window."));
