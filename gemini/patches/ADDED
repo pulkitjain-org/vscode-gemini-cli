@@ -1,5 +1,6 @@
 .agents/skills/geminicode-real-app/SKILL.md
 .claude/CLAUDE.md
+build/lib/test/nodeCompileCache.test.ts
 resources/darwin/Assets.car
 resources/darwin/dmg-background.tiff
 src/vs/platform/browserView/common/geminiAgentFiles.ts
