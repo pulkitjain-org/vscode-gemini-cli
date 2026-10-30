@@ -10,7 +10,7 @@
 }
 
 .audit .hint .mono {
-	font-size: 12px;
+	font-size: var(--gc-text-sm);
 }
 
 .audit-filters {
@@ -25,7 +25,7 @@
 	display: inline-flex;
 	align-items: center;
 	gap: 6px;
-	font-size: 12px;
+	font-size: var(--gc-text-sm);
 }
 
 .audit-filter input {
@@ -34,12 +34,12 @@
 }
 
 .audit-select {
-	padding: 3px 6px;
+	padding: 4px 8px;
 	border: 1px solid var(--gemini-border-strong);
 	border-radius: var(--gemini-radius-small);
 	background: var(--gemini-surface);
 	color: var(--vscode-foreground);
-	font-size: 12px;
+	font-size: var(--gc-text-sm);
 }
 
 .audit-filters .row-actions {
@@ -58,20 +58,20 @@
 .audit-table {
 	width: 100%;
 	border-collapse: collapse;
-	font-size: 12px;
+	font-size: var(--gc-text-sm);
 }
 
 .audit-table th {
-	padding: 7px 10px;
+	padding: 8px 8px;
 	border-bottom: 1px solid var(--gemini-border);
-	font-weight: 500;
+	font-weight: var(--gc-weight-medium);
 	color: var(--gemini-faint);
 	text-align: left;
 	white-space: nowrap;
 }
 
 .audit-table td {
-	padding: 7px 10px;
+	padding: 8px 8px;
 	border-bottom: 1px solid var(--gemini-border);
 	vertical-align: top;
 }
@@ -81,12 +81,12 @@
 }
 
 .audit-table td.mono {
-	font-size: 11px;
+	font-size: var(--gc-text-xs);
 	white-space: nowrap;
 }
 
 .audit-table td.mono .tool-logo {
-	margin-right: 5px;
+	margin-right: 4px;
 	vertical-align: -2px;
 }
 

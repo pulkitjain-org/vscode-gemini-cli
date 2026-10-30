@@ -12,16 +12,16 @@ body.team-flow {
 .team-flow #flow {
 	display: flex;
 	justify-content: center;
-	padding: 28px 20px 40px;
+	padding: 32px 24px 40px;
 }
 
 .flow-dialog {
 	box-sizing: border-box;
 	width: min(760px, 100%);
-	border: 1px solid var(--gemini-border);
-	border-radius: var(--gemini-radius-large);
+	border: var(--gc-hairline);
+	border-radius: var(--gc-radius-overlay);
 	background: var(--gemini-card);
-	box-shadow: 0 10px 34px var(--gemini-shadow);
+	box-shadow: var(--gc-shadow);
 }
 
 .flow-dialog.wide {
@@ -32,7 +32,7 @@ body.team-flow {
 	display: flex;
 	align-items: center;
 	gap: 12px;
-	padding: 18px 22px 8px;
+	padding: 16px 24px 8px;
 }
 
 .flow-tile {
@@ -53,12 +53,12 @@ body.team-flow {
 
 .flow-titles h1 {
 	margin: 0;
-	font-size: 17px;
-	font-weight: 600;
+	font-size: var(--gc-text-lg);
+	font-weight: var(--gc-weight-semibold);
 }
 
 .flow-subtitle {
-	margin-top: 3px;
+	margin-top: 4px;
 	color: var(--gemini-muted);
 }
 
@@ -77,14 +77,14 @@ body.team-flow {
 	display: flex;
 	flex-direction: column;
 	gap: 8px;
-	padding: 6px 22px 18px;
+	padding: 8px 24px 16px;
 }
 
 .flow-foot {
 	display: flex;
 	align-items: center;
 	gap: 8px;
-	padding: 12px 22px;
+	padding: 12px 24px;
 	border-top: 1px solid var(--gemini-border);
 }
 
@@ -96,26 +96,26 @@ body.team-flow {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	margin-top: 10px;
+	margin-top: 8px;
 }
 
 .flow-heading h2,
 .flow-side h2 {
 	margin: 0;
-	font-size: 13px;
-	font-weight: 600;
+	font-size: var(--gc-text-md);
+	font-weight: var(--gc-weight-semibold);
 }
 
 .flow-side h2.quiet {
-	margin-top: 14px;
+	margin-top: 16px;
 	color: var(--gemini-muted);
-	font-weight: 500;
+	font-weight: var(--gc-weight-medium);
 }
 
 .hint {
 	margin: 0;
 	color: var(--gemini-muted);
-	font-size: 12px;
+	font-size: var(--gc-text-sm);
 }
 
 .hint.error,
@@ -125,11 +125,11 @@ body.team-flow {
 
 .mono {
 	font-family: var(--vscode-editor-font-family);
-	font-size: 12px;
+	font-size: var(--gc-text-sm);
 }
 
 .small {
-	font-size: 11.5px;
+	font-size: var(--gc-text-sm);
 }
 
 .accent {
@@ -139,14 +139,14 @@ body.team-flow {
 .flow-input {
 	box-sizing: border-box;
 	width: 100%;
-	padding: 7px 10px;
+	padding: 8px 8px;
 	border: 1px solid var(--gemini-border-strong);
 	border-radius: var(--gemini-radius-small);
 	background: var(--gemini-composer);
 	color: var(--vscode-input-foreground, var(--vscode-foreground));
 	font-family: inherit;
-	font-size: 13px;
-	line-height: 1.5;
+	font-size: var(--gc-text-md);
+	line-height: var(--gc-leading-body);
 }
 
 textarea.flow-input {
@@ -171,7 +171,7 @@ button.link:hover:not(:disabled) {
 
 button.small {
 	padding: 1px 8px;
-	font-size: 12px;
+	font-size: var(--gc-text-sm);
 }
 
 button.wide {
@@ -183,10 +183,11 @@ button.wide {
 	display: inline-flex;
 	align-items: center;
 	gap: 4px;
-	padding: 1px 7px;
-	border-radius: 999px;
+	padding: 1px 8px;
+	border-radius: var(--gc-radius-pill);
 	background: var(--gemini-hover);
-	font-size: 11.5px;
+	font-size: var(--gc-text-xs);
+	font-weight: var(--gc-weight-medium);
 	white-space: nowrap;
 }
 
@@ -226,7 +227,7 @@ button.wide {
 	display: flex;
 	align-items: center;
 	gap: 10px;
-	padding: 7px 10px;
+	padding: 8px 8px;
 	border-radius: var(--gemini-radius-small);
 	cursor: pointer;
 }
@@ -240,7 +241,7 @@ button.wide {
 	display: flex;
 	align-items: flex-start;
 	gap: 9px;
-	padding: 5px 0;
+	padding: 4px 0;
 	cursor: pointer;
 }
 
@@ -259,7 +260,7 @@ button.wide {
 }
 
 .flow-check-text .hint {
-	font-size: 11.5px;
+	font-size: var(--gc-text-sm);
 }
 
 .flow-attachment {
@@ -281,14 +282,14 @@ button.wide {
 	align-items: center;
 	gap: 6px;
 	margin-top: 8px;
-	padding: 7px 10px;
+	padding: 8px 8px;
 	border: 1px solid var(--gemini-border);
 	border-radius: var(--gemini-radius-small);
 }
 
 .flow-people-label {
 	margin-right: 4px;
-	font-weight: 500;
+	font-weight: var(--gc-weight-medium);
 }
 
 .chip.person {
@@ -296,9 +297,10 @@ button.wide {
 	align-items: center;
 	gap: 2px;
 	padding: 1px 4px 1px 8px;
-	border-radius: 999px;
+	border-radius: var(--gc-radius-pill);
 	background: var(--gemini-hover);
-	font-size: 12px;
+	font-size: var(--gc-text-xs);
+	font-weight: var(--gc-weight-medium);
 }
 
 .flow-menu-holder {
@@ -328,11 +330,11 @@ button.wide {
 	display: flex;
 	flex-direction: column;
 	gap: 4px;
-	padding: 10px 12px;
+	padding: 8px 12px;
 	border-radius: var(--gemini-radius);
 	background: var(--gemini-raised);
 	color: var(--gemini-muted);
-	font-size: 12px;
+	font-size: var(--gc-text-sm);
 }
 
 .flow-note strong {
@@ -355,7 +357,7 @@ button.wide {
 	display: flex;
 	align-items: center;
 	gap: 8px;
-	padding: 10px 12px;
+	padding: 8px 12px;
 	border-radius: var(--gemini-radius-small);
 	background: color-mix(in srgb, var(--gemini-ok) 12%, transparent);
 }
@@ -381,7 +383,7 @@ button.wide {
 	display: flex;
 	flex-direction: column;
 	gap: 6px;
-	padding-left: 26px;
+	padding-left: 24px;
 }
 
 .flow-log-fields {
@@ -394,7 +396,7 @@ button.wide {
 	flex-direction: column;
 	gap: 3px;
 	color: var(--gemini-muted);
-	font-size: 12px;
+	font-size: var(--gc-text-sm);
 }
 
 .flow-field input[type='date'] {
@@ -406,7 +408,7 @@ button.wide {
 	flex-wrap: wrap;
 	align-items: center;
 	gap: 8px;
-	padding: 9px 12px;
+	padding: 8px 12px;
 	border-bottom: 1px solid var(--gemini-border);
 }
 
@@ -445,7 +447,7 @@ button.wide {
 	display: flex;
 	flex-direction: column;
 	gap: 8px;
-	padding-left: 18px;
+	padding-left: 16px;
 	border-left: 1px solid var(--gemini-border);
 }
 
@@ -488,7 +490,7 @@ button.wide {
 	display: flex;
 	flex-direction: column;
 	gap: 6px;
-	padding: 10px 12px;
+	padding: 8px 12px;
 	border: 1px solid var(--gemini-border);
 	border-radius: var(--gemini-radius);
 	background: var(--gemini-raised);
@@ -496,7 +498,7 @@ button.wide {
 
 .flow-finding.compact {
 	gap: 3px;
-	padding: 7px 10px;
+	padding: 8px 8px;
 }
 
 .flow-finding.mine {
@@ -522,7 +524,7 @@ button.wide {
 	flex-wrap: wrap;
 	align-items: center;
 	gap: 6px 14px;
-	font-size: 12px;
+	font-size: var(--gc-text-sm);
 }
 
 .flow-finding-actions button.link {
@@ -546,11 +548,11 @@ button.wide {
 
 .flow-suggestion-old {
 	margin: 0;
-	padding: 6px 10px;
+	padding: 8px 8px;
 	border-radius: var(--gemini-radius-small);
 	background: var(--vscode-diffEditor-removedLineBackground, color-mix(in srgb, var(--gemini-error) 14%, transparent));
 	font-family: var(--vscode-editor-font-family);
-	font-size: 12px;
+	font-size: var(--gc-text-sm);
 	white-space: pre-wrap;
 	overflow-wrap: anywhere;
 }
@@ -558,7 +560,7 @@ button.wide {
 textarea.flow-suggestion-new {
 	background: var(--vscode-diffEditor-insertedLineBackground, color-mix(in srgb, var(--gemini-ok) 14%, var(--gemini-composer)));
 	font-family: var(--vscode-editor-font-family);
-	font-size: 12px;
+	font-size: var(--gc-text-sm);
 }
 
 .flow-suggestion-row {
@@ -566,7 +568,7 @@ textarea.flow-suggestion-new {
 	flex-wrap: wrap;
 	align-items: center;
 	gap: 8px;
-	font-size: 12px;
+	font-size: var(--gc-text-sm);
 }
 
 .flow-suggestion-row .flow-check {
@@ -576,7 +578,7 @@ textarea.flow-suggestion-new {
 button.flow-add {
 	justify-content: center;
 	gap: 6px;
-	padding: 7px;
+	padding: 8px;
 	border: 1px dashed var(--gemini-border-strong);
 	border-radius: var(--gemini-radius);
 	background: none;
@@ -591,7 +593,7 @@ button.flow-add:hover {
 	display: flex;
 	flex-direction: column;
 	gap: 6px;
-	padding: 10px 12px;
+	padding: 8px 12px;
 	border: 1px solid var(--gemini-border);
 	border-radius: var(--gemini-radius);
 }
@@ -600,7 +602,7 @@ button.flow-add:hover {
 	display: flex;
 	flex-direction: column;
 	gap: 2px;
-	font-size: 12.5px;
+	font-size: var(--gc-text-md);
 }
 
 .flow-thread-body {
@@ -612,7 +614,7 @@ button.flow-add:hover {
 
 .flow-thread .flow-finding-top .flow-check {
 	padding: 0;
-	font-size: 12px;
+	font-size: var(--gc-text-sm);
 }
 
 .flow-banner {
@@ -622,7 +624,7 @@ button.flow-add:hover {
 	padding: 8px 12px;
 	border-radius: var(--gemini-radius-small);
 	background: var(--gemini-hover);
-	font-size: 12.5px;
+	font-size: var(--gc-text-md);
 }
 
 .flow-banner.warn {
@@ -659,7 +661,7 @@ button.flow-target-button .mono {
 }
 
 .flow-finding-title {
-	font-weight: 500;
+	font-weight: var(--gc-weight-medium);
 }
 
 button.flow-file {
@@ -667,12 +669,12 @@ button.flow-file {
 	align-items: center;
 	gap: 8px;
 	width: 100%;
-	padding: 3px 6px;
+	padding: 4px 8px;
 	border: none;
 	border-radius: var(--gemini-radius-small);
 	background: none;
 	color: var(--vscode-foreground);
-	font-size: 12px;
+	font-size: var(--gc-text-sm);
 	text-align: left;
 }
 
@@ -700,7 +702,7 @@ button.flow-file:hover {
 }
 
 .flow-file .count .codicon {
-	font-size: 12px;
+	font-size: var(--gc-text-sm);
 }
 
 /* The team part of the Changes panel: the merge request and its merge checklist, each a card. */
@@ -709,7 +711,7 @@ button.flow-file:hover {
 	display: flex;
 	flex-direction: column;
 	gap: 12px;
-	padding: 10px 12px 12px;
+	padding: 8px 12px 12px;
 	border-bottom: 1px solid var(--gemini-border);
 }
 
@@ -727,7 +729,7 @@ button.flow-file:hover {
 	display: flex;
 	flex-direction: column;
 	gap: 2px;
-	padding: 12px 14px;
+	padding: 12px 16px;
 	border: 1px solid var(--gemini-border);
 	border-radius: var(--gemini-radius);
 	background: var(--gemini-card);
@@ -753,7 +755,7 @@ button.flow-file:hover {
 	flex: none;
 	max-width: 50%;
 	overflow: hidden;
-	font-size: 11px;
+	font-size: var(--gc-text-xs);
 	color: var(--gemini-faint);
 	white-space: nowrap;
 	text-overflow: ellipsis;
@@ -763,7 +765,7 @@ button.flow-file:hover {
 	display: flex;
 	flex-direction: column;
 	gap: 4px;
-	padding: 6px 0;
+	padding: 8px 0;
 	border-top: 1px solid var(--gemini-border);
 }
 
@@ -802,8 +804,8 @@ button.flow-file:hover {
 	display: flex;
 	align-items: center;
 	gap: 8px;
-	padding-left: 21px;
-	font-size: 12px;
+	padding-left: 24px;
+	font-size: var(--gc-text-sm);
 }
 
 .mr-thread {
@@ -829,7 +831,7 @@ button.flow-file:hover {
 	display: flex;
 	align-items: flex-start;
 	gap: 8px;
-	padding: 5px 0;
+	padding: 4px 0;
 	border-top: 1px solid var(--gemini-border);
 }
 
@@ -847,7 +849,7 @@ button.flow-file:hover {
 }
 
 .mr-check-mark .codicon {
-	font-size: 11px;
+	font-size: var(--gc-text-xs);
 }
 
 .mr-check.ok .mr-check-mark {
@@ -870,7 +872,7 @@ button.flow-file:hover {
 }
 
 .mr-check-source {
-	font-size: 11px;
+	font-size: var(--gc-text-xs);
 	color: var(--gemini-faint);
 	overflow-wrap: anywhere;
 }
@@ -898,11 +900,11 @@ button.flow-file:hover {
 
 .mr-request {
 	margin: 2px 0 0;
-	padding: 8px 10px;
+	padding: 8px 8px;
 	border: 1px solid var(--gemini-border);
 	border-radius: var(--gemini-radius-small);
 	background: var(--gemini-surface);
-	font-size: 11px;
+	font-size: var(--gc-text-xs);
 	color: var(--gemini-muted);
 	white-space: pre-wrap;
 	overflow-wrap: anywhere;
@@ -917,6 +919,6 @@ button.flow-file:hover {
 }
 
 .mr-merge-note {
-	font-size: 12px;
+	font-size: var(--gc-text-sm);
 	color: var(--gemini-faint);
 }

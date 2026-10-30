@@ -23,7 +23,7 @@
 
 .connections .tool-row {
 	align-items: flex-start;
-	padding: 14px 16px;
+	padding: 16px 16px;
 }
 
 /* The tool's logo, bare, at the row's start. */
@@ -53,7 +53,7 @@
 
 /* Jira's other sites, each with its own token, under the Jira row. */
 .site-rows {
-	margin-top: 10px;
+	margin-top: 8px;
 	border: 1px solid var(--gemini-border);
 	border-radius: var(--gemini-radius-small);
 	overflow: hidden;
@@ -62,8 +62,10 @@
 .site-row {
 	display: flex;
 	align-items: center;
-	gap: 10px;
-	padding: 8px 10px;
+	gap: 8px;
+	min-height: var(--gc-row);
+	box-sizing: border-box;
+	padding: 8px 8px;
 }
 
 .site-row + .site-row {
@@ -86,7 +88,7 @@
 	display: flex;
 	align-items: flex-start;
 	gap: 10px;
-	padding: 10px 12px;
+	padding: 8px 12px;
 	border: 1px solid var(--gemini-border);
 	border-radius: var(--gemini-radius-small);
 	cursor: pointer;
@@ -103,7 +105,7 @@
 }
 
 .choice input {
-	margin: 3px 0 0;
+	margin: 4px 0 0;
 	accent-color: var(--gemini-accent);
 }
 
@@ -115,7 +117,7 @@
 
 .choice-problem {
 	color: var(--gemini-error);
-	font-size: 12px;
+	font-size: var(--gc-text-sm);
 }
 
 /* The repository's own Jira and GitLab servers: a card with a warm hairline, above the tools. */
@@ -124,25 +126,25 @@
 	flex-direction: column;
 	gap: 8px;
 	margin-top: 24px;
-	padding: 12px 14px;
+	padding: 12px 16px;
 	border: 1px solid color-mix(in srgb, var(--gemini-warn) 45%, transparent);
 	border-radius: var(--gemini-radius);
 	background: var(--gemini-card);
 }
 
 .team-servers h2 {
-	font-size: 13px;
+	font-size: var(--gc-text-md);
 }
 
 .team-servers .hint {
-	font-size: 12px;
+	font-size: var(--gc-text-sm);
 }
 
 .team-server-list {
 	margin: 0;
 	padding: 0;
 	list-style: none;
-	font-size: 12px;
+	font-size: var(--gc-text-sm);
 	color: var(--gemini-muted);
 }
 
@@ -151,7 +153,7 @@
 }
 
 .team-server-list .mono {
-	font-size: 11px;
+	font-size: var(--gc-text-xs);
 }
 
 .connections .tool-row .row-detail {
@@ -179,9 +181,10 @@ button.quiet:hover:not(:disabled) {
 	display: inline-flex;
 	align-items: center;
 	gap: 5px;
-	padding: 0 7px;
-	border-radius: 999px;
-	font-size: 11.5px;
+	padding: 0 8px;
+	border-radius: var(--gc-radius-pill);
+	font-size: var(--gc-text-xs);
+	font-weight: var(--gc-weight-medium);
 	line-height: 18px;
 	background: var(--gemini-hover);
 	color: var(--gemini-muted);
@@ -219,8 +222,8 @@ button.quiet:hover:not(:disabled) {
 	display: flex;
 	align-items: center;
 	gap: 12px;
-	margin-top: 20px;
-	padding: 10px 12px;
+	margin-top: 24px;
+	padding: 8px 12px;
 	border: 1px solid color-mix(in srgb, var(--gemini-warn) 45%, transparent);
 	border-radius: var(--gemini-radius);
 	background: color-mix(in srgb, var(--gemini-warn) 8%, transparent);
@@ -230,7 +233,7 @@ button.quiet:hover:not(:disabled) {
 	display: flex;
 	flex: 1;
 	gap: 8px;
-	line-height: 1.45;
+	line-height: var(--gc-leading-row);
 }
 
 .allowlist-text .codicon {
@@ -257,31 +260,31 @@ button.quiet:hover:not(:disabled) {
 
 .dialog {
 	width: min(560px, 100%);
-	border: 1px solid var(--gemini-border-strong);
-	border-radius: var(--gemini-radius-large);
+	border: var(--gc-hairline);
+	border-radius: var(--gc-radius-overlay);
 	background: var(--gemini-popover);
-	box-shadow: 0 12px 40px var(--gemini-shadow);
+	box-shadow: var(--gc-shadow);
 }
 
 .dialog-head {
 	display: flex;
 	align-items: center;
 	gap: 12px;
-	padding: 18px 20px 6px;
+	padding: 16px 24px 8px;
 }
 
 .dialog-head h2 {
 	flex: 1;
 	margin: 0;
-	font-size: 16px;
-	font-weight: 600;
+	font-size: var(--gc-text-lg);
+	font-weight: var(--gc-weight-semibold);
 }
 
 .dialog-body {
 	display: flex;
 	flex-direction: column;
 	gap: 16px;
-	padding: 10px 20px 18px;
+	padding: 8px 24px 16px;
 }
 
 .dialog-field {
@@ -291,7 +294,7 @@ button.quiet:hover:not(:disabled) {
 }
 
 .field-label {
-	font-weight: 600;
+	font-weight: var(--gc-weight-semibold);
 }
 
 .field-box {
@@ -299,7 +302,7 @@ button.quiet:hover:not(:disabled) {
 	align-items: center;
 	gap: 6px;
 	margin-top: 4px;
-	padding: 0 6px 0 10px;
+	padding: 0 8px 0 8px;
 	border: 1px solid var(--gemini-border-strong);
 	border-radius: var(--gemini-radius-small);
 	background: var(--vscode-input-background);
@@ -312,17 +315,17 @@ button.quiet:hover:not(:disabled) {
 .field-box input {
 	flex: 1;
 	min-width: 0;
-	padding: 7px 0;
+	padding: 8px 0;
 	border: none;
 	outline: none;
 	background: none;
 	color: var(--vscode-input-foreground);
 	font-family: inherit;
-	font-size: 13px;
+	font-size: var(--gc-text-md);
 }
 
 button.link-button {
-	padding: 3px 4px;
+	padding: 4px 4px;
 	border: none;
 	background: none;
 	color: var(--vscode-textLink-foreground);
@@ -332,7 +335,7 @@ button.link-button {
 	display: flex;
 	gap: 6px;
 	min-height: 18px;
-	margin-top: -6px;
+	margin-top: -8px;
 }
 
 .dialog-result:empty {
@@ -350,11 +353,11 @@ button.link-button {
 .keychain-note {
 	display: flex;
 	gap: 8px;
-	padding: 10px 12px;
+	padding: 8px 12px;
 	border-radius: var(--gemini-radius-small);
 	background: var(--gemini-card);
 	color: var(--gemini-muted);
-	line-height: 1.45;
+	line-height: var(--gc-leading-row);
 }
 
 .keychain-note .codicon {
@@ -365,7 +368,7 @@ button.link-button {
 	display: flex;
 	align-items: center;
 	gap: 8px;
-	padding: 12px 20px;
+	padding: 12px 24px;
 	border-top: 1px solid var(--gemini-border);
 }
 
