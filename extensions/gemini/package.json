@@ -131,6 +131,11 @@
         "category": "%category%"
       },
       {
+        "command": "gemini.reportProblem",
+        "title": "%command.reportProblem%",
+        "category": "%category%"
+      },
+      {
         "command": "gemini.showStatusMenu",
         "title": "%command.showStatusMenu%",
         "category": "%category%"

@@ -17,6 +17,7 @@ import { teamToolIds, teamToolNames } from '../acp/teamHttp';
 import { teamStatusSummary } from '../acp/teamStatus';
 import type { TeamConnections } from './teamConnections';
 import type { WorkspaceIndex } from './workspaceIndex';
+import { relativeTime } from './displayText';
 import { configSection, getProjectSettings, productInfo } from './configuration';
 import { developerToolsOn } from './developerTools';
 import { escapeMarkdown } from './markdown';
@@ -210,7 +211,12 @@ export class GeminiStatusBar implements vscode.Disposable {
 	private async showMenu(): Promise<void> {
 		const status = this.service.status;
 		const items: (vscode.QuickPickItem & { command?: string; run?: () => void })[] = [
-			{ label: status.phase === 'stopped' ? vscode.l10n.t("$(play) Start Agent") : vscode.l10n.t("$(debug-restart) Restart Agent"), command: 'gemini.restartAgent' },
+			{
+				label: status.phase === 'stopped' ? vscode.l10n.t("$(play) Start Agent") : vscode.l10n.t("$(debug-restart) Restart Agent"),
+				...status.phase === 'stopped' ? {} : { description: vscode.l10n.t("{0} sessions in the process", this.service.runtime.sessionCount) },
+				...this.service.lastRecycle ? { detail: vscode.l10n.t("Restarted {0} to free {1} idle sessions", relativeTime(this.service.lastRecycle.at, Date.now()), this.service.lastRecycle.sessions) } : {},
+				command: 'gemini.restartAgent',
+			},
 			{ label: vscode.l10n.t("$(project) Change Google Cloud Project ID"), description: getProjectSettings().resolved?.projectId, command: 'gemini.setProjectId' },
 			{ label: vscode.l10n.t("$(versions) Install or Change Gemini CLI Version..."), description: this.cli, command: 'gemini.installCliVersion' },
 			{ label: vscode.l10n.t("$(account) Sign In or Finish Setup in Terminal"), description: this.account, command: 'gemini.completeSetupInTerminal' },
@@ -306,7 +312,7 @@ function describePhase(status: AgentStatus): { icon: string; label: string } {
 	}
 }
 
-function describeCliSource(cli: CliResolution | undefined): string {
+export function describeCliSource(cli: CliResolution | undefined): string {
 	switch (cli?.source) {
 		case 'setting': return ` (${vscode.l10n.t("from the gemini.cliPath setting")})`;
 		case 'managed': return ` (${vscode.l10n.t("GeminiCode's copy")})`;

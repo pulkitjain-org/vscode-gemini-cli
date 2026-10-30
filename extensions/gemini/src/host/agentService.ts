@@ -30,6 +30,11 @@ import { sessionModel, sessionModelList } from './modelPreference';
 import { extensionChunk } from './lazyFeature';
 import { agentFileAccessPolicy, WorkspaceFileSystem } from './workspaceFileSystem';
 
+/** A process holding this many sessions, idle this long, is restarted to free them (`recycleIfIdle`). */
+const recycleSessions = 8;
+const recycleIdleMs = 30 * 60 * 1000;
+const recycleCheckMs = 60 * 1000;
+
 /** How long the first agent process of a launch took, from its spawn. */
 export interface StartupTimes {
 	/** When it was spawned (ms since the epoch). */
@@ -71,6 +76,11 @@ export class AgentService implements vscode.Disposable {
 	/** The missing pinned version last offered for install. */
 	private offeredVersion: string | undefined;
 	private idleRestart: { dispose(): void } | undefined;
+	/** Since when no prompt has run, in ms since the epoch, for recycling a process full of sessions. */
+	private idleSince = Date.now();
+	private readonly recycleTimer: ReturnType<typeof setInterval>;
+	/** The last restart made to free sessions, for the status bar's menu. */
+	private _lastRecycle: { readonly at: number; readonly sessions: number } | undefined;
 	/** The approval settings as last read, to tell a change that takes a permission away. */
 	private policy = getApprovalPolicy();
 	/** The --include-directories the running process was started with. */
@@ -231,7 +241,32 @@ export class AgentService implements vscode.Disposable {
 					this.restart();
 				}
 			}),
+			this.runtime.onDidBecomeIdle(() => this.idleSince = Date.now()),
 		);
+		this.recycleTimer = setInterval(() => this.recycleIfIdle(), recycleCheckMs);
+	}
+
+	/**
+	 * gemini-cli 0.66 has no `session/close`, so every session a process
+	 * opened (spares, Enhance prompt's, closed chats') stays in it, a few MB
+	 * each (FINDINGS.md, sessions). A process holding `recycleSessions` or
+	 * more that has served no prompt for `recycleIdleMs` is restarted: its
+	 * live chats reopen their sessions by id on their next prompt, as after
+	 * a crash, and the spare is opened again.
+	 */
+	private recycleIfIdle(): void {
+		const sessions = this.runtime.sessionCount;
+		if (!this.started || this.runtime.busy || sessions < recycleSessions || Date.now() - this.idleSince < recycleIdleMs) {
+			return;
+		}
+		this._lastRecycle = { at: Date.now(), sessions };
+		this.log.info(`Restarting the agent to free ${sessions} sessions; no prompt ran for ${Math.round((Date.now() - this.idleSince) / 60_000)} min`);
+		this.restart();
+	}
+
+	/** The last restart made to free sessions, if any. */
+	get lastRecycle(): { readonly at: number; readonly sessions: number } | undefined {
+		return this._lastRecycle;
 	}
 
 	/**
@@ -423,6 +458,7 @@ export class AgentService implements vscode.Disposable {
 	}
 
 	dispose(): void {
+		clearInterval(this.recycleTimer);
 		this.idleRestart?.dispose();
 		this.trust.dispose();
 		this.setupTerminal?.dispose();

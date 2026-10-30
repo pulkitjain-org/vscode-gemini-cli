@@ -26,8 +26,8 @@ const contributes = (JSON.parse(readFileSync(path.join(root, 'package.json'), 'u
 
 /** The budgets, with the count as of the latest change to each. */
 export const surfaceBudgets = {
-	// Commands in the palette with developer tools off: 49 as of 1.7.
-	paletteCommands: 49,
+	// Commands in the palette with developer tools off: 49 as of 1.7, plus Report a Problem.
+	paletteCommands: 50,
 	// Commands the palette adds with gemini.developer.showTools on: 8.
 	developerCommands: 8,
 	// Settings that are not deprecated: 47 as of 1.7.

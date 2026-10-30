@@ -10,7 +10,7 @@
 
 import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
-import * as path from 'node:path';
+import { writeFileAtomic } from '../fsUtil';
 import type { DocsRefresh, DocsScope } from './docsProtocol';
 
 export interface DocsSource {
@@ -123,10 +123,7 @@ export class DocsRegistry {
 	update(change: (sources: readonly DocsSource[]) => readonly DocsSource[]): Promise<readonly DocsSource[]> {
 		const next = this.writing.then(async () => {
 			const sources = change(await this.load());
-			await fs.mkdir(path.dirname(this.file), { recursive: true });
-			const temporary = `${this.file}.${process.pid}.tmp`;
-			await fs.writeFile(temporary, JSON.stringify({ version: 1, sources }, undefined, '\t'));
-			await fs.rename(temporary, this.file);
+			await writeFileAtomic(this.file, JSON.stringify({ version: 1, sources }, undefined, '\t'));
 			const stat = await fs.stat(this.file);
 			this.cache = { sources, mtime: stat.mtimeMs };
 			return sources;

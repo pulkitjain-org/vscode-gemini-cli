@@ -26,7 +26,7 @@ import { initModelList, initModelPreference, knownModelList } from './host/model
 import { initReactionRecents } from './host/chatReactions';
 import { defaultConcurrency } from './acp/research';
 import { SetupState } from './host/setupState';
-import { GeminiStatusBar } from './host/statusBar';
+import { describeCliSource, GeminiStatusBar } from './host/statusBar';
 import { findCliEntry, QuickEdits } from './host/quickEdits';
 import { UsageMeter } from './host/usageMeter';
 import { forgetSkills, initTeamCommands } from './host/teamCommands';
@@ -51,6 +51,9 @@ import { parseMemoryList, runCliCommands } from './acp/cliCommands';
 import { disposeGitIgnore } from './host/workspaceFileSystem';
 import { logErrorCommand } from './host/errorNotice';
 import { beginStartup } from './host/startup';
+import { background, setBackgroundLog } from './host/background';
+import { withRecentLog } from './host/recentLog';
+import { registerReportProblem } from './host/reportProblem';
 
 /** Finishes the writes that must outlive the window; set by activate. */
 let saveBeforeExit: (() => Promise<void>) | undefined;
@@ -59,7 +62,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	const activationStart = Date.now();
 	// Modules that load a chunk find it beside this file, which in a development build is not beside them.
 	setExtensionDir(__dirname);
-	const log = vscode.window.createOutputChannel('Gemini', { log: true });
+	// The log's recent lines are kept for Report a Problem.
+	const { channel: log, recent: recentLog } = withRecentLog(vscode.window.createOutputChannel('Gemini', { log: true }));
+	setBackgroundLog(log);
 	// One line per launch, to measure startup on real machines (FINDINGS.md, startup marks): once the first
 	// session opens, and again with every mark once the first reply's text arrives. scripts/startup-log.mts reads them.
 	const marks = beginStartup(activationStart, () => log.info(marks.line()));
@@ -78,7 +83,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	// The CLI's debug log, one per window's process (GEMINI_DEBUG_LOG_FILE), so windows never empty each other's.
 	const service = new AgentService(log, vscode.Uri.joinPath(context.globalStorageUri, 'cli-logs', debugLogName()).fsPath, context.globalState);
 	// GeminiCode's own trust rules once the window has settled: Agent Setup lists them, and reviews are never trusted.
-	const ownTrust = setTimeout(() => void service.trust.startup(), 3000);
+	const ownTrust = setTimeout(() => background('Setting up GeminiCode\'s own trust rules', service.trust.startup()), 3000);
 	context.subscriptions.push({ dispose: () => clearTimeout(ownTrust) });
 	const diffPreview = new DiffPreview();
 	// The @ picker's list comes from the workspace index once it is built (set below), else from the host's own walk.
@@ -304,6 +309,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 			return (await chatInFront(true))?.addAttachments(attachments);
 		}),
 		vscode.commands.registerCommand('gemini.showLog', () => log.show()),
+		registerReportProblem({
+			recent: recentLog,
+			cli: () => service.status.agentVersion ? `${service.status.agentVersion}${describeCliSource(service.cli)}` : undefined,
+			lastError: () => {
+				const error = agentsView.activeController()?.lastTurnError;
+				return error ? { kind: error.error.kind, message: error.text } : undefined;
+			},
+		}),
 		vscode.commands.registerCommand(logErrorCommand, (message: unknown) => typeof message === 'string' && log.error(message)),
 		new LazyFeature(['gemini.designSystem.sync'], () => new (onDemand().DesignSystemSync)({
 			figma: () => teamTools.connectors.figma,

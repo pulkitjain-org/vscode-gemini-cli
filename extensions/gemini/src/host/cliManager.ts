@@ -17,6 +17,7 @@ import { MIN_CLI_VERSION } from '../acp/protocol';
 import { AgentService } from './agentService';
 import { configSection, getCliResolution, getManagedCliDir } from './configuration';
 import { showError } from './errorNotice';
+import { background } from './background';
 
 export const installCliCommand = 'gemini.installCli';
 export const installCliVersionCommand = 'gemini.installCliVersion';
@@ -48,8 +49,8 @@ export class CliManager implements vscode.Disposable {
 					this.pruned = true;
 					// Off the startup path: the agent is already answering.
 					setTimeout(() => {
-						void this.prune();
-						void this.checkForUpdate();
+						background('Pruning old Gemini CLI versions', this.prune());
+						background('Checking for a Gemini CLI update', this.checkForUpdate());
 					}, 5_000);
 					this.updateTimer = setInterval(() => void this.checkForUpdate(), updateCheckPoll);
 				}

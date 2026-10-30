@@ -12,6 +12,7 @@
 // what it needs of the agents comes through `PlanReviewHost`.
 
 import { promises as fs } from 'node:fs';
+import { writeFileAtomic } from '../acp/fsUtil';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { errorMessage } from '../acp/errors';
@@ -313,7 +314,7 @@ class PlanReviewPage implements vscode.Disposable {
 		const next = replaceSection(current, section, text)!;
 		if (next !== current) {
 			this.writing = next;
-			await fs.writeFile(this.file, next, 'utf8');
+			await writeFileAtomic(this.file, next);
 			this.markdown = next;
 			// The section may have a new id when its heading changed.
 			const ids = new Set(planSections(next).map(each => each.id));
