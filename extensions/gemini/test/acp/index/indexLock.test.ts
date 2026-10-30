@@ -37,9 +37,16 @@ describe('IndexLock, between processes', () => {
 		const lock = await IndexLock.acquire(dir, process.pid, 'index.lock', { now: () => now, heartbeatMs: 10 });
 		now = 99_000;
 		await eventually(() => JSON.parse(readFileSync(lockFile, 'utf8')).at === 99_000);
-		// Another process took it over (as after this one hung for five minutes).
-		writeFileSync(lockFile, JSON.stringify({ pid: process.ppid, at: Date.now(), token: 'theirs' }));
-		await eventually(() => !lock!.held);
+		// Another process took it over (as after this one hung for five minutes). A beat
+		// already past its check renames this process's lock back over it, so take it
+		// over again until a beat sees it.
+		const theirs = JSON.stringify({ pid: process.ppid, at: Date.now(), token: 'theirs' });
+		await eventually(() => {
+			if (JSON.parse(readFileSync(lockFile, 'utf8')).token !== 'theirs') {
+				writeFileSync(lockFile, theirs);
+			}
+			return !lock!.held;
+		});
 		await lock!.release();
 		expect(JSON.parse(readFileSync(lockFile, 'utf8')).token).toBe('theirs');
 	});
