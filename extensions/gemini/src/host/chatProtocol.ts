@@ -24,6 +24,8 @@ import type { TryChoice } from './panelProtocol';
  * bundle in media/ is older than the extension (a stale development build).
  */
 export const chatProtocolVersion = 51;
+/** The hash of the messages below (sourceHash.ts); test/acp/chatProtocolHash.test.ts fails when they change without a bump, and names the new value. */
+export const chatProtocolHash = '78dbfb284ba5';
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.signIn', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog', 'gemini.agents.openTerminal', 'gemini.designSystem.sync'] as const;

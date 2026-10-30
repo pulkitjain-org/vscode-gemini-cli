@@ -7,42 +7,25 @@ import { sideQuestionOf } from '../acp/sideChat';
 import { ChatSide, sideCommand } from './chat/chatSide';
 import type * as acp from '@agentclientprotocol/sdk';
 import * as vscode from 'vscode';
-import { promises as fs } from 'node:fs';
-import * as path from 'node:path';
 import { onDidChangeFoldWork } from './foldWork';
-import { currentTraceFile } from './traceCommand';
-import { parseTraceFile, summarizeTrace, turnReadout } from '../acp/traceRecording';
 import type { Attachment } from '../acp/attachments';
 import { isValidAttachment } from '../acp/attachmentValidation';
 import { chatToMarkdown } from '../acp/chatMarkdown';
-import { ChatTranscript, ForkContext, ThreadCard, toolCallItemId, TranscriptItem } from '../acp/chatTranscript';
-import { buildModeAfterPlan, diffsOf, nextApprovalMode, dropOldest, lastPromptAt, planBuildChoice, planBuildModels, runningStep, turnShape, wasCutOff } from '../acp/chatTurns';
+import { ChatTranscript, ForkContext, ThreadCard, TranscriptItem } from '../acp/chatTranscript';
+import { lastPromptAt, runningStep, wasCutOff } from '../acp/chatTurns';
 import type { StoredCheckpoints } from '../acp/checkpoints';
-import { buildPromptContent } from '../acp/promptContent';
-import { assembleTurnContent } from '../acp/turnContent';
 import { permissionsCommand, planCommand, rewindCommand } from './chat/cliCommands';
-import { isModeAllowed } from '../acp/adminPolicy';
-import { knownModes } from '../acp/sessionSettings';
-import { getApprovalPolicy } from './configuration';
-import { atSafePoint, PromptQueue, steeringNote, steerWaitMs, type PromptExtras } from '../acp/promptQueue';
-import { meaningOf, olderReplyExcerpt, reactionNote, reactionRule, reactionShortcut, routeReaction, type ReactionRef, type ReactionRequest } from '../acp/reactions';
-import { CoordinatorTurnFailed } from '../acp/projectHub';
-import { TeamCommandCancelled } from '../acp/teamCommandExpansion';
-import { cliHome, ConversationEntry, readCliConversation, readSessionMessages } from '../acp/cliSessions';
-import { projectTempDirName } from '../acp/cli/formats';
-import { sessionFolder } from '../acp/sessionFolder';
-import { isModelOutput } from '../acp/sessionUpdates';
+import { type PromptExtras } from '../acp/promptQueue';
+import { reactionShortcut } from '../acp/reactions';
+import { ConversationEntry } from '../acp/cliSessions';
 import { TextDeltas } from '../acp/textDeltas';
-import type { ModelTokens } from '../acp/turnUsage';
 import { UpdateBatcher } from '../acp/updateBatcher';
-import { isBlockedWebFetch } from '../acp/webFetchHint';
-import { type AgentClient, type TurnStall, WaitAbortedError } from '../acp/agentClient';
-import { classifyTurnError, errorMessage, isContextOverflow, isModelTurnRefusal } from '../acp/errors';
-import { chatProtocolVersion, FromWebview, ProjectPanel, ProjectRepoView, ProjectSettingsView, statusCommands, ToWebview, type ViewStall } from './chatProtocol';
-import { stallNotice, stopReasonActions, stopReasonNotice, toViewStatus, turnErrorNotice, type TurnErrorNotice } from './chatStatus';
+import { type TurnStall } from '../acp/agentClient';
+import { chatProtocolVersion, FromWebview, ProjectPanel, ProjectRepoView, ProjectSettingsView, ToWebview, type ViewStall } from './chatProtocol';
+import { stallNotice, toViewStatus, type TurnErrorNotice } from './chatStatus';
 import type { DiffPreview } from './diffPreview';
-import { agentReactionsOn, onDidChangeReactions, reactionMeanings, reactionsOn, recentReactions, rememberReaction, shownMeanings } from './chatReactions';
-import { preferredComposerHeight, rememberComposerHeight } from './modelPreference';
+import { onDidChangeReactions, reactionsOn } from './chatReactions';
+import { preferredComposerHeight } from './modelPreference';
 import { onDidChangeThemeTokens, themeTokenColors } from './themeTokens';
 import { ChatAttachments } from './chat/chatAttachments';
 import { ChatCheckpoints } from './chat/chatCheckpoints';
@@ -50,26 +33,26 @@ import { ChatCommands } from './chat/chatCommands';
 import { ChatCompact, compactCommand } from './chat/chatCompact';
 import { ChatFork, forkCommand } from './chat/chatFork';
 import { ChatEnhance } from './chat/chatEnhance';
-import { ChatFileLinks, isFile } from './chat/chatFiles';
-import { extensionChunk } from './lazyFeature';
+import { ChatFileLinks } from './chat/chatFiles';
 import { ChatFollow } from './chat/chatFollow';
 import { ChatGitControls } from './chat/chatGit';
 import { chatHtml } from './chat/chatHtml';
 import type { ChatControllerOptions, ChatHost, FileSearch } from './chat/chatOptions';
 import { ChatPermissions } from './chat/chatPermissions';
+import { ChatPlan } from './chat/chatPlan';
 import { ChatProjectView } from './chat/chatProject';
+import { ChatQueue } from './chat/chatQueue';
+import { ChatReactions } from './chat/chatReactions';
+import { chatRouter } from './chat/chatRouter';
 import { ChatRun } from './chat/chatRun';
 import { ChatSessions, chatCommand, resumeCommand } from './chat/chatSessions';
 import { ChatSettings, onDidChangeSendWith, sendsWithCmdEnter } from './chat/chatSettings';
 import { SharedPageChip } from './chat/chatSharedPage';
 import { SideLinksColumn } from './chat/chatSideLinks';
+import { ChatTurn } from './chat/chatTurn';
 import { ChatUsage, contextCommand, statsCommand } from './chat/chatUsage';
-import { markStartup } from './startup';
 
 export type { ChatControllerOptions, ChatEnhancer, ChatGit, ChatHost, ChatProject, ChatSharedPage, ChatTerminal, ChatWorkspace, FileSearch } from './chat/chatOptions';
-
-/** How a prompt's turn ended: `steer` stopped it for messages sent now, `failed` with an error the chat shows. */
-type TurnOutcome = 'done' | 'steer' | 'stopped' | 'failed';
 
 /** How long after the view loads a session waiting for it to show opens anyway. */
 const openFallbackMs = 2_000;
@@ -109,35 +92,9 @@ export class ChatController implements vscode.Disposable {
 	private quiet = false;
 	/** When the running turn started, for the Agents side bar's clock. */
 	private turnStartedAt: number | undefined;
-	/** The running turn's timestamps, for the turn's end line and the trace readout. */
-	private timing: TurnTiming | undefined;
 	/** The step last reported, so tool call updates report only a new one. */
 	private lastStep: string | undefined;
-	/** Sessions told about the folder's index already. */
-	private readonly hintedSessions = new Set<string>();
-	/** Sessions told they may react to the user's prompts already. */
-	private readonly reactionRuleSessions = new Set<string>();
 
-	/** Messages sent while the agent works: queued for after the turn, or steering it at its next safe point. */
-	private readonly queue = new PromptQueue();
-	/** The turn is being stopped to send the messages that steer it. */
-	private steerStopping = false;
-	/** Offers Stop Now on a message sent now that has waited `steerWaitMs` for a safe point. */
-	private steerWaitTimer: ReturnType<typeof setTimeout> | undefined;
-	private steerWaiting = false;
-	/** A prompt's turn is running; other work that keeps the chat busy (Compact, Undo, a new session) is not one. */
-	private turnRunning = false;
-
-	/** The last prompt, for Retry. */
-	private lastPrompt: { readonly text: string; readonly attachments: readonly Attachment[]; readonly reactions?: readonly ReactionRequest[] } | undefined;
-	/** The turnEnd item that offers Retry. */
-	private retryItemId: string | undefined;
-	/** Context sent ahead of the next prompt without showing in the chat, such as a project's memory for a thread. */
-	private pendingContext: string | undefined;
-	/** The agent's tried files the user edited and hasn't sent it. */
-	private triedEdits: readonly string[] = [];
-	/** The Markdown file the running Plan mode turn wrote last: its plan. */
-	private turnPlanFile: string | undefined;
 	/** The saved chat being read in, while it is: prompts wait for it, so neither replaces the other. */
 	private restoring: Promise<void> | undefined;
 	/** Whether the view's script has said it is ready since the view was attached. */
@@ -145,11 +102,6 @@ export class ChatController implements vscode.Disposable {
 	/** Opens a session waiting for the chat to show, if the view does not say it is shown. */
 	private openTimer: ReturnType<typeof setTimeout> | undefined;
 
-	/** Aborts the running turn's wait for its session (`ensureReady`), so Stop works before the prompt is sent. */
-	private turnWait: AbortController | undefined;
-	private _includingEdits = false;
-	/** The latest failed turn's notice, with the ways out it offers; cleared when the next turn starts. */
-	private _lastTurnError: TurnErrorNotice | undefined;
 	private disposed = false;
 	/** Called on dispose, so waits on this chat end. */
 	private readonly onDispose = new Set<() => void>();
@@ -159,11 +111,6 @@ export class ChatController implements vscode.Disposable {
 	private readonly onDidEditFilesEmitter = new vscode.EventEmitter<readonly acp.Diff[]>();
 	/** The edits of each tool call that completed, once per tool call. */
 	readonly onDidEditFiles = this.onDidEditFilesEmitter.event;
-	private readonly completedToolCalls = new Set<string>();
-	/** A project chat's calls of the project's own tools, which it leaves out. */
-	private readonly hiddenToolCalls = new Set<string>();
-	/** Web fetch calls already followed by the hint about private hosts. */
-	private readonly hintedToolCalls = new Set<string>();
 
 	private readonly onDidRestoreSessionEmitter = new vscode.EventEmitter<string>();
 	/** A saved session was reopened here; fires with its title. */
@@ -192,6 +139,15 @@ export class ChatController implements vscode.Disposable {
 	private readonly side: ChatSide;
 	private readonly project: ChatProjectView;
 	private readonly runs: ChatRun;
+	/** Plan mode's plan and Approve Plan. */
+	private readonly plan: ChatPlan;
+	/** Messages sent while the agent works: queued for after the turn, or steering it at its next safe point. */
+	private readonly queue: ChatQueue;
+	/** A prompt's turn, from its send to its end line. */
+	private readonly turn: ChatTurn;
+	private readonly reactions: ChatReactions;
+	/** Routes the view's messages to the features. */
+	private readonly route: (message: FromWebview) => void;
 
 	constructor(
 		private readonly extensionUri: vscode.Uri,
@@ -208,7 +164,7 @@ export class ChatController implements vscode.Disposable {
 		const client = service.client;
 		// A project's chat never asks its coordinator to react.
 		this.transcript.liftReactions = !options.project;
-		this.files = new ChatFileLinks(diffPreview, () => options.git?.folder() ?? client.cwd, options, file => this.reviewPlanFile(file), file => this.rebuildPlan(file));
+		this.files = new ChatFileLinks(diffPreview, () => options.git?.folder() ?? client.cwd, options, file => this.plan.reviewPlanFile(file), file => this.plan.rebuildPlan(file));
 		// A long tool output is kept whole here for Show All; the transcript, and every reset, carries its first and last lines.
 		this.transcript.trimOutput = (itemId, part, text) => this.files.outputs.put(itemId, part, text);
 		this.permissions = new ChatPermissions(service.permissions, this.transcript, this.files, options);
@@ -220,21 +176,20 @@ export class ChatController implements vscode.Disposable {
 		this.sideLinks = new SideLinksColumn(options, isViewReady, post);
 		this.settings = new ChatSettings(service, this.transcript, options, post);
 		this.enhance = new ChatEnhance(client, options, () => this.transcript.items, post);
-		// The CLI's own names first (/resume and /chat, /rewind, /plan, /compress, /context and /stats, /permissions), then GeminiCode's own.
-		this.commands = new ChatCommands(client, this.transcript, [...options.savedSessions ? [resumeCommand(), chatCommand()] : [], rewindCommand(), planCommand(), compactCommand(), contextCommand(), statsCommand(), permissionsCommand(), sideCommand(), ...options.fork ? [forkCommand()] : []], isAttached, post);
 		this.sessions = new ChatSessions(service, this.transcript, options, {
 			isBusy,
 			setBusy,
 			clearConversation: () => this.clearConversation(),
 			restored: title => this.onDidRestoreSessionEmitter.fire(title),
+			fireActivity: () => this.fireActivity(),
+			turnError: err => this.turn.turnError(err),
 		}, isAttached, post);
 		this.checkpoints = new ChatCheckpoints(service, this.transcript, this.sessions, options, {
 			isBusy,
 			setBusy,
 			restoredFiles: diffs => this.onDidEditFilesEmitter.fire(diffs),
 			rewound: text => {
-				this.lastPrompt = undefined;
-				this.retryItemId = undefined;
+				this.turn.forgetLastPrompt();
 				this.post({ type: 'draft', text });
 			},
 		});
@@ -253,12 +208,61 @@ export class ChatController implements vscode.Disposable {
 		this.project = new ChatProjectView(options, isViewReady, post);
 		this.runs = new ChatRun(options, isAttached, post, attachments => void this.addAttachments(attachments),
 			() => this.transcript.items.flatMap(item => item.kind === 'agent' || item.kind === 'user' ? [item.text] : []));
+		this.plan = new ChatPlan(service, this.transcript, this.settings, options, {
+			isBusy,
+			retryItemId: () => this.turn.retryItemId,
+			send: text => this.send(text),
+			startPrompt: text => this.turn.startPrompt(text, []),
+		});
+		// The CLI's own names first (/resume and /chat, /rewind, /plan, /compress, /context and /stats, /permissions), then GeminiCode's own.
+		this.commands = new ChatCommands(client, this.transcript, [...options.savedSessions ? [resumeCommand(), chatCommand()] : [], rewindCommand(), planCommand(), compactCommand(), contextCommand(), statsCommand(), permissionsCommand(), sideCommand(), ...options.fork ? [forkCommand()] : []], isAttached, post,
+			options, { sessions: this.sessions, compacting: this.compacting, usage: this.usage, checkpoints: this.checkpoints, plan: this.plan, forks: this.forks }, folder => service.askToTrust(folder));
+		this.queue = new ChatQueue(service, this.transcript, this.attachments, options, {
+			isBusy,
+			setBusy,
+			isQuiet: () => this.quiet,
+			turnWaiting: () => this.turn.waiting,
+			send: (text, attachments, from, when, extras) => this.send(text, attachments, from, when, extras),
+			startPrompt: (text, attachments, from, reactions) => this.turn.startPrompt(text, attachments, from, reactions),
+			runNext: (next, steer) => this.turn.runNext(next, steer),
+		}, post);
+		const features = {
+			files: this.files, permissions: this.permissions, follow: this.follow, git: this.git, usage: this.usage, attachments: this.attachments,
+			sharedPage: this.sharedPage, sideLinks: this.sideLinks, settings: this.settings, enhance: this.enhance, commands: this.commands, sessions: this.sessions,
+			checkpoints: this.checkpoints, compacting: this.compacting, forks: this.forks, side: this.side, project: this.project, runs: this.runs, plan: this.plan, queue: this.queue,
+		};
+		this.turn = new ChatTurn(service, this.transcript, options, features, {
+			isBusy,
+			setBusy,
+			isQuiet: () => this.quiet,
+			promptSent: text => this.onDidSendPromptEmitter.fire(text),
+			editedFiles: diffs => this.onDidEditFilesEmitter.fire(diffs),
+			toolCallStep: () => {
+				if (this.activity.step !== this.lastStep) {
+					this.fireActivity();
+				}
+			},
+			restoring: () => this.restoring,
+			isDisposed: () => this.disposed,
+			untilNotBusy: () => this.untilNotBusy(),
+		}, post);
+		this.reactions = new ChatReactions(this.transcript, options, this.turn, this.queue, this.plan, {
+			isBusy,
+			restoring: () => this.restoring,
+		}, post);
+		this.route = chatRouter(service, this.transcript, options, { ...features, reactions: this.reactions, turn: this.turn }, {
+			isBusy,
+			ready: message => this.onReady(message),
+			send: (text, attachments, from, when, extras) => this.send(text, attachments, from, when, extras),
+			stop: () => this.stop(),
+			post,
+		});
 		this.disposables.push(
 			onDidChangeFoldWork(on => this.post({ type: 'foldWork', on })),
-			onDidChangeReactions(() => this.postReactions()),
+			onDidChangeReactions(() => this.reactions.postReactions()),
 			onDidChangeSendWith(cmdEnter => this.post({ type: 'sendWith', cmdEnter })),
 			// The build's model may have changed since the plan: Approve Plan's hint follows.
-			client.onDidChangeSettings(() => this.refreshPlanBuild()),
+			client.onDidChangeSettings(() => this.plan.refreshBuild()),
 			this.onDidChangeActivityEmitter,
 			this.onDidEditFilesEmitter,
 			this.onDidSendPromptEmitter,
@@ -276,7 +280,7 @@ export class ChatController implements vscode.Disposable {
 			service.permissions.onDidChange(event => {
 				this.permissions.apply(event);
 				this.fireActivity();
-				this.trySteer();
+				this.queue.trySteer();
 			}),
 			this.transcript,
 			this.sideLinks,
@@ -284,64 +288,7 @@ export class ChatController implements vscode.Disposable {
 			{ dispose: () => this.items.dispose() },
 			this.transcript.onDidReset(() => this.postReset()),
 			client.onDidAllowInYolo(params => service.writeLog?.(`Allowed "${params.toolCall.title ?? params.toolCall.toolCallId}" at once: the chat is in YOLO mode`)),
-			client.onDidReceiveEvent(event => {
-				// Only a turn's updates belong in the transcript, and not a quiet turn's.
-				if (this.busy && !this.quiet) {
-					if (event.kind === 'toolCall' && this.options.project && (this.hiddenToolCalls.has(event.call.id) || this.options.project.hidesToolCall(event.call.title ?? ''))) {
-						// The project's own tools show as posts and thread cards instead.
-						this.hiddenToolCalls.add(event.call.id);
-						dropOldest(this.hiddenToolCalls);
-						return;
-					}
-					let edited: readonly acp.Diff[] = [];
-					if (event.kind === 'toolCall') {
-						const diffs = diffsOf(event.call.content);
-						this.files.remember(toolCallItemId(event.call.id), diffs);
-						if (event.call.status === 'completed' && diffs.length && !this.completedToolCalls.has(event.call.id)) {
-							this.completedToolCalls.add(event.call.id);
-							dropOldest(this.completedToolCalls);
-							this.checkpoints.record(diffs);
-							this.onDidEditFilesEmitter.fire(diffs);
-							edited = diffs;
-							// The plan a Plan mode turn writes, for its Review Plan.
-							const plan = client.settings.mode?.currentId === 'plan' ? diffs.map(diff => diff.path).findLast(file => /\.(md|markdown)$/i.test(file)) : undefined;
-							if (plan) {
-								this.turnPlanFile = plan;
-							}
-						}
-					}
-					if (this.timing?.sent !== undefined) {
-						if (this.timing.firstToken === undefined && isModelOutput(event)) {
-							this.timing.firstToken = Date.now();
-						}
-						if (this.timing.firstText === undefined && event.kind === 'text' && event.role === 'agent') {
-							this.timing.firstText = Date.now();
-							markStartup('first text');
-						}
-					}
-					this.transcript.apply(event);
-					// The model answering after a tool means the tool's result reached it: a message sent now can stop the turn.
-					if (this.queue.hasSteer && isModelOutput(event)) {
-						this.trySteer();
-					}
-					if (event.kind === 'toolCall' && edited.length && editsWithoutCards(client.settings.mode?.currentId)) {
-						// No card asked about this edit: its row says when another agent is changing the file too.
-						this.transcript.setOthers(toolCallItemId(event.call.id), this.permissions.othersChanging(edited.map(diff => diff.path)));
-					}
-					if (event.kind === 'toolCall' && !this.hintedToolCalls.has(event.call.id) && isBlockedWebFetch(event.call)) {
-						this.hintedToolCalls.add(event.call.id);
-						dropOldest(this.hintedToolCalls);
-						this.transcript.addNotice(vscode.l10n.t("Gemini's web fetch can't open pages on your machine or private network, such as a QA or intranet site. Open the page in the GeminiCode browser and use Let Gemini Use This Page, or ask Gemini to open it with its browser."));
-					}
-					if (event.kind === 'toolCall') {
-						this.follow.onToolCall(event.call);
-						this.trySteer();
-					}
-					if (event.kind === 'toolCall' && this.activity.step !== this.lastStep) {
-						this.fireActivity();
-					}
-				}
-			}),
+			client.onDidReceiveEvent(event => this.turn.onEvent(event)),
 			client.onDidChangeState(state => {
 				if (state.kind === 'ready') {
 					this.post({ type: 'capabilities', image: client.promptCapabilities.image });
@@ -455,12 +402,8 @@ export class ChatController implements vscode.Disposable {
 	}
 
 	/** Leaves Plan mode and carries out the plan, as the latest turn's Build button does; false when it offers none. */
-	async approvePlan(): Promise<boolean> {
-		if (!this.retryItemId || !this.planBuild()) {
-			return false;
-		}
-		await this.buildPlan(this.retryItemId);
-		return true;
+	approvePlan(): Promise<boolean> {
+		return this.plan.approvePlan();
 	}
 
 	/** A project chat's card for one of its threads, added or updated in place. */
@@ -527,14 +470,13 @@ export class ChatController implements vscode.Disposable {
 		const latest = shortcut && this.transcript.items.findLast(item => item.kind === 'turnEnd');
 		if (shortcut && latest) {
 			extras.settle?.(true);
-			this.react(latest.id, shortcut, shortcut);
+			this.reactions.react(latest.id, shortcut, shortcut);
 			return;
 		}
 		if (project) {
 			if (this.busy) {
 				// The coordinator is working: the message waits for its turn to end, never stopping it.
-				this.queue.add(text, attachments, false, undefined, extras);
-				this.postQueue();
+				this.queue.holdForCoordinator(text, attachments, extras);
 				return;
 			}
 			if (text.trim() === `/${compactCommand().name}` && !attachments.length) {
@@ -551,189 +493,32 @@ export class ChatController implements vscode.Disposable {
 		if (this.busy) {
 			// A coordinator's note waits for the turn to end; the user's own message steers when sent now,
 			// except one with the user's edits, which can only go once the agent's turn is over.
-			if (when || from) {
-				this.queue.add(text, attachments, when === 'now' && !extras.includeEdits, from, extras);
-				this.postQueue();
-				this.trySteer();
-			} else {
-				extras.settle?.(false);
-			}
+			this.queue.holdOrSteer(text, attachments, from, when, extras);
 			return;
 		}
 		if (extras.settle) {
 			// Plan Review's message, never a command.
-			return this.startPrompt(text, attachments, from, [], extras);
+			return this.turn.startPrompt(text, attachments, from, [], extras);
 		}
-		if (this.options.savedSessions && (text.trim() === `/${resumeCommand().name}` || text.trim() === `/${chatCommand().name}`) && !attachments.length) {
-			void this.pickSession();
+		if (await this.commands.run(text, attachments)) {
 			return;
 		}
-		if (text.trim() === `/${compactCommand().name}` && !attachments.length) {
-			void this.compacting.compact();
-			return;
-		}
-		if ((text.trim() === `/${contextCommand().name}` || text.trim() === `/${statsCommand().name}`) && !attachments.length) {
-			void this.usage.show(true);
-			return;
-		}
-		if (text.trim() === `/${rewindCommand().name}` && !attachments.length) {
-			void this.checkpoints.pickRewindCommand();
-			return;
-		}
-		if (/^\/permissions(\s+trust)?$/.test(text.trim()) && !attachments.length) {
-			// The CLI's /permissions trust: the folder trust dialog.
-			void this.service.askToTrust(this.service.client.cwd);
-			return;
-		}
-		const plan = /^\/plan(?:\s+(?<rest>.*))?$/s.exec(text.trim());
-		if (plan && !attachments.length) {
-			await this.planCommand(plan.groups?.rest?.trim() ?? '');
-			return;
-		}
-		if (this.forks.available && text.trim() === `/${forkCommand().name}` && !attachments.length) {
-			void this.forks.open();
-			return;
-		}
-		await this.startPrompt(text, attachments, from, [], extras);
-	}
-
-	/**
-	 * The CLI's /plan: with a goal, switches to Plan mode and sends it; with
-	 * `copy`, copies the latest plan to the clipboard; alone, switches to Plan
-	 * mode.
-	 */
-	private async planCommand(rest: string): Promise<void> {
-		if (rest === 'copy') {
-			const item = [...this.transcript.items].reverse().find(each => each.kind === 'turnEnd' && each.planFile);
-			const file = item?.kind === 'turnEnd' ? item.planFile : undefined;
-			const text = file ? await vscode.workspace.fs.readFile(vscode.Uri.file(file)).then(bytes => new TextDecoder().decode(bytes), () => undefined) : undefined;
-			if (!text) {
-				this.transcript.addNotice(vscode.l10n.t("There is no plan to copy yet: ask for one in Plan mode first."), 'info');
-				return;
-			}
-			await vscode.env.clipboard.writeText(text);
-			this.transcript.addNotice(vscode.l10n.t("The plan was copied to the clipboard."), 'info');
-			return;
-		}
-		const mode = this.service.client.settings.mode;
-		if (!mode?.available.some(choice => choice.id === knownModes.plan)) {
-			this.transcript.addNotice(vscode.l10n.t("Plan mode is not available here: the CLI does not offer it, or policy turns it off."), 'error');
-			return;
-		}
-		if (mode.currentId !== knownModes.plan) {
-			await this.settings.change(() => this.service.client.setMode(knownModes.plan));
-		}
-		if (rest) {
-			await this.startPrompt(rest, []);
-		}
-	}
-
-	/** Starts a prompt's turn, the chat being idle: shows it, and sends it with the notes of any reactions it carries. */
-	private async startPrompt(text: string, attachments: readonly Attachment[], from?: 'coordinator', reactions: readonly ReactionRequest[] = [], extras: PromptExtras = {}): Promise<void> {
-		this.sessions.stopReplay();
-		this.service.open?.();
-		if (this.retryItemId) {
-			this.transcript.updateTurnEnd(this.retryItemId, { retry: undefined, buildPlan: undefined, build: undefined });
-			this.retryItemId = undefined;
-		}
-		this.transcript.addPrompt(text, attachments, from, reactions.map(reactionRef));
-		if (text.trim()) {
-			this.onDidSendPromptEmitter.fire(text);
-		}
-		this.lastPrompt = { text, attachments, ...(reactions.length ? { reactions } : {}) };
-		await this.runTurn(text, attachments, true, false, reactions, extras);
-	}
-
-	/**
-	 * The user reacted to the reply that `turnEnd` ends: the reply gets the
-	 * chip, and the reaction goes to the agent as {@link routeReaction} says.
-	 * The same reaction while it is still waiting or running is not sent again.
-	 */
-	private react(turnEnd: string, emoji: string, name: string): void {
-		const target = this.transcript.items.find(item => item.id === turnEnd);
-		if (this.options.project || !reactionsOn() || target?.kind !== 'turnEnd' || this.queue.hasReaction(turnEnd, emoji) || this.reactionRunning(turnEnd, emoji)) {
-			return;
-		}
-		rememberReaction(emoji);
-		this.postReactions();
-		const meanings = reactionMeanings();
-		const route = routeReaction(emoji, meanings, { busy: this.busy || !!this.restoring, buildPlan: !!target.buildPlan && turnEnd === this.retryItemId });
-		this.transcript.addReaction(turnEnd, emoji);
-		if (route === 'mark') {
-			return;
-		}
-		if (route === 'buildPlan') {
-			void this.buildPlan(turnEnd);
-			return;
-		}
-		const meaning = meaningOf(emoji, meanings);
-		const excerpt = olderReplyExcerpt(this.transcript.items, turnEnd);
-		const request: ReactionRequest = { turnEnd, emoji, name, ...(meaning ? { meaning } : {}), ...(excerpt ? { excerpt } : {}), ...(target.unfinished ? { unfinished: true } : {}) };
-		if (route === 'send') {
-			void this.sendReaction(request);
-			return;
-		}
-		this.queue.addReaction(request, route === 'now');
-		this.postQueue();
-		this.trySteer();
-	}
-
-	/** Sends a reaction as its own turn, once a saved conversation is in; it waits in the queue if a turn started meanwhile. */
-	private async sendReaction(request: ReactionRequest): Promise<void> {
-		if (this.restoring) {
-			await this.restoring;
-		}
-		if (this.busy) {
-			this.queue.addReaction(request, false);
-			this.postQueue();
-			return;
-		}
-		await this.startPrompt('', [], undefined, [request]);
-	}
-
-	/** Whether the running turn's prompt carried this reaction. */
-	private reactionRunning(turnEnd: string, emoji: string): boolean {
-		if (!this.busy) {
-			return false;
-		}
-		const prompt = this.transcript.items.findLast(item => item.kind === 'user');
-		return prompt?.kind === 'user' && !!prompt.reactions?.some(reaction => reaction.turnEnd === turnEnd && reaction.emoji === emoji);
-	}
-
-	private postReactions(): void {
-		this.post({ type: 'reactions', on: !this.options.project && reactionsOn(), recents: recentReactions(), meanings: shownMeanings() });
+		await this.turn.startPrompt(text, attachments, from, [], extras);
 	}
 
 	/** The agent's tried files the user edited and hasn't sent it (agentTries.ts): the message box offers to include them. */
 	setTriedEdits(files: readonly string[]): void {
-		this.triedEdits = files;
-		this.post({ type: 'triedEdits', files });
-	}
-
-	/**
-	 * "Include your edits": the user's edits to tried files go to the agent's
-	 * folder as its turn starts, the chat already busy so no other message
-	 * starts one meanwhile; a failure shows in the chat.
-	 */
-	private async includeTriedEdits(): Promise<void> {
-		if (this.triedEdits.length) {
-			this._includingEdits = true;
-			try {
-				await this.options.sendTriedEdits?.().catch(err => this.transcript.addNotice(vscode.l10n.t("Your edits weren't sent to the agent: {0}", errorMessage(err)), 'error'));
-			} finally {
-				this._includingEdits = false;
-			}
-		}
+		this.turn.setTriedEdits(files);
 	}
 
 	/** The chat is busy copying the user's edits for its own turn: Send My Edits' busy check lets that through. */
 	get includingEdits(): boolean {
-		return this._includingEdits;
+		return this.turn.includingEdits;
 	}
 
 	/** Sends `text` to the agent ahead of the next prompt, without showing it in the chat. */
 	addContext(text: string): void {
-		this.pendingContext = this.pendingContext ? `${this.pendingContext}\n\n${text}` : text;
+		this.turn.addContext(text);
 	}
 
 	/** Opens the agent's session, as a prompt would, without sending one. */
@@ -750,33 +535,21 @@ export class ChatController implements vscode.Disposable {
 	 * project's wake for its coordinator; resolves when the turn ends, and
 	 * rejects with {@link CoordinatorTurnFailed} when it failed.
 	 */
-	async sendUnseen(text: string): Promise<void> {
-		if (this.restoring) {
-			await this.restoring;
-		}
-		// Other work that keeps the chat busy, such as Compact, ends first.
-		while (this.busy && !this.turnRunning && !this.disposed) {
-			await new Promise<void>(resolve => {
-				const done = () => {
-					listener.dispose();
-					this.onDispose.delete(done);
-					resolve();
-				};
-				const listener = this.onDidChangeActivity(activity => !activity.busy && done());
-				this.onDispose.add(done);
-			});
-		}
-		if (this.disposed) {
-			throw new Error('The chat closed.');
-		}
-		if (this.busy) {
-			throw new Error('A turn is already running.');
-		}
-		this.sessions.stopReplay();
-		this.service.open?.();
-		if (await this.runTurn(text, [], false) === 'failed') {
-			throw new CoordinatorTurnFailed();
-		}
+	sendUnseen(text: string): Promise<void> {
+		return this.turn.sendUnseen(text);
+	}
+
+	/** Settles when the chat is no longer busy, or is disposed. */
+	private untilNotBusy(): Promise<void> {
+		return new Promise<void>(resolve => {
+			const done = () => {
+				listener.dispose();
+				this.onDispose.delete(done);
+				resolve();
+			};
+			const listener = this.onDidChangeActivity(activity => !activity.busy && done());
+			this.onDispose.add(done);
+		});
 	}
 
 	/** Puts Retry on the latest error in the chat (adding `text` as one first, when given), for a project's failed wake. */
@@ -792,520 +565,42 @@ export class ChatController implements vscode.Disposable {
 		this.transcript.clearRetry();
 	}
 
-	/** `steer` carries on after a turn stopped for messages sent now: the agent is told why it stopped. */
-	private async runTurn(text: string, attachments: readonly Attachment[], expand: boolean, steer = false, reactions: readonly ReactionRequest[] = [], extras: PromptExtras = {}): Promise<TurnOutcome> {
-		this.turnRunning = true;
-		try {
-			return await this.runTurnNow(text, attachments, expand, steer, reactions, extras);
-		} finally {
-			// Cleared however the turn ends, so a throw never leaves the chat unable to start the next one.
-			this.turnRunning = false;
-		}
-	}
-
-	private async runTurnNow(text: string, attachments: readonly Attachment[], expand: boolean, steer: boolean, reactions: readonly ReactionRequest[], extras: PromptExtras): Promise<TurnOutcome> {
-		this.checkpoints.beginTurn();
-		this.setBusy(true);
-		const started = Date.now();
-		let ended = false;
-		let overflowed = false;
-		let failed = false;
-		/** Where the turn's output starts in the transcript, once its prompt went; and whether the agent took it. */
-		let promptAt: number | undefined;
-		let delivered = false;
-		/** How the turn came to an end, for the messages waiting on it. */
-		let outcome: 'done' | 'steer' | 'stopped' = 'stopped';
-		this.timing = { started };
-		this._lastTurnError = undefined;
-		// The last failure's Retry and Continue have done their work, or were passed over.
-		this.transcript.clearNoticeActions();
-		const wait = this.turnWait = new AbortController();
-		try {
-			if (extras.includeEdits) {
-				await this.includeTriedEdits();
-			}
-			try {
-				await this.service.ensureReady(wait.signal);
-			} finally {
-				if (this.turnWait === wait) {
-					this.turnWait = undefined;
-				}
-			}
-			this.timing.ready = Date.now();
-			// Built after the agent is ready, so it reflects what this agent accepts.
-			const own = buildPromptContent(expand ? await this.commands.expand(text) : text, attachments, this.service.client.promptCapabilities);
-			// A reaction with nothing typed stops the turn for itself: its note says so, in place of the steering note.
-			const reactionOnly = !!reactions.length && !text.trim();
-			const notes = reactions.map(reaction => reactionNote(reaction, steer && reactionOnly));
-			if (!own.length && !notes.length) {
-				throw new Error(vscode.l10n.t("The agent cannot take images, so there was nothing to send."));
-			}
-			// Told once per session: without it the model reaches for grep_search first (FINDINGS.md, workspace index).
-			const state = this.service.client.state;
-			const session = state.kind === 'ready' ? state.savedSessionId : undefined;
-			const hint = session && !this.hintedSessions.has(session) ? this.options.indexHint?.() : undefined;
-			if (session && hint) {
-				this.hintedSessions.add(session);
-			}
-			const design = attachments.some(attachment => attachment.kind === 'document' && attachment.tool === 'figma') ? await this.options.designSystemNote?.().catch(() => undefined) : undefined;
-			const page = await this.sharedPage.refresh();
-			if (page && !this.options.project) {
-				this.transcript.addPromptPage(page.title, page.url);
-			}
-			const carried = this.sessions.carriedConversation;
-			const context = this.pendingContext;
-			const reactionRuleDue = !!session && !this.options.project && agentReactionsOn() && !this.reactionRuleSessions.has(session);
-			if (reactionRuleDue) {
-				this.reactionRuleSessions.add(session!);
-			}
-			// In the order the agent should read them (turnContent.ts).
-			const content = assembleTurnContent({
-				content: own,
-				steering: steer && !reactionOnly ? steeringNote() : undefined,
-				notes,
-				reactionRule: reactionRuleDue ? reactionRule() : undefined,
-				context,
-				carried,
-				undoNote: this.checkpoints.undoNote,
-				hint,
-				design,
-				page: page?.note,
-			});
-			this.timing.sent = Date.now();
-			markStartup('first prompt sent');
-			promptAt = this.transcript.items.length;
-			const { stopReason, usage } = await this.promptRecovering(content);
-			delivered = true;
-			this.checkpoints.noteDelivered();
-			if (context === this.pendingContext) {
-				this.pendingContext = undefined;
-			}
-			this.sessions.delivered(carried);
-			// Stopped to steer: no "Stopped." notice, since the agent carries on with the messages at once.
-			const steered = stopReason === 'cancelled' && this.steerStopping && this.queue.hasSteer;
-			const notice = steered ? undefined : stopReasonNotice(stopReason);
-			if (notice) {
-				this.transcript.addNotice(notice, stopReason === 'refusal' ? 'error' : 'info', this.options.project ? [] : stopReasonActions(stopReason));
-			}
-			this.endTurn(Date.now() - started, usage, !steered && stopReason !== 'end_turn', steered);
-			ended = true;
-			outcome = steered ? 'steer' : stopReason === 'end_turn' ? 'done' : 'stopped';
-		} catch (err) {
-			if (err instanceof WaitAbortedError) {
-				// Stopped while the session was still opening: nothing was sent.
-				this.transcript.addNotice(stopReasonNotice('cancelled') ?? '', 'info');
-			} else if (isContextOverflow(errorMessage(err))) {
-				overflowed = true;
-			} else if (err instanceof TeamCommandCancelled) {
-				this.transcript.addNotice(errorMessage(err), 'info');
-			} else if (err instanceof RefusedAgainError) {
-				this.service.writeLog?.(`The turn failed: ${errorMessage(err)}`);
-				this.transcript.addNotice(errorMessage(err), 'error', this.options.project ? [] : ['newSession', 'switchModel']);
-				failed = true;
-			} else {
-				const notice = this._lastTurnError = this.turnError(err);
-				this.service.writeLog?.(`The turn failed (${notice.error.kind}): ${errorMessage(err)}`);
-				// A project's chat retries its wake its own way (`offerRetry`).
-				this.transcript.addNotice(notice.text, 'error', this.options.project ? [] : notice.actions);
-				failed = true;
-			}
-		} finally {
-			this.setSteerWaiting(false);
-			if (!ended && this.checkpoints.turnChangedFiles) {
-				// The turn failed after changing files; they can still be undone.
-				this.endTurn(Date.now() - started, undefined, true);
-			}
-			this.steerStopping = false;
-			// Stopped to steer, the chat stays busy into the next turn.
-			if (outcome !== 'steer') {
-				this.setBusy(false);
-			}
-			void this.usage.postContext();
-		}
-		// Sent once the agent took the prompt: it answered, or the turn got as far as the model's output before failing.
-		// A turn that failed before that, or overflowed (its prompt goes back in the box), never went.
-		extras.settle?.(!overflowed && (delivered || (promptAt !== undefined && this.transcript.items.slice(promptAt).some(item => item.kind === 'agent' || item.kind === 'thought' || item.kind === 'toolCall'))));
-		if (overflowed) {
-			this.queue.holdSteers();
-			this.postQueue();
-			this.turnRunning = false;
-			await this.continueAfterOverflow(expand ? text : undefined);
-			return 'failed';
-		}
-		// The next queued message may start its turn from here, so the flag is cleared before it is sent.
-		this.turnRunning = false;
-		await this.sendPending(outcome);
-		return failed ? 'failed' : outcome;
-	}
-
-	/**
-	 * After a turn: messages sent now go at once, steering a stopped turn or
-	 * starting the next one if the turn ended first; queued ones go when the
-	 * turn finished, all together. A turn the user stopped, or that failed,
-	 * keeps them waiting, and what was sent now waits like a queued message.
-	 */
-	private async sendPending(outcome: 'done' | 'steer' | 'stopped'): Promise<void> {
-		if (outcome !== 'steer' && this.busy) {
-			return;
-		}
-		if (outcome === 'stopped') {
-			this.queue.holdSteers();
-			this.queue.dropAwaited();
-			this.postQueue();
-			return;
-		}
-		const next = outcome === 'steer' || this.queue.hasSteer ? this.queue.takeSteers() : this.queue.takeAll();
-		this.postQueue();
-		if (!next) {
-			if (outcome === 'steer') {
-				this.setBusy(false);
-			}
-			return;
-		}
-		if (this.options.project) {
-			// What waited in a project's chat goes to the hub, which wakes the coordinator again.
-			await this.send(next.text, next.attachments, undefined, undefined, next);
-			return;
-		}
-		this.transcript.addPrompt(next.text, next.attachments, next.from, (next.reactions ?? []).map(reactionRef));
-		if (next.text.trim()) {
-			this.onDidSendPromptEmitter.fire(next.text);
-		}
-		this.lastPrompt = next;
-		await this.runTurn(next.text, next.attachments, true, outcome === 'steer', next.reactions, next);
-	}
-
-	/** Stops the turn for the messages sent now, once no tool is running; a running tool's end calls this again. */
-	private trySteer(): void {
-		// While the session still opens there is no turn to stop: the messages go when it ends.
-		if (!this.busy || this.quiet || this.steerStopping || !this.queue.hasSteer || this.turnWait) {
-			return;
-		}
-		const waiting = this.service.permissions.pendingPermissions.length > 0;
-		if (!atSafePoint(this.transcript.items, waiting)) {
-			// A long tool chain may not reach one for a while: the queue then offers Stop Now.
-			this.steerWaitTimer ??= setTimeout(() => {
-				this.steerWaitTimer = undefined;
-				if (this.busy && this.queue.hasSteer && !this.steerStopping) {
-					this.setSteerWaiting(true);
-				}
-			}, steerWaitMs);
-			return;
-		}
-		this.stopForSteer();
-	}
-
-	/** Stops the turn for the messages sent now; Stop Now does it without waiting for a safe point. */
-	private stopForSteer(): void {
-		this.setSteerWaiting(false);
-		this.steerStopping = true;
-		void this.service.cancel();
-	}
-
-	private setSteerWaiting(waiting: boolean): void {
-		if (!waiting) {
-			clearTimeout(this.steerWaitTimer);
-			this.steerWaitTimer = undefined;
-		}
-		if (this.steerWaiting !== waiting) {
-			this.steerWaiting = waiting;
-			this.post({ type: 'steerWaiting', waiting });
-		}
-	}
-
-	private postQueue(): void {
-		this.post({ type: 'queue', items: this.queue.view });
-	}
-
-	/** A pending message's buttons in the composer. */
-	private queueAction(id: string, action: 'send' | 'edit' | 'remove' | 'stopNow'): void {
-		if (action === 'stopNow') {
-			// As `trySteer`: no turn to stop while the session opens, nor a quiet one.
-			if (this.busy && !this.quiet && !this.turnWait && this.queue.hasSteer && !this.steerStopping) {
-				this.stopForSteer();
-			}
-			return;
-		}
-		if (action === 'send') {
-			if (!this.busy) {
-				const prompt = this.queue.remove(id);
-				this.postQueue();
-				if (prompt?.reactions?.length) {
-					void this.startPrompt(prompt.text, prompt.attachments, prompt.from, prompt.reactions);
-				} else if (prompt) {
-					void this.send(prompt.text, prompt.attachments, prompt.from, undefined, prompt);
-				}
-				return;
-			}
-			// A coordinator's turn is never stopped: its messages go when it ends.
-			if (!this.options.project && this.queue.steer(id)) {
-				this.postQueue();
-				this.trySteer();
-			}
-			return;
-		}
-		const prompt = this.queue.remove(id);
-		this.postQueue();
-		prompt?.settle?.(false);
-		// A reaction has no text to edit: Edit only takes it out.
-		if (action === 'edit' && prompt?.text) {
-			this.post({ type: 'draft', text: prompt.text });
-			if (prompt.attachments.length) {
-				void this.attachments.add(prompt.attachments);
-			}
-		}
-	}
-
-	/**
-	 * After Gemini refused a turn because the session's history is over the
-	 * model's context limit, which no later request in that session can get
-	 * past: moves the chat to a new session that is given the conversation so
-	 * far (prompts and replies, without the tool output that filled it), and
-	 * puts `prompt` back in the box. Nothing is sent again by itself, since the
-	 * turn may have changed files before it failed.
-	 */
-	private async continueAfterOverflow(prompt: string | undefined, reason: 'overflow' | 'refused' = 'overflow'): Promise<void> {
-		const sessionId = this.sessions.current();
-		const conversation = sessionId ? await readCliConversation(this.service.client.cwd, sessionId).catch(() => undefined) : undefined;
-		this.setBusy(true);
-		try {
-			// Moving on on purpose: not the agent losing the session.
-			this.sessions.moveTo(undefined);
-			await this.service.client.newSession();
-			this.options.project?.sessionReplaced();
-		} catch (err) {
-			this.transcript.addNotice(reason === 'refused'
-				? vscode.l10n.t("A new session could not start: {0} Start a new chat to carry on.", this.turnError(err).text)
-				: vscode.l10n.t("Gemini's context for this chat is full, and a new session could not start: {0} Start a new chat to carry on.", this.turnError(err).text), 'error');
-			return;
-		} finally {
-			this.setBusy(false);
-		}
-		const carried = this.sessions.carry('this chat', conversation);
-		this.transcript.addNotice(reason === 'refused'
-			? carried
-				? vscode.l10n.t("The chat continues in a new session that is given the conversation so far, without the tool outputs. Send your message again to carry on.")
-				: vscode.l10n.t("The chat continues in a new session that starts without the earlier conversation. Send your message again to carry on.")
-			: carried
-				? vscode.l10n.t("Gemini's context for this chat filled up, most likely with a large tool output, so Gemini could not answer. The chat continues in a new session that is given the conversation so far, without the tool outputs. Send your message again to carry on.")
-				: vscode.l10n.t("Gemini's context for this chat filled up, most likely with a large tool output, so Gemini could not answer. The chat continues in a new session that starts without the earlier conversation. Send your message again to carry on."), reason === 'refused' ? 'info' : 'error');
-		if (prompt) {
-			this.post({ type: 'draft', text: prompt });
-		}
-	}
-
-	/**
-	 * Sends a prompt; when Gemini refuses the request after a tool result with
-	 * "Requests ending with a model turn are not supported", logs the shape of
-	 * the turn (no contents) and asks the agent once to carry on from the last
-	 * tool result, as typing "continue" does. When that is refused too, says so
-	 * in plain words rather than with the API's JSON.
-	 */
-	private async promptRecovering(content: acp.ContentBlock[]): ReturnType<AgentClient['promptTurn']> {
-		const turnStart = this.transcript.items.length;
-		try {
-			return await this.service.client.promptTurn(content);
-		} catch (err) {
-			if (!isModelTurnRefusal(errorMessage(err))) {
-				throw err;
-			}
-			this.service.writeLog?.(`Gemini refused the turn's request (${errorMessage(err)}). Mode ${this.service.client.settings.mode?.currentId ?? '?'}, model ${this.service.client.settings.model?.currentId ?? '?'}. Turn so far: ${turnShape(this.transcript.items.slice(turnStart))}`);
-		}
-		try {
-			const result = await this.service.client.promptTurn([{ type: 'text', text: 'Continue from the last tool result.' }]);
-			this.transcript.addNotice(vscode.l10n.t("Recovered after an API error: the agent carried on from the last tool result."));
-			return result;
-		} catch (err) {
-			this.service.writeLog?.(`Gemini refused the retry too (${errorMessage(err)}).`);
-			if (!isModelTurnRefusal(errorMessage(err))) {
-				throw err;
-			}
-			throw new RefusedAgainError(vscode.l10n.t("Gemini refused this session's request twice after a tool result, a known Gemini CLI problem after images such as screenshots, and it is likely to refuse later messages in this session too. Your files are as the agent left them. Continue in a new session, which is given the conversation so far without tool outputs, or switch the model and retry."));
-		}
-	}
-
-	/** Adds the turn's end, offering Retry and, when it changed files, Undo. */
-	/** `steered`: stopped for a message sent now, which carries on at once, so it offers no Retry. */
-	private endTurn(durationMs: number, usage?: readonly ModelTokens[], unfinished = false, steered = false): void {
-		const id = this.transcript.addTurnEnd(durationMs, usage);
-		const { files, undoable } = this.checkpoints.endTurn(id);
-		if (files && !unfinished && !this.options.project) {
-			void this.noteErrors();
-		}
-		const build = this.planBuild(usage);
-		const planFile = build && this.options.reviewPlan ? this.turnPlanFile : undefined;
-		this.turnPlanFile = undefined;
-		this.transcript.updateTurnEnd(id, { retry: !this.options.project && !steered, ...(files ? { files } : {}), ...(undoable ? { undo: 'available' } : {}), ...(build ? { buildPlan: true, build } : {}), ...(unfinished ? { unfinished } : {}), ...(steered ? { steered } : {}), ...(planFile ? { planFile } : {}) });
-		this.retryItemId = id;
-		const timing = this.timing;
-		this.timing = undefined;
-		if (timing?.sent && timing.firstToken) {
-			this.transcript.updateTurnEnd(id, { firstTokenMs: timing.firstToken - timing.sent });
-		}
-		const file = currentTraceFile();
-		if (timing && file) {
-			void this.addTraceReadout(timing, durationMs, file);
-		}
-	}
-
-	/** While a trace is recording: the turn's readout from the CLI's file, once it has flushed, under the turn's end. */
-	private async addTraceReadout(timing: TurnTiming, durationMs: number, file: string): Promise<void> {
-		await new Promise(resolve => setTimeout(resolve, 1500));
-		let text = '';
-		try {
-			text = await fs.readFile(file, 'utf8');
-		} catch {
-			return;
-		}
-		const turns = summarizeTrace(parseTraceFile(text)).turns;
-		const turn = turns[turns.length - 1];
-		this.transcript.addTrace(turnReadout(turn, {
-			totalMs: durationMs,
-			...timing.ready ? { sessionMs: timing.ready - timing.started } : {},
-			...timing.sent && timing.ready ? { sendMs: timing.sent - timing.ready } : {},
-			...timing.sent && timing.firstToken ? { firstTokenMs: timing.firstToken - timing.sent } : {},
-		}), file);
-	}
-
 	/** Switches a session in Plan mode to Default, as a project's coordinator needs before each wake. */
-	async leavePlanMode(): Promise<void> {
-		const mode = buildModeAfterPlan(this.service.client.settings);
-		if (mode) {
-			await this.settings.change(() => this.service.client.setMode(mode));
-		}
+	leavePlanMode(): Promise<void> {
+		return this.plan.leavePlanMode();
 	}
 
-	/** Opens the side question panel (⌥⌘;): ask about the chat while the agent keeps working. */
+	/** Opens the side question panel (Alt+Cmd+;): ask about the chat while the agent keeps working. */
 	openSide(): void {
 		this.side.open();
 	}
 
 	/**
-	 * Switches to the next approval mode, as the CLI's ⇧Tab does; the
+	 * Switches to the next approval mode, as the CLI's Shift+Tab does; the
 	 * composer's mode chip shows it. A project's coordinator has no modes to pick.
 	 */
 	cycleMode(): void {
-		const next = this.options.project ? undefined : nextApprovalMode(this.service.client.settings, this.busy);
-		if (!next) {
-			return;
-		}
-		this.settings.onMessage({ type: 'setMode', id: next });
+		this.settings.cycleMode(this.busy);
 	}
 
 	/** Switches to YOLO, or back to the mode before it, as the CLI's Ctrl+Y does; nothing where policy or the agent offers no YOLO. */
 	toggleYolo(): void {
-		const mode = this.service.client.settings.mode;
-		if (this.options.project || !mode || !mode.available.some(choice => choice.id === knownModes.yolo) || !isModeAllowed(getApprovalPolicy(), knownModes.yolo)) {
-			return;
-		}
-		this.settings.onMessage({ type: 'setMode', id: mode.currentId === knownModes.yolo ? this.settings.modeBeforeYolo ?? mode.available[0].id : knownModes.yolo });
+		this.settings.toggleYolo();
 	}
 
 	/** Picks the session's model in a quick pick, as the composer's model picker does. */
-	async pickModel(): Promise<void> {
-		const model = this.service.client.settings.model;
-		if (!model) {
-			void vscode.window.showInformationMessage(vscode.l10n.t("This agent offers no other model."));
-			return;
-		}
-		const picked = await vscode.window.showQuickPick(model.available.map(choice => ({
-			label: choice.name,
-			description: choice.id === model.currentId ? vscode.l10n.t("Current") : undefined,
-			detail: choice.description,
-			id: choice.id,
-		})), { title: vscode.l10n.t("Switch Model"), placeHolder: vscode.l10n.t("The model this agent's next prompts use") });
-		if (picked && picked.id !== model.currentId) {
-			this.settings.onMessage({ type: 'setModel', id: picked.id });
-		}
-	}
-
-	/**
-	 * How Approve Plan builds, while the chat is in Plan mode: in the mode
-	 * the chat was in before Plan, with the other choice on its chevron, and the
-	 * models when the build's differs from the plan's (`planUsage`, the plan
-	 * turn's token counts).
-	 */
-	private planBuild(planUsage?: readonly ModelTokens[]): TurnEndBuild | undefined {
-		const settings = this.service.client.settings;
-		const choice = planBuildChoice(settings, this.settings.modeBeforePlan);
-		if (!choice) {
-			return undefined;
-		}
-		const models = planBuildModels(planUsage, settings.model?.currentId);
-		return { ...choice, ...models ? { models } : {} };
-	}
-
-	/** The latest turn's Approve Plan, again: the model or the modes changed since the turn ended. */
-	private refreshPlanBuild(): void {
-		const item = this.transcript.items.find(each => each.id === this.retryItemId);
-		if (item?.kind !== 'turnEnd' || !item.buildPlan) {
-			return;
-		}
-		const build = this.planBuild(item.usage);
-		if (JSON.stringify(build) !== JSON.stringify(item.build)) {
-			this.transcript.updateTurnEnd(item.id, build ? { buildPlan: true, build } : { buildPlan: undefined, build: undefined });
-		}
-	}
-
-	/** Leaves Plan mode and asks the agent to carry out the plan it just wrote: in `picked` (the chevron's other choice), else the mode before Plan. */
-	private async buildPlan(itemId: string, picked?: string, text = vscode.l10n.t("Carry out the plan above.")): Promise<boolean> {
-		const choice = this.planBuild();
-		const mode = picked && (picked === choice?.mode || picked === choice?.other) ? picked : choice?.mode;
-		if (this.busy || itemId !== this.retryItemId || !mode) {
-			return false;
-		}
-		const item = this.transcript.items.find(each => each.id === itemId);
-		if (item?.kind === 'turnEnd' && item.planFile) {
-			// The agent reads its plan to carry it out.
-			await this.rebuildPlan(item.planFile);
-		}
-		await this.settings.change(() => this.service.client.setMode(mode));
-		if (this.service.client.settings.mode?.currentId === mode) {
-			await this.send(text);
-			return true;
-		}
-		return false;
+	pickModel(): Promise<void> {
+		return this.settings.pickModel();
 	}
 
 	/** Whether the latest turn ended in Plan mode and offers Approve Plan, for Plan Review. */
 	get canBuildPlan(): boolean {
-		const item = this.retryItemId ? this.transcript.items.find(each => each.id === this.retryItemId) : undefined;
-		return !this.busy && item?.kind === 'turnEnd' && !!item.buildPlan;
+		return this.plan.canBuildPlan;
 	}
 
 	/** Approve Plan on the latest turn, from Plan Review, telling the agent `text`; resolves whether it started. */
 	buildLatestPlan(text: string): Promise<boolean> {
-		return this.canBuildPlan && this.retryItemId ? this.buildPlan(this.retryItemId, undefined, text) : Promise.resolve(false);
-	}
-
-	/**
-	 * Writes plan `file` again when the CLI deleted it, as it did on reopening
-	 * a session before GeminiCode kept sessions' plans (src/acp/sessionFolder.ts):
-	 * from Plan Review's copy, else the session's saved calls (sessionReplay.ts).
-	 */
-	private async rebuildPlan(file: string): Promise<void> {
-		const home = cliHome();
-		const cwd = this.service.client.cwd;
-		if (file.startsWith(path.join(home, projectTempDirName) + path.sep) && !await isFile(file)) {
-			const rebuilt = await extensionChunk<typeof import('../onDemand')>('onDemand')().rebuildSessionFile(cwd, file, {
-				home,
-				folder: id => sessionFolder(cwd, id, home),
-				messages: async id => (await readSessionMessages(cwd, id, home))?.messages,
-				reviews: this.options.planReviewFolder,
-			}).catch(() => undefined);
-			if (rebuilt === 'history') {
-				this.transcript.addNotice(vscode.l10n.t("The plan file was gone, so it was rebuilt from the session's history. It may differ a little from the one the agent wrote."), 'info');
-			}
-		}
-	}
-
-	/** Plan mode's plan, opened from its chip: in Plan Review when there is one; false otherwise. */
-	private reviewPlanFile(file: string): boolean {
-		if (!this.options.reviewPlan || this.service.client.settings.mode?.currentId !== 'plan') {
-			return false;
-		}
-		this.options.reviewPlan(file);
-		return true;
+		return this.plan.buildLatestPlan(text);
 	}
 
 	/** Every saved session for the folder, in a quick pick; the one picked opens here. */
@@ -1353,31 +648,8 @@ export class ChatController implements vscode.Disposable {
 	}
 
 	/** Clears the conversation and, when the agent runs, starts a fresh session so it forgets it too. */
-	async newChat(): Promise<void> {
-		if (this.busy) {
-			return;
-		}
-		this.clearConversation();
-		if (this.service.client.state.kind !== 'ready') {
-			// The next prompt starts the agent, and with it a new session.
-			this.service.client.forgetSession();
-			this.fireActivity();
-			return;
-		}
-		this.setBusy(true);
-		try {
-			await this.service.client.newSession();
-		} catch (err) {
-			// The chat is cleared either way; the next prompt opens a new session (the old one is never reopened).
-			this.transcript.addNotice(vscode.l10n.t("A new session could not start: {0}", this.turnError(err).text), 'error');
-		} finally {
-			this.setBusy(false);
-		}
-	}
-
-	/** The plain-words notice for a failed turn or session, from the error it failed with. */
-	private turnError(err: unknown): TurnErrorNotice {
-		return turnErrorNotice(classifyTurnError(err, { model: this.service.client.settings.model?.currentId }));
+	newChat(): Promise<void> {
+		return this.sessions.newChat();
 	}
 
 	/**
@@ -1385,7 +657,7 @@ export class ChatController implements vscode.Disposable {
 	 * Sign In, Show Log), until the next turn starts; for the notice's buttons.
 	 */
 	get lastTurnError(): TurnErrorNotice | undefined {
-		return this._lastTurnError;
+		return this.turn.lastTurnError;
 	}
 
 	/**
@@ -1393,13 +665,8 @@ export class ChatController implements vscode.Disposable {
 	 * its session ends at once, without sending; messages sent now wait.
 	 */
 	stop(): void {
-		this.steerStopping = false;
-		this.setSteerWaiting(false);
-		if (this.queue.hasSteer) {
-			this.queue.holdSteers();
-			this.postQueue();
-		}
-		this.turnWait?.abort();
+		this.queue.stopped();
+		this.turn.abortWait();
 		void this.service.cancel();
 	}
 
@@ -1431,9 +698,8 @@ export class ChatController implements vscode.Disposable {
 
 	dispose(): void {
 		this.disposed = true;
-		this.turnWait?.abort();
-		clearTimeout(this.steerWaitTimer);
-		this.queue.clear();
+		this.turn.abortWait();
+		this.queue.dispose();
 		for (const done of [...this.onDispose]) {
 			done();
 		}
@@ -1449,210 +715,39 @@ export class ChatController implements vscode.Disposable {
 			this.service.open?.();
 			this.fileIndex.warm();
 		}
-		switch (message.type) {
-			case 'shown':
-				this.service.open?.();
-				break;
-			case 'turnRendered': {
-				// One line per turn in the Gemini log: the agent's time, the model's first output, and the view's share.
-				const item = this.transcript.items.find(i => i.id === message.turnEnd);
-				if (item?.kind === 'turnEnd') {
-					this.transcript.updateTurnEnd(item.id, { renderMs: message.renderMs, renderedUpdates: message.updates });
-					const firstToken = item.firstTokenMs === undefined ? '' : `, first output ${item.firstTokenMs} ms after send`;
-					this.service.writeLog?.(`Turn: ${item.durationMs} ms${firstToken}; the view rendered ${message.updates} updates in ${message.renderMs} ms`);
-				}
-				break;
-			}
-			case 'ready':
-				if (message.protocol !== chatProtocolVersion) {
-					void vscode.window.showWarningMessage(vscode.l10n.t("The Gemini chat view's script is out of date. Rebuild it with \"npm run gulp compile-extension-media\" (or keep \"npm run watch\" running) and reload the window."));
-				}
-				this.viewReady = true;
-				// Before the items, so their shell blocks show Run, and the empty chat's hints the keys, as they are drawn.
-				this.post({ type: 'sendWith', cmdEnter: sendsWithCmdEnter() });
-				this.runs.postView();
-				this.postReset();
-				// In case the view never says it is shown, such as one hidden as it loads.
-				clearTimeout(this.openTimer);
-				this.openTimer = setTimeout(() => this.service.open?.(), openFallbackMs);
-				this.post({ type: 'capabilities', image: this.service.client.promptCapabilities.image });
-				this.post({ type: 'composerHeight', height: preferredComposerHeight() });
-				this.follow.postFollowing();
-				this.follow.postFollowed();
-				this.attachments.postPending();
-				this.postQueue();
-				this.postReactions();
-				this.post({ type: 'triedEdits', files: this.triedEdits });
-				this.usage.onReady();
-				this.git.refresh();
-				void this.sharedPage.refresh();
-				this.sideLinks.refresh();
-				void this.attachments.postToolRefs();
-				// The agent was started with the view (see attach); this retries one that has since stopped.
-				this.service.ensureReady().catch(() => undefined);
-				// After starting the agent: finding the theme's file scans every extension the first time.
-				setTimeout(() => void this.postTokenColors(), 0);
-				break;
-			case 'prompt':
-				void this.send(message.text, message.attachments ?? [], undefined, message.when, { includeEdits: !!message.includeEdits });
-				break;
-			case 'queueAction':
-				this.queueAction(message.id, message.action);
-				break;
-			case 'react':
-				this.react(message.turnEnd, message.emoji, message.name);
-				break;
-			case 'composerHeight':
-				rememberComposerHeight(message.height);
-				break;
-			case 'stop':
-				// Stop means stop: messages sent now wait instead, for the user to send.
-				this.stop();
-				break;
-			case 'command':
-				if (statusCommands.includes(message.command)) {
-					void vscode.commands.executeCommand(message.command);
-				}
-				break;
-			case 'retry':
-				if (this.options.project) {
-					// A project's failed wake: the hub sends its events again.
-					this.transcript.clearRetry();
-					this.options.project.retryWake();
-				} else if (this.lastPrompt?.reactions && message.itemId === this.retryItemId && !this.busy) {
-					void this.startPrompt(this.lastPrompt.text, this.lastPrompt.attachments, undefined, this.lastPrompt.reactions);
-				} else if (this.lastPrompt && message.itemId === this.retryItemId) {
-					void this.send(this.lastPrompt.text, this.lastPrompt.attachments);
-				}
-				break;
-			case 'retryCutOff': {
-				const item = this.transcript.items.find(i => i.id === message.itemId);
-				if (item?.kind === 'cutOff' && item.prompt) {
-					this.transcript.dismissCutOff(item.id);
-					void this.send(item.prompt);
-				}
-				break;
-			}
-			case 'dismissCutOff':
-				this.transcript.dismissCutOff(message.itemId);
-				break;
-			case 'buildPlan':
-				void this.buildPlan(message.itemId, typeof message.mode === 'string' ? message.mode : undefined);
-				break;
-			case 'reviewPlan': {
-				const item = this.transcript.items.find(each => each.id === message.itemId);
-				if (item?.kind === 'turnEnd' && item.planFile) {
-					const file = item.planFile;
-					void this.rebuildPlan(file).then(() => this.options.reviewPlan?.(file));
-				}
-				break;
-			}
-			case 'listCommands':
-				void this.commands.postCommands();
-				break;
-			case 'permission':
-				this.permissions.onMessage(message);
-				break;
-			case 'noticeAction':
-				this.noticeAction(message.itemId, message.action);
-				break;
-			case 'showOutput':
-				this.post({ type: 'output', itemId: message.itemId, part: message.part, text: this.files.outputs.get(message.itemId, message.part) });
-				break;
-			case 'showAgentChanges':
-				this.options.sharedFiles?.show(message.agent);
-				break;
-			case 'setMode':
-			case 'setModel':
-			case 'setCliDefaultModel':
-				this.settings.onMessage(message);
-				break;
-			case 'openDiff':
-			case 'openLocation':
-			case 'openPath':
-			case 'openTrace':
-				this.files.onMessage(message);
-				break;
-			case 'pickFiles':
-			case 'attachUris':
-			case 'searchFiles':
-			case 'resolveToolRef':
-			case 'openToolRef':
-			case 'pickToolItem':
-			case 'attachMention':
-				this.attachments.onMessage(message);
-				break;
-			case 'stopSharing':
-			case 'openSharedPage':
-				this.sharedPage.onMessage(message);
-				break;
-			case 'openSideLink':
-				this.sideLinks.onMessage(message);
-				break;
-			case 'setFollow':
-			case 'showFollowed':
-			case 'closeFollowed':
-				this.follow.onMessage(message);
-				break;
-			case 'listBranches':
-			case 'switchBranch':
-			case 'createBranchAndCommit':
-			case 'writeCommitMessage':
-			case 'commitToBranch':
-			case 'workspaceAction':
-			case 'openReview':
-			case 'openMergeRequest':
-				this.git.onMessage(message);
-				break;
-			case 'restoreSession':
-			case 'pickSession':
-				this.sessions.onMessage(message);
-				break;
-			case 'undoTurn':
-			case 'rewind':
-			case 'pickRewind':
-				this.checkpoints.onMessage(message);
-				break;
-			case 'requestFork':
-			case 'fork':
-			case 'forkAction':
-				this.forks.onMessage(message);
-				break;
-			case 'sideAsk':
-			case 'sideCancel':
-				this.side.onMessage(message);
-				break;
-			case 'compact':
-			case 'undoCompact':
-			case 'dismissCompact':
-			case 'viewCompactSummary':
-				this.compacting.onMessage(message);
-				break;
-			case 'threadAction':
-			case 'prepareThread':
-			case 'openProjectSettings':
-			case 'saveProjectSettings':
-			case 'setPlanFirst':
-			case 'projectSettingsAction':
-			case 'startThread':
-			case 'openParentProject':
-				this.project.onMessage(message);
-				break;
-			case 'prepareEnhance':
-			case 'enhancePrompt':
-			case 'cancelEnhance':
-				this.enhance.onMessage(message);
-				break;
-			case 'readQuota':
-			case 'openUpgrade':
-			case 'measureContext':
-				this.usage.onMessage(message);
-				break;
-			case 'runCommand':
-			case 'sendRunOutput':
-				this.runs.onMessage(message);
-				break;
+		this.route(message);
+	}
+
+	/** The view's script is ready: sends it everything the chat shows. */
+	private onReady(message: Extract<FromWebview, { readonly type: 'ready' }>): void {
+		if (message.protocol !== chatProtocolVersion) {
+			void vscode.window.showWarningMessage(vscode.l10n.t("The Gemini chat view's script is out of date. Rebuild it with \"npm run gulp compile-extension-media\" (or keep \"npm run watch\" running) and reload the window."));
 		}
+		this.viewReady = true;
+		// Before the items, so their shell blocks show Run, and the empty chat's hints the keys, as they are drawn.
+		this.post({ type: 'sendWith', cmdEnter: sendsWithCmdEnter() });
+		this.runs.postView();
+		this.postReset();
+		// In case the view never says it is shown, such as one hidden as it loads.
+		clearTimeout(this.openTimer);
+		this.openTimer = setTimeout(() => this.service.open?.(), openFallbackMs);
+		this.post({ type: 'capabilities', image: this.service.client.promptCapabilities.image });
+		this.post({ type: 'composerHeight', height: preferredComposerHeight() });
+		this.follow.postFollowing();
+		this.follow.postFollowed();
+		this.attachments.postPending();
+		this.queue.postQueue();
+		this.reactions.postReactions();
+		this.post({ type: 'triedEdits', files: this.turn.triedEdits });
+		this.usage.onReady();
+		this.git.refresh();
+		void this.sharedPage.refresh();
+		this.sideLinks.refresh();
+		void this.attachments.postToolRefs();
+		// The agent was started with the view (see attach); this retries one that has since stopped.
+		this.service.ensureReady().catch(() => undefined);
+		// After starting the agent: finding the theme's file scans every extension the first time.
+		setTimeout(() => void this.postTokenColors(), 0);
 	}
 
 	/** Opens the Fork dialog in this chat, as its Fork button does; the chat comes into view first. */
@@ -1681,12 +776,10 @@ export class ChatController implements vscode.Disposable {
 	private clearConversation(): void {
 		this.transcript.clear();
 		this.queue.clear();
-		this.postQueue();
 		this.files.clear();
-		this.completedToolCalls.clear();
+		this.turn.forgetCompletedToolCalls();
 		this.checkpoints.clear();
-		this.lastPrompt = undefined;
-		this.retryItemId = undefined;
+		this.turn.forgetLastPrompt();
 		this.sessions.forgetConversation();
 	}
 
@@ -1708,9 +801,9 @@ export class ChatController implements vscode.Disposable {
 		}
 		const finished = this.busy && !busy;
 		this.busy = busy;
-		if (finished && !this.turnRunning && this.queue.pending.length) {
+		if (finished && !this.turn.running && this.queue.pending.length) {
 			// Messages sent during other work, such as Compact, go once it is done.
-			setTimeout(() => void this.sendPending('done'), 0);
+			setTimeout(() => void this.queue.sendPending('done'), 0);
 		}
 		if (this.options.busyContextKey) {
 			void vscode.commands.executeCommand('setContext', this.options.busyContextKey, busy);
@@ -1745,35 +838,6 @@ export class ChatController implements vscode.Disposable {
 		return stall && this.busy && !this.quiet ? stallNotice(stall) : undefined;
 	}
 
-	/** A failed or cut-short turn's Retry or Continue, from its notice, while that notice still offers it. */
-	/** After a turn that changed files: a notice when the language servers report errors in them, offering Fix. */
-	private async noteErrors(): Promise<void> {
-		const text = await this.options.errorsAfterTurn?.().catch(() => undefined);
-		if (text && !this.busy) {
-			this.transcript.addNotice(text, 'info', ['fixErrors']);
-		}
-	}
-
-	private noticeAction(itemId: string, action: 'retry' | 'continue' | 'newSession' | 'fixErrors'): void {
-		const notice = this.busy ? undefined : this.transcript.noticeOffering(itemId, action);
-		if (!notice) {
-			return;
-		}
-		if (action === 'fixErrors') {
-			void this.send(`Fix these errors in the files you changed, then check again with code_diagnostics:\n${notice.text.split('\n').slice(1).join('\n')}`);
-		} else if (action === 'newSession') {
-			void this.continueAfterOverflow(this.lastPrompt?.text, 'refused');
-		} else if (action === 'continue') {
-			// Carries on where the request limit stopped the turn, as the CLI's own "continue" does.
-			void this.send('Continue.');
-		} else if (this.lastPrompt?.reactions) {
-			void this.startPrompt(this.lastPrompt.text, this.lastPrompt.attachments, undefined, this.lastPrompt.reactions);
-		} else if (this.lastPrompt) {
-			// A session that failed to open is opened again first (`ensureReady`, `AgentClient.retryOpen`).
-			void this.send(this.lastPrompt.text, this.lastPrompt.attachments);
-		}
-	}
-
 	private post(message: ToWebview): void {
 		if (message.type !== 'items') {
 			// Keep the order: item updates first, then whatever follows them.
@@ -1803,30 +867,3 @@ export async function openChatAsMarkdown(title: string, items: readonly Transcri
 	const document = await vscode.workspace.openTextDocument({ language: 'markdown', content });
 	await vscode.window.showTextDocument(document, { preview: false, viewColumn: column });
 }
-
-/** When a turn's steps happened, in ms since the epoch. */
-interface TurnTiming {
-	readonly started: number;
-	ready?: number;
-	sent?: number;
-	/** The model's first output after the prompt was sent: a thought, a tool call, a plan or reply text. */
-	firstToken?: number;
-	/** The first reply text, which in an agentic turn often comes after every step. */
-	firstText?: number;
-}
-
-/** What a turn end's Approve Plan offers. */
-type TurnEndBuild = NonNullable<Extract<TranscriptItem, { readonly kind: 'turnEnd' }>['build']>;
-
-/** What the transcript keeps of a reaction sent with a prompt. */
-function reactionRef({ turnEnd, emoji, name }: ReactionRequest): ReactionRef {
-	return { ...(turnEnd ? { turnEnd } : {}), emoji, name };
-}
-
-/** Whether the CLI applies edits in mode `mode` without a card: Auto Edit and YOLO. */
-function editsWithoutCards(mode: string | undefined): boolean {
-	return mode === 'autoEdit' || mode === 'yolo';
-}
-
-/** Gemini refused a turn's request after a tool result, and again when asked to carry on: the session likely refuses every later request. */
-class RefusedAgainError extends Error { }

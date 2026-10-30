@@ -57,7 +57,7 @@ Report bugs in [GitHub Issues](https://github.com/pulkitjain-org/vscode-gemini-c
 
 ## Contributing
 
-Put new code in `extensions/gemini/` and follow the [design rules](docs/ARCHITECTURE.md#design-rules). Keep `src/acp` free of `vscode` imports, so its logic can be unit tested. If you change the messages between the chat view and its webview (`src/host/chatProtocol.ts`), bump `chatProtocolVersion`.
+Put new code in `extensions/gemini/` and follow the [design rules](docs/ARCHITECTURE.md#design-rules). Keep `src/acp` free of `vscode` imports, so its logic can be unit tested. If you change the messages between the chat view and its webview (`src/host/chatProtocol.ts`), bump `chatProtocolVersion` and set `chatProtocolHash` to the value `test/acp/chatProtocolHash.test.ts` names; the test fails until both are done.
 
 Commits are authored as the repository owner, branches start with `task/`, `feature/` or `bugfix/`, and nothing names an AI tool; [AGENTS.md](../AGENTS.md#commits-branches-and-pull-requests) has the full rules. `scripts/commit-policy.sh` checks them: the hooks in `scripts/git-hooks/` run it on commit and push, and Gemini CI's Policy job on every pull request.
 
