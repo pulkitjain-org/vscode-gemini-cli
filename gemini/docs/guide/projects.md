@@ -2,7 +2,7 @@
 
 A project hands a larger piece of work to a team of agents. You talk to a **coordinator**, which splits the work into **threads**: each an agent on its own branch, in one or more repositories. You review and merge each thread when it's right.
 
-![A project chat where the coordinator answers with a plan of two threads](../../site/media/project-chat-dark.webp)
+![A project chat where the coordinator has started a thread per repository, each waiting on an approval](../../site/media/project-chat-dark.webp)
 
 ## Start a project
 
@@ -33,7 +33,7 @@ If a coordinator turn fails, for example on a quota or network error, its error 
 
 Each thread shows as a card in the project chat with its state, branch, changed lines and time, and updates in place. Click its title, or **Open**, to open its chat in a tab of its own. A thread's questions and permission requests stay in its own chat (**Open to Answer**). A line of three steps on the card, **In the thread**, **Trying in your workspace** and **Kept**, shows where its work is.
 
-![Thread cards in the project chat, with the side panel counting threads by state](../../site/media/project-threads-dark.webp)
+![Finished thread cards in the project chat, with the side panel counting threads by state and each thread's requests](../../site/media/project-threads-dark.webp)
 
 Threads run in the repository's worktrees with all of its rules, and a thread's agent starts while its folder is set up. If you quit while a thread is still being set up, it keeps its brief: when the project opens again, the setup runs again and the thread gets its brief then. In the agent list, the **Projects** section lists each project with its threads below it.
 
@@ -82,7 +82,7 @@ A thread that finished without changes, such as an assessment, offers **Open** t
 
 The chevron beside the card's **Try in Workspace** offers **Merge Back** and, with GitLab connected, **Open Merge Request**, and remembers your pick for the repository. Merge Back commits the thread's work on its branch and merges the branch into the branch your folder has checked out, and the thread is then resolved.
 
-![A finished thread card with Merge back, Review changes and Undo thread](../../site/media/project-merge-dark.webp)
+![Finished thread cards with Try in Workspace and Review Changes, and one card's menu with Open Terminal in Thread Folder, Run Checks There, Discard Changes and Remove Thread](../../site/media/project-merge-dark.webp)
 
 ## Several repositories
 

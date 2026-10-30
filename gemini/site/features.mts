@@ -58,13 +58,21 @@ export const featurePages: readonly FeaturePage[] = [
 			{ title: 'Describe the task', body: 'Type it on Home and press Return. **Here** works in your folder, **On a Branch** gives the agent a copy of the repository on a new branch, and its chevron hands the task to a project.' },
 			{ title: 'Watch, or step away', body: 'A status dot per agent: a spinner while it works, amber when it waits for you, green when done. A Mac notification says when one needs you.' },
 			{ title: 'Review its changes', body: 'Every file it changed is in Changes, beside its chat. Keep or undo each change in the file, or all at once.' },
-			{ title: 'Bring the work back', body: '**Merge Back** puts an agent\'s changes in your checkout, unstaged, to run and test. **Keep Changes** makes them yours; **Take Back** removes them.' },
+			{ title: 'Bring the work back', body: '**Try in Workspace** puts an agent\'s changes in your checkout, unstaged, to run and test. **Keep Changes** makes them yours; **Take Back** removes them.' },
 		],
 		sections: [
 			{
-				title: 'Files beside each agent',
-				body: ['What an agent opens, files, diffs and pages, goes in a group of its own beside its chat. Switch agents and each one\'s files are where you left them. Turn on **Follow the agent** to watch each file it reads or edits open at its line.'],
-				media: { name: 'files', alt: 'An agent\'s chat with the files it opened in a group beside it' },
+				title: 'Everything beside the chat',
+				body: [
+					'A column in the margin of each agent\'s chat says where it works and opens what it has made: **Changes** with the lines added and removed, **Browser**, **Terminal** and **Files**. The chat stays where it is.',
+					'What an agent opens, files, diffs, pages and its terminal, goes in a group of its own beside its chat. Switch agents and each one\'s files are where you left them. Turn on **Follow the agent** to watch each file it reads or edits open at its line.',
+				],
+				media: { name: 'agent-links', alt: 'An agent\'s chat with the column in its margin: where it works, Changes with the lines added and removed, Browser, Terminal and Files' },
+			},
+			{
+				title: 'The Files page',
+				body: ['**Files** opens the agent\'s folder beside its chat: a search, **New File**, the files you opened lately and the folder as a tree, with ignored files dimmed. Open a file and the page steps aside into a narrow tree next to it, ready for the next one.'],
+				media: { name: 'agent-files', alt: 'An agent\'s Files page beside its chat, with the search, New File, recent files and the folder tree' },
 			},
 			{
 				title: 'The workspace index',
@@ -117,7 +125,7 @@ export const featurePages: readonly FeaturePage[] = [
 			{
 				title: 'The + menu',
 				body: ['The approval mode, files, context, Follow the agent, the model, usage and your skills and slash commands are in one menu, so the composer stays small: the input, Write and Preview, the model and Send.'],
-				media: { name: 'docs/plus-menu', alt: 'The composer\'s + menu with the mode, files, context, Follow the agent, the model, usage and skills' },
+				media: { name: 'docs/plus-menu', alt: 'The composer\'s + menu with Fork, the mode, files, context, Follow the agent, Open Terminal and your team\'s tools' },
 			},
 			{
 				title: 'Enhance prompt',
@@ -137,7 +145,7 @@ export const featurePages: readonly FeaturePage[] = [
 			{
 				title: 'Run what it suggests',
 				body: ['A shell command in a reply has **Run** beside **Copy**. It runs in the agent\'s own terminal, in its folder, and the block shows how it ended. When it fails, **Send Output to Gemini** hands the exit code and output straight back. Commands that delete work, force-push or write outside the folder ask first.'],
-				media: { name: 'run-command', alt: 'A reply\'s shell command with Run beside Copy, and a failed run with its exit code and Send Output to Gemini' },
+				media: { name: 'run-command', alt: 'A reply\'s shell command run with Run, marked as passed, and its output in the agent\'s terminal beside the chat' },
 			},
 			{
 				title: 'Compact long chats',
@@ -147,7 +155,7 @@ export const featurePages: readonly FeaturePage[] = [
 			{
 				title: 'Plan mode',
 				body: ['The agent reads the code and writes a plan that ends with **Approve Plan**. Nothing changes until you press it.'],
-				media: { name: 'showcase-plan', alt: 'An agent in Plan mode writing a plan that ends with Approve Plan', clip: true },
+				media: { name: 'showcase-plan', alt: 'An agent in Plan mode writing a plan that ends with Approve Plan and Review Plan', clip: true },
 			},
 			{
 				title: 'Review the plan',
@@ -155,7 +163,7 @@ export const featurePages: readonly FeaturePage[] = [
 					'**Review Plan** opens the plan beside the chat, one section at a time. Click a section to edit it, or comment on it the way you would on a pull request.',
 					'**Send Comments to Gemini** sends them all at once. The agent revises the plan, and the page marks each section that changed.',
 				],
-				media: { name: 'showcase-plan-review', alt: 'Comments on two sections of a plan sent to Gemini, and the revised plan with the changed sections marked', clip: true },
+				media: { name: 'showcase-plan-review', alt: 'Review Plan opened beside the chat, comments sent to Gemini, and the revised plan with the changed sections marked', clip: true },
 			},
 			{
 				title: 'Asks first',
@@ -167,6 +175,7 @@ export const featurePages: readonly FeaturePage[] = [
 			'**Review My Changes** has an agent read your uncommitted diff and report findings, without changing anything.',
 			'Select code and press ⌘I to change it in place, or let Gemini write the commit message.',
 			'Replies colour code like the editor and typeset math.',
+			'Long chats get an outline of your prompts down the left edge. Point at a tick to see the prompt and the start of its reply, and click to jump there.',
 			'Right-click in any terminal for **Send to Gemini**, or press ⌘I there to ask Gemini for a command.',
 			'⌃⌘I puts the cursor in the chat, ⌘Esc stops the agent, ⌘. changes the approval mode and ⌥⌘. the model.',
 			'A failed turn says what went wrong in plain words, with **Retry**, **Switch Model** or **Sign In** right there.',
@@ -195,7 +204,7 @@ export const featurePages: readonly FeaturePage[] = [
 			{
 				title: 'Thread cards',
 				body: ['The project chat shows every thread as a card, and the side panel counts them by state. Open a thread to talk to its agent directly; anything it needs from you stays in that thread.'],
-				media: { name: 'project-threads', alt: 'Thread cards in the project chat, with the side panel counting threads by state' },
+				media: { name: 'project-threads', alt: 'Finished thread cards in the project chat, with the side panel counting threads by state and each thread\'s requests' },
 			},
 			{
 				title: 'Start a thread yourself',

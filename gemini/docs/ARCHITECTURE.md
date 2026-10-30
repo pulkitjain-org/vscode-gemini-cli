@@ -109,7 +109,7 @@ It inherits the editor's environment, including proxy and CA variables, with the
 - `GOOGLE_CLOUD_PROJECT` set to the resolved project, and `GOOGLE_CLOUD_PROJECT_ID` cleared;
 - `GEMINI_CLI_NO_RELAUNCH=true` and an explicit heap size;
 - `--admin-policy` (see [Security model](#security-model));
-- `--include-directories` for each folder, only with `gemini.agents.allWorkspaceFolders` in a multi-root window (`includeDirectoryArgs`). ACP sessions build their config from the process's arguments, so every session's workspace would then cover all the window's folders. The setting is off by default, so an agent keeps to the folder it works in. With it on, a change to the folders restarts the process once no prompt runs.
+- `--include-directories` for each folder, only with `gemini.agents.allWorkspaceFolders` in a multi-root window (`includeDirectoryArgs`). ACP sessions build their config from the process's arguments, so every session's workspace would then cover all the window's folders. The setting is off by default, so an agent keeps to the folder it works in. With it on, a change to the folders restarts the process once no prompt runs. The chat's `@` picker follows the same scope: the window's file list (`workspaceFiles.ts`) is filtered to the agent's folder and the folders it is launched with (`includedFolderPaths`), read on each search, so a change to the setting applies at once.
 
 Restarts:
 
@@ -238,6 +238,8 @@ Each agent's files get a side group of their own, from `geminiAgentGroups.ts` (f
 - Activating a hidden group (from Open Editors, say) brings its agent to the front.
 - Closing an agent's tab or removing the agent sends `_gemini.closeAgentGroup`, which closes its files except those with unsaved changes. The group goes when its last file closes.
 - The agent-to-group map is kept in workspace storage, since group ids survive a reload.
+- An agent's Files page (below) moves beside an open file in a narrow group of its own, showing only its tree (`_gemini.agentFilesBeside`). The tree's width comes out of the side group's, so the chat keeps its own. It hides and comes back with the side group, keeps its width across switches, and takes the side group's place, at their joint width, when the side group's last file closes. A page not restored with the window leaves no empty group.
+- Each agent's chat and tree widths are kept when another agent's side group hides, and the workbench checks which agent is in front again when an agent tab's icon arrives, so after a reload the agent in front shows its side group without a click.
 
 #### Title bar and side bar
 
@@ -299,7 +301,15 @@ The CLI's `invoke_agent` tool reaches ACP as one `think` tool call titled `Deleg
 
 #### Long chats
 
-The chat draws a tick per prompt down its right edge (`webview-src/promptNav.ts`) and jumps between prompts with ⌥⌘↑ and ⌥⌘↓. Prompt positions are read only on a jump, or once a frame while scrolling, to light the current tick.
+From two prompts on, the chat draws a tick per prompt down its left edge, centred on the view's height (`webview-src/promptNav.ts`), and jumps between prompts with ⌥⌘↑ and ⌥⌘↓. Hovering a tick shows the prompt and the start of its reply (`replyPreview` in `chatLogic.ts`) in a card in the top layer, not a native tooltip. Prompt positions are read only on a jump, or once a frame while scrolling, to light the current tick.
+
+#### The side column
+
+An agent's or thread's chat has a column in its right margin (`webview-src/sideLinks.ts`, fed by `chat/chatSideLinks.ts`): where the agent works, **Changes** with the lines added and removed, **Browser**, **Terminal** and **Files**. It sits outside the centred transcript, so it never moves the chat. `chat.css` turns it into icons below 1128px and hides it below 856px. A project's coordinator has none, since its folder is empty. The host's `sideLinks` option gives the view and opens each link in the agent's side group: Browser shows the agent's page, or opens a blank one of the user's there (`_gemini.browser.openBlank`); Terminal is the agent's terminal; Files is the Files page.
+
+#### The Files page
+
+`agentFilesPage.ts`, in `dist/pages.js` and loaded on first use, is an agent's Files page in its side group: a search over the agent's folder (the same file list as the chat's `@` picker), New File, the files recently opened from it (kept per agent in workspace state) and the folder as a tree, with git-ignored entries dimmed (`src/acp/agentFiles.ts` sorts and picks icons; a folder of more than 400 entries is listed without asking git). Its messages are in `agentFilesProtocol.ts`, its view in `webview-src/agentFiles.ts`. Opening a file moves the page beside it (above).
 
 **Open Chat as Markdown** turns the transcript items into one untitled Markdown document (`src/acp/chatMarkdown.ts`): prompts and replies under headings, thoughts folded, tool calls as a list. An agent that is not running in the window is read from its saved conversation.
 
@@ -471,7 +481,7 @@ Files: `agentTerminals.ts`, `chat/chatRun.ts`, `terminalGemini.ts`, `src/acp/run
 
 These terminals are the user's. Agent commands run inside the CLI: `clientCapabilities.terminal` is false, and gemini-cli 0.64 never calls `terminal/create`.
 
-`AgentTerminals` keeps each agent's terminal per folder, closed when the agent is removed. It also keeps the last command of every terminal, read from shell integration as it runs, because a command's output can only be read from its start: the command line, exit code and last 200 lines (`OutputTail`, control sequences stripped).
+`AgentTerminals` keeps each agent's terminal per folder, as a tab in the agent's side group (`agentColumn`), so it hides and comes back with the agent. The terminals are transient, so a reload leaves no tab the agent has lost track of, and they close when the agent is removed. It also keeps the last command of every terminal, read from shell integration as it runs, because a command's output can only be read from its start: the command line, exit code and last 200 lines (`OutputTail`, control sequences stripped).
 
 **Run on a reply's shell block** (`webview-src/runButtons.ts`) sends the block's text to the host, which:
 

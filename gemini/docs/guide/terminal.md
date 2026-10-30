@@ -2,13 +2,13 @@
 
 Every agent has a terminal of its own. Commands Gemini suggests in a reply run there with one click, and anything a terminal prints can go back to Gemini when you want its help.
 
-![A reply's shell command with Run beside Copy, and the failed run's exit code with Send Output to Gemini](../../site/media/run-command-dark.webp)
+![A reply's shell command run with Run, marked as passed, and its output in the agent's terminal beside the chat](../../site/media/run-command-dark.webp)
 
 ## The agent's terminal
 
 An agent's terminal is named after it, such as "fix-login · Gemini", and opens in the folder the agent works in. For an agent on its own branch, that is the branch's folder. A thread that works in several repositories gets one terminal per repository.
 
-Open it with **Open Terminal**, which is in the agent's right-click menu, in its tab's right-click menu and in the composer's **+** menu. Removing the agent closes its terminals.
+Open it with **Terminal** in the column beside the agent's chat, or with **Open Terminal**, which is in the agent's right-click menu, in its tab's right-click menu and in the composer's **+** menu. It opens as a tab in the agent's group beside the chat, so it hides and comes back with the agent, as its files do. Removing the agent closes its terminals, and they don't come back after the window reloads.
 
 These terminals are yours. The agent runs its own commands through the Gemini CLI, after asking you, and they don't appear here.
 
