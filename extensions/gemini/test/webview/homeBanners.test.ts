@@ -29,7 +29,7 @@ function view(banners?: readonly HomeBanner[]): HomeView {
 		ownBranch: false,
 		modes: [],
 		dashboard: {
-			greeting: 'Good morning', context: 'shop', tools: [], quickActions: [], needs: [], needsQuery: '', cards: [mergeRequests], layout: [], releaseBranches: [], refreshing: false,
+			greeting: 'Good morning', context: 'shop', tools: [], quickActions: [], cards: [mergeRequests], layout: [], releaseBranches: [], refreshing: false,
 			...banners ? { banners } : {},
 		},
 	};

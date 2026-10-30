@@ -83,6 +83,10 @@ The confirm-class policy rules name the team's own servers `jira` and `gitlab`. 
 
 ## Later
 
+### Debug mode
+
+Designed in [DEBUG_MODE.md](DEBUG_MODE.md): an agent that forms hypotheses, observes the running program through VS Code's debugger (and marked log lines where the debugger can't reach), has the bug reproduced, fixes only what the evidence confirms, and cleans up everything it added. Its spikes come first: whether `session/load` applies new `mcpServers`, and whether a debugger stop can avoid moving the user's editor.
+
 ### Semantic search for the index
 
 Deferred by decision: the index is lexical (BM25), symbols and grep. The cheapest local route measured so far is to re-rank `code_search`'s candidates with a small local embedding model at query time, caching chunk embeddings as they come up. It would be judged by the same real-session comparison as the index ([FINDINGS.md](FINDINGS.md#workspace-index)).

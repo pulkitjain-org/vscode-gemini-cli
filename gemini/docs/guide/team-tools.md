@@ -63,15 +63,11 @@ A checked-in `.gemini/geminicode-tools.json` saves everyone typing addresses. It
 
 ## Home
 
-**Home** opens in front of your restored tabs every time GeminiCode starts. Under the **Start Agent** composer and quick actions, **Needs you** lists what waits on you across the tools, most pressing first: an agent asking permission, unresolved threads on your own merge request (**Reply on !N**), a failed pipeline on your merge request, a merge request of yours that GitLab says can merge, an agent's work ready to try, a review request, a reopened ticket.
-
-Reviews take at most two rows, so a team's many review requests don't fill the list. The ones you started come first, then those where you are the only reviewer, then the longest waiting; one the author must fix first, with conflicts or a failing pipeline, goes last. Drafts and reviews you already gave are left out. The rest fold into one row, such as **3 more reviews waiting**, with **Show All**.
-
-Cards follow:
+**Home** opens in front of your restored tabs every time GeminiCode starts. Under the **Start Agent** composer and quick actions, cards follow:
 
 - **Agents.**
 - **My tickets**: every open ticket assigned to you. The current sprint's come first, under the sprint's name with how many are done, then the rest under **Not in this sprint**. With several Jira sites, each site has its own group. Each has **Start**, and in its menu **Add Comment…**, **Log Time…**, **Move…** and **Reassign…**.
-- **Merge requests**: **Pending on me** (asked to review, or assigned to finish) and **Mine**, each with its pipeline and approvals; one that can merge shows **Merge…**.
+- **Merge requests**: **Pending on me** (asked to review, or assigned to finish) and **Mine**, each with its pipeline and approvals; one that can merge shows **Merge…**. Reviews you started come first, then those where you are the only reviewer, then the longest waiting; one the author must fix first, with conflicts or a failing pipeline, goes after them, and drafts and reviews you already gave go last. One of yours with unresolved threads says so, with **Reply**.
 - **Quality** on the release branch: the SonarQube gate and Snyk, with **Fix**.
 - **Gemini.**
 

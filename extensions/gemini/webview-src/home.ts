@@ -4,9 +4,9 @@
  *--------------------------------------------------------------------------------------------*/
 
 // Home (src/host/agentHome.ts): the dashboard GeminiCode opens with. A
-// composer that starts a new agent, the team tools' state, what needs the
-// user, cards for agents, tickets, merge requests, quality, releases and
-// Gemini, and earlier agents to resume.
+// composer that starts a new agent, the team tools' state, cards for
+// agents, tickets, merge requests, quality, releases and Gemini, and earlier
+// agents to resume.
 
 import { type Attachment, attachmentLabel } from '../src/acp/attachments';
 import type { FromHome, HomeAction, HomeAgent, HomeButton, HomeCard, HomeDashboard, HomeRow, HomeView, ToHome } from '../src/host/panelProtocol';
@@ -401,7 +401,7 @@ function renderProjects(next: HomeView): void {
 }
 
 /** What an agent's card's buttons do, and how they are drawn: the message, its label and icon. */
-type AgentButton = readonly ['stop' | 'review' | 'mergeBack' | 'tryMenu' | 'open', string, string?];
+type AgentButton = readonly [HomeAgent['buttons'][number]['do'], string, string?];
 
 /**
  * An agent's card, or `old` brought up to date in place. A click anywhere on
@@ -435,7 +435,7 @@ function card(agent: HomeAgent, old?: HTMLElement): HTMLElement {
 	const shown: AgentButton[] = agent.buttons.map(b => [b.do, b.label, b.icon] as const);
 	if (changed(actions, shown)) {
 		actions.replaceChildren(...agent.buttons.map(b => {
-			const node = button(b.primary ? 'primary' : b.do === 'tryMenu' ? 'secondary try-menu' : 'secondary', b.label, () => vscode.postMessage({ type: b.do, id: agent.id }), b.icon);
+			const node: HTMLButtonElement = button(b.primary ? 'primary' : b.do === 'tryMenu' ? 'secondary try-menu' : 'secondary', b.label, () => b.do === 'tryMenu' ? openTryMenu(node, agent.id) : vscode.postMessage({ type: b.do, id: agent.id }), b.icon);
 			if (b.do === 'tryMenu') {
 				node.setAttribute('aria-label', strings.tryMenu);
 			}
@@ -443,6 +443,16 @@ function card(agent: HomeAgent, old?: HTMLElement): HTMLElement {
 		}));
 	}
 	return node;
+}
+
+/** The Try chevron's menu, for the card as the view shows it now: its buttons are drawn again only when they change. */
+function openTryMenu(anchor: HTMLElement, id: string): void {
+	void loadMenus().then(loaded => {
+		const agent = view?.active.find(a => a.id === id) ?? view?.earlier.find(a => a.id === id);
+		if (agent) {
+			loaded.toggleTry(anchor, agent, choice => vscode.postMessage({ type: 'tryChoice', id, choice }));
+		}
+	});
 }
 
 function workspaceTrust(): string | undefined {
@@ -547,7 +557,6 @@ const customizeButton = document.getElementById('customize') as HTMLButtonElemen
 const banners = document.getElementById('banners')!;
 const quick = document.getElementById('quick')!;
 const setup = document.getElementById('setup')!;
-const needs = document.getElementById('needs')!;
 const cardsSection = document.getElementById('cards')!;
 
 setTip(customizeButton, strings.customize);
@@ -696,20 +705,6 @@ function renderDashboard(dash: HomeDashboard): void {
 			steps.append(item);
 		});
 		setup.append(steps);
-	}
-
-	needs.hidden = !dash.needs.length;
-	if (changed(needs, [dash.needs, dash.needsQuery])) {
-		needs.replaceChildren();
-		if (dash.needs.length) {
-			const head = el('div', 'dash-card-head');
-			head.append(el('span', 'dot warn'), el('h3', undefined, strings.needsYou), queryText(dash.needsQuery));
-			const rows = el('div', 'dash-rows');
-			for (const need of dash.needs) {
-				rows.append(dashRow({ tool: need.tool, title: need.title, detail: need.detail, ...need.pill ? { pill: need.pill } : {}, button: need.button }));
-			}
-			needs.append(head, rows);
-		}
 	}
 
 	drawKeyed(cardsSection, dashCards, dash.cards, dashCard);

@@ -21,6 +21,7 @@ import type { ConversationEntry, MessageRecord } from '../../acp/cliSessions';
 import type { FinishedCommand, RunPlace } from '../../acp/runCommands';
 import type { RunOutcome } from '../agentTerminals';
 import type { ForkAction, ForkRequest, NewThread, ProjectSettingsAction, ProjectSettingsSave, SideLink, ThreadAction, ViewContextBreakdown, ViewSideLinks } from '../chatProtocol';
+import type { TryChoice } from '../panelProtocol';
 import type { ToolChips } from '../toolChips';
 import type { UsageMeter } from '../usageMeter';
 import type { FileMatch } from '../workspaceFiles';
@@ -206,8 +207,8 @@ export interface ChatProject {
 	post(text: string, attachments: readonly Attachment[]): void;
 	/** Tool calls the chat leaves out: the project's own tools, which show as posts and thread cards. */
 	hidesToolCall(title: string): boolean;
-	/** `repo` names one repository of a thread in several, for Merge back. */
-	threadAction(thread: string, action: ThreadAction, repo?: string): void;
+	/** `repo` names one repository of a thread in several, for Merge back; `choice` is the Try chevron menu's pick. */
+	threadAction(thread: string, action: ThreadAction, repo?: string, choice?: TryChoice): void;
 	/** The New thread dialog's Start thread. */
 	startThread(thread: NewThread): void;
 	/** Project settings: open it, save it, or one of its buttons that needs the extension. */

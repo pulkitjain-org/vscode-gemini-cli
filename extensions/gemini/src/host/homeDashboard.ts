@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as vscode from 'vscode';
-import { cardOrder, DashboardCardId, DashboardLayout, firstName, isReadyToMerge, needsYou, partOfDay, sprintProgress, ticketGroups } from '../acp/dashboard';
+import { cardOrder, DashboardCardId, DashboardLayout, firstName, isReadyToMerge, partOfDay, rankReviews, sprintProgress, ticketGroups } from '../acp/dashboard';
 import type { AuditEntry } from '../acp/auditLog';
 import type { ModelQuota } from '../acp/directRequest';
 import type { FlowRecord } from '../acp/flowRecords';
@@ -14,7 +14,7 @@ import { teamBanners } from '../acp/homeBanners';
 import { ServerHealth, TeamToolId, teamToolIds, teamToolNames } from '../acp/teamHttp';
 import type { AgentSummary } from './agentsView';
 import { relativeTime } from './displayText';
-import type { HomeAction, HomeBanner, HomeButton, HomeCard, HomeCardId, HomeDashboard, HomeList, HomeNeed, HomeRow, HomeTool, HomeTone, HomeTypeColor } from './panelProtocol';
+import type { HomeAction, HomeBanner, HomeButton, HomeCard, HomeCardId, HomeDashboard, HomeList, HomeRow, HomeTool, HomeTone, HomeTypeColor } from './panelProtocol';
 import type { ConnectionState } from './teamConnections';
 import type { Fetched, TeamSnapshot } from './teamData';
 
@@ -143,8 +143,6 @@ export function buildDashboard(input: DashboardInput): HomeDashboard {
 			{ label: vscode.l10n.t("Review"), icon: 'diff', action: command('gemini.review') },
 			...input.connected.has('snyk') || input.connected.has('sonar') ? [{ label: vscode.l10n.t("Run Checks..."), tool: input.connected.has('snyk') ? 'snyk' as const : 'sonar' as const, action: command('gemini.team.runChecksOnBranch') }] : [],
 		],
-		needs: needs(input),
-		needsQuery: 'agent waiting · unresolved threads on your MRs · pipeline failed · mergeable & approved · ready to try · reviewer_id=me (2 shown) · reopened',
 		cards,
 		...nothingConnected ? { setup: setupSteps(input) } : {},
 		...banners(input),
@@ -200,52 +198,6 @@ function toolView(id: TeamToolId, input: DashboardInput): HomeTool {
 		default:
 			return { id, name, tone: 'error', label: state.detail ?? vscode.l10n.t("{0}: needs attention", name) };
 	}
-}
-
-function needs(input: DashboardInput): HomeNeed[] {
-	const account = input.state('gitlab').account;
-	return needsYou({
-		// A project's threads are on their project's cards; an agent of its own is ready to try once done with changes.
-		agents: input.agents.map(a => ({ id: a.id, title: a.title, state: a.state, status: a.status, ...a.state === 'done' && a.worktree && a.changes?.files && !a.trying && !a.project ? { tryReady: true } : {} })),
-		reviews: input.data.reviews?.data,
-		mine: input.data.mine?.data,
-		tickets: input.data.tickets?.data?.issues,
-		reviewing: new Set((input.reviewsInProgress ?? []).map(r => `${r.project}!${r.iid}`)),
-		...account ? { me: account } : {},
-	}).map((item): HomeNeed => {
-		switch (item.kind) {
-			case 'agentWaiting':
-				return { tool: 'gemini', title: vscode.l10n.t("{0} is waiting", item.title), detail: item.status, button: { label: vscode.l10n.t("Open"), action: { kind: 'agent', id: item.agentId, do: 'open' } } };
-			case 'reply':
-				return { tool: 'gitlab', title: vscode.l10n.t("Reply on !{0}", item.mr.iid), detail: item.mr.title, pill: { text: vscode.l10n.t("unresolved threads"), tone: 'warn' }, button: { label: vscode.l10n.t("Open"), action: { kind: 'link', url: item.mr.url } } };
-			case 'tryReady':
-				return { tool: 'gemini', title: vscode.l10n.t("{0} is ready to try", item.title), detail: vscode.l10n.t("Its changes are on its own branch. Try them in your workspace before keeping them."), button: { label: vscode.l10n.t("Try in Workspace"), action: { kind: 'agent', id: item.agentId, do: 'mergeBack' } } };
-			case 'moreReviews':
-				return {
-					tool: 'gitlab', title: item.count === 1 ? vscode.l10n.t("1 more review waiting") : vscode.l10n.t("{0} more reviews waiting", item.count),
-					detail: item.oldest ? vscode.l10n.t("The oldest waiting since {0}", new Date(item.oldest).toLocaleDateString()) : '',
-					button: input.gitlabUrl
-						? { label: vscode.l10n.t("Show All"), action: { kind: 'link', url: `${input.gitlabUrl}/dashboard/merge_requests?reviewer_username=${encodeURIComponent(account ?? '')}` } }
-						: { label: vscode.l10n.t("Show All"), action: command('gemini.home') },
-				};
-			case 'review':
-				return { tool: 'gitlab', title: vscode.l10n.t("Review !{0}", item.mr.iid), detail: [item.mr.author, item.mr.title].join(' · '), button: reviewButton(input, item.mr) };
-			case 'pipelineFailed':
-				return {
-					tool: 'gitlab', title: vscode.l10n.t("Pipeline failed on !{0}", item.mr.iid), detail: item.mr.title,
-					...item.mr.pipeline ? { pill: { text: `#${item.mr.pipeline.id}`, tone: 'error' } } : {},
-					button: { label: vscode.l10n.t("Fix"), action: command('gemini.team.fixMergeRequest', item.mr.project, item.mr.iid) },
-				};
-			case 'readyToMerge':
-				return {
-					tool: 'gitlab', title: vscode.l10n.t("!{0} is ready to merge", item.mr.iid), detail: item.mr.title,
-					pill: { text: [vscode.l10n.t("mergeable"), item.mr.approvals ? vscode.l10n.t("{0} of {1} approvals", item.mr.approvals.given, item.mr.approvals.required) : '', item.mr.pipeline?.status === 'success' ? vscode.l10n.t("pipeline passed") : ''].filter(Boolean).join(' · '), tone: 'ok' },
-					button: { label: vscode.l10n.t("Merge..."), action: command('gemini.team.mergeMergeRequest', item.mr.project, item.mr.iid), primary: true },
-				};
-			case 'reopened':
-				return { tool: 'jira', title: vscode.l10n.t("{0} reopened", item.issue.key), detail: item.issue.summary, pill: { text: item.issue.status, tone: 'error' }, button: { label: vscode.l10n.t("Start Agent"), action: command('gemini.team.startOnTicket', item.issue.url) } };
-		}
-	});
 }
 
 function setupSteps(input: DashboardInput): HomeDashboard['setup'] {
@@ -511,7 +463,10 @@ function mergeRequestsCard(input: DashboardInput, title: string): ListedCard | u
 	const mine = input.data.mine;
 	const { stale, note, asOf } = sourceState(input, 'gitlab', reviews?.error ? reviews : mine);
 	const mineGroup = vscode.l10n.t("Mine");
-	const forMe = (reviews?.data ?? []).map((mr): HomeRow => {
+	const account = input.state('gitlab').account;
+	// The ones that need the user most first; drafts and reviews they already gave go after.
+	const ranked = rankReviews({ reviews: reviews?.data, reviewing: new Set((input.reviewsInProgress ?? []).map(r => `${r.project}!${r.iid}`)), ...account ? { me: account } : {} });
+	const forMe = [...ranked, ...(reviews?.data ?? []).filter(mr => !ranked.includes(mr))].map((mr): HomeRow => {
 		const going = reviewInProgress(input, mr);
 		return {
 			key: `!${mr.iid}`, repo: mr.project, title: mr.title, detail: mr.author, open: { kind: 'link', url: mr.url },
@@ -530,12 +485,13 @@ function mergeRequestsCard(input: DashboardInput, title: string): ListedCard | u
 			...i === 0 ? { group: mineGroup, groupQuery: 'author_id=me, state=opened' } : {},
 			key: `!${mr.iid}`, repo: mr.project, title: mr.title, open: { kind: 'link', url: mr.url },
 			...isReadyToMerge(mr) ? { pill: { text: vscode.l10n.t("ready to merge"), tone: 'ok' as const }, button: { label: vscode.l10n.t("Merge..."), action: command('gemini.team.mergeMergeRequest', mr.project, mr.iid), primary: true } }
+				: mr.pipeline?.status !== 'failed' && mr.unresolved && !mr.draft ? { pill: { text: vscode.l10n.t("unresolved threads"), tone: 'warn' as const }, button: { label: vscode.l10n.t("Reply"), action: { kind: 'link', url: mr.url } } }
 				: { ...pipelinePill(mr) ? { pill: pipelinePill(mr) } : {}, ...mr.pipeline?.status === 'failed' ? { button: { label: vscode.l10n.t("Fix"), action: command('gemini.team.fixMergeRequest', mr.project, mr.iid) } } : {} },
 	}));
 	const all = [...forMe, ...mineRows];
 	return listed({
 		id: 'mergeRequests', title, tool: 'gitlab', stale, ...asOf ? { asOf } : {}, query: 'reviewer_id=me OR assignee_id=me, state=opened',
-		...input.gitlabUrl ? { link: { label: vscode.l10n.t("Open in GitLab"), action: { kind: 'link', url: `${input.gitlabUrl}/dashboard/merge_requests?reviewer_username=${encodeURIComponent(input.state('gitlab').account ?? '')}` } } } : {},
+		...input.gitlabUrl ? { link: { label: vscode.l10n.t("Open in GitLab"), action: { kind: 'link', url: `${input.gitlabUrl}/dashboard/merge_requests?reviewer_username=${encodeURIComponent(account ?? '')}` } } } : {},
 		...note ? { note } : !all.length ? { note: !reviews || reviews.loading ? vscode.l10n.t("Loading merge requests...") : vscode.l10n.t("No open merge requests for you or waiting on you.") } : {},
 	}, all, [...forMe.slice(0, 4), ...mineRows.slice(0, 4)]);
 }

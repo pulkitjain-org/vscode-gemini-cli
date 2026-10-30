@@ -27,7 +27,6 @@ Below the composer:
 
 - **Agent Setup**, on the right, opens the MCP servers, skills, rules and hooks your agents load. See [Agent Setup](helpers.md).
 - The drum icon beside the workspace shows its index's state and opens Agent Setup's **Index & Docs** tab. See [Workspace index and docs](#workspace-index-and-docs).
-- **Needs you** lists what is waiting on you, most pressing first, such as an agent asking for permission or an agent's work ready to try. See [Team tools](team-tools.md#home) for the rest.
 - Cards follow for your agents and, once you connect your team's tools, your tickets, the merge requests waiting on you and your own, quality checks, and Gemini's usage. See [Team tools](team-tools.md#home).
 
 Each card names the query that fills it, so you can check its numbers against the tool. **Customize** hides and reorders cards.

@@ -9,6 +9,7 @@ import * as vscode from 'vscode';
 import { reviewBase } from '../acp/agentChanges';
 import { errorMessage } from '../acp/errors';
 import { diffLines, hunkLines, splitLines } from '../acp/lineDiff';
+import { isTryChoice, tryChoiceStrings } from './agents/tryChoices';
 import { ChangesSource } from './changesView';
 import { undoForeignMessage } from './reviewController';
 import { createNonce, escapeAttribute } from './webviewHtml';
@@ -196,7 +197,7 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 		const busy = source.busy();
 		const team = this.mrPanel?.view(source);
 		return {
-			agent: { title: source.title, busy, ...(source.branch ? { branch: source.branch } : {}), ...(source.trying ? { trying: true } : {}), ...(source.tryChoice?.() && source.tryChoice() !== 'try' ? { tryChoice: source.tryChoice() as 'merge' | 'mr' } : {}), canCommit: !!source.commit && !busy && files.length > 0 },
+			agent: { title: source.title, busy, ...(source.branch ? { branch: source.branch } : {}), ...(source.trying ? { trying: true } : {}), ...(source.tryChoice?.() && source.tryChoice() !== 'try' ? { tryChoice: source.tryChoice() as 'merge' | 'mr' } : {}), ...(source.mergeRequests?.() ? { mergeRequests: true } : {}), canCommit: !!source.commit && !busy && files.length > 0 },
 			totals: source.changes.totals,
 			files,
 			...team ? { team } : {},
@@ -246,8 +247,8 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 				return source?.commit?.();
 			case 'mergeBack':
 				return source?.mergeBack?.();
-			case 'tryMenu':
-				return source?.tryMenu?.();
+			case 'tryChoice':
+				return isTryChoice(message.choice) ? source?.chooseTry?.(message.choice) : undefined;
 			case 'keepTried':
 				return source?.keep?.();
 			case 'takeBack':
@@ -322,6 +323,7 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 			openMrTip: vscode.l10n.t("Push the branch and open a merge request with a title and description Gemini drafts."),
 			tryMenu: vscode.l10n.t("Other ways to take the work"),
 			tryMenuTip: vscode.l10n.t("Try in Workspace, Merge Back or Open Merge Request; your pick is remembered for this repository."),
+			tryChoices: tryChoiceStrings(),
 			keepChanges: vscode.l10n.t("Keep Changes"),
 			keepChangesTip: vscode.l10n.t("Make these changes yours. Nothing is staged or committed; commit them when you're ready."),
 			takeBack: vscode.l10n.t("Take Back"),
@@ -334,6 +336,7 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 			files: vscode.l10n.t("{0} files"),
 		};
 		const script = webview.asWebviewUri(vscode.Uri.joinPath(media, 'changes.js'));
+		const changesMenu = webview.asWebviewUri(vscode.Uri.joinPath(media, 'changesMenu.js'));
 		const style = webview.asWebviewUri(vscode.Uri.joinPath(media, 'panels.css'));
 		const teamStyle = webview.asWebviewUri(vscode.Uri.joinPath(media, 'teamFlow.css'));
 		const codicons = webview.asWebviewUri(vscode.Uri.joinPath(media, 'codicon.css'));
@@ -344,7 +347,7 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 <html lang="en">
 <head>
 	<meta charset="UTF-8">
-	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; font-src data: ${webview.cspSource}; img-src data: ${webview.cspSource}; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
+	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; font-src data: ${webview.cspSource}; img-src data: ${webview.cspSource}; style-src ${webview.cspSource}; script-src 'nonce-${nonce}' ${webview.cspSource};">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<link href="${codicons}" rel="stylesheet">
 	<link href="${menuStyle}" rel="stylesheet">
@@ -356,7 +359,7 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 <body class="changes-panel">
 	<header id="bar" class="changes-bar"></header>
 	<main id="files" class="changes-files"></main>
-	<script nonce="${nonce}" type="module" src="${script}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
+	<script nonce="${nonce}" type="module" src="${script}" data-changes-menu="${changesMenu}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
 </body>
 </html>`;
 	}

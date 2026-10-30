@@ -19,6 +19,7 @@ import { attachmentsForFiles } from './addToChat';
 import { AgentsView, AgentSummary, relativeTime } from './agentsView';
 import { configuredDefaultMode } from './defaultMode';
 import { chooseFolder } from './agents/agentStarts';
+import { isTryChoice, tryChoiceStrings } from './agents/tryChoices';
 import { startsQuietly } from './agentWarmup';
 import { detectAuth } from '../acp/directRequest';
 import { tildify } from './displayText';
@@ -282,6 +283,7 @@ export class AgentHome implements vscode.Disposable {
 			...(a.worktree ? { branch: a.worktree.branch } : {}),
 			...(a.trying ? { trying: true } : {}),
 			...(a.tryChoice ? { tryChoice: a.tryChoice } : {}),
+			...(a.worktree && this.agents.mergeRequests() ? { mergeRequests: true } : {}),
 			updated: relativeTime(a.updatedAt, now),
 			buttons: this.cardButtons(a),
 		});
@@ -607,8 +609,10 @@ export class AgentHome implements vscode.Disposable {
 			case 'mergeBack':
 				await this.agents.mergeBack(message.id);
 				return;
-			case 'tryMenu':
-				await this.agents.pickTryChoice(message.id);
+			case 'tryChoice':
+				if (isTryChoice(message.choice)) {
+					await this.agents.chooseTry(message.id, message.choice);
+				}
 				return;
 			case 'action':
 				await this.runAction(message.action);
@@ -706,11 +710,11 @@ export class AgentHome implements vscode.Disposable {
 			newProject: vscode.l10n.t("New Project"),
 			open: vscode.l10n.t("Open"),
 			tryMenu: vscode.l10n.t("Other ways to take the work"),
+			tryChoices: tryChoiceStrings(),
 			noAgents: vscode.l10n.t("No agents are running. Start one above."),
 			noWorkspace: vscode.l10n.t("Add a workspace folder for agents to work in."),
 			customize: vscode.l10n.t("Customize"),
 			refresh: vscode.l10n.t("Refresh"),
-			needsYou: vscode.l10n.t("Needs you"),
 			showCard: vscode.l10n.t("Show"),
 			moveUp: vscode.l10n.t("Move Up"),
 			moveDown: vscode.l10n.t("Move Down"),
@@ -832,7 +836,6 @@ export class AgentHome implements vscode.Disposable {
 			<div class="dash-quick-row"><div id="quick" class="dash-quick"></div><button type="button" id="helpers" class="option-button helpers-button"><i class="codicon codicon-tools" aria-hidden="true"></i><span></span></button></div>
 		</section>
 		<section id="setup" class="dash-setup" hidden></section>
-		<section id="needs" class="dash-needs" hidden></section>
 		<section id="cards" class="dash-cards"></section>
 		<div id="row-menu" class="home-menu" hidden></div>
 		<section id="active" class="home-section"></section>

@@ -43,6 +43,9 @@ export interface ChangedFileView {
 	readonly hunks?: readonly HunkView[];
 }
 
+/** What the Try button does with the work of an agent on its own branch (`agents/tryChoices.ts`). */
+export type TryChoice = 'try' | 'merge' | 'mr';
+
 export interface ChangesPanelView {
 	readonly agent?: {
 		readonly title: string;
@@ -54,6 +57,8 @@ export interface ChangesPanelView {
 		readonly trying?: boolean;
 		/** What the Try button does, when not Try in Workspace. */
 		readonly tryChoice?: 'merge' | 'mr';
+		/** GitLab is connected: the chevron's menu offers Open Merge Request. */
+		readonly mergeRequests?: boolean;
 	};
 	readonly totals: ChangeTotals;
 	readonly files: readonly ChangedFileView[];
@@ -67,7 +72,9 @@ export type FromChangesPanel =
 	| { readonly type: 'ready' }
 	| { readonly type: 'keep' | 'undo'; readonly path: string; readonly index: number }
 	| { readonly type: 'keepFile' | 'undoFile' | 'openFile'; readonly path: string }
-	| { readonly type: 'keepAll' | 'undoAll' | 'openAll' | 'commit' | 'mergeBack' | 'tryMenu' | 'keepTried' | 'takeBack' }
+	| { readonly type: 'keepAll' | 'undoAll' | 'openAll' | 'commit' | 'mergeBack' | 'keepTried' | 'takeBack' }
+	/** A pick from the Try button's chevron menu. */
+	| { readonly type: 'tryChoice'; readonly choice: TryChoice }
 	| FromChangesTeam;
 
 // --- Agent Home
@@ -85,6 +92,8 @@ export interface HomeAgent {
 	readonly trying?: boolean;
 	/** What its Try button does, when not Try in Workspace. */
 	readonly tryChoice?: 'merge' | 'mr';
+	/** GitLab is connected: the chevron's menu offers Open Merge Request. */
+	readonly mergeRequests?: boolean;
 	/** "5m" */
 	readonly updated: string;
 	/** The card's buttons, from the one action set (`branchAgentActions`), with the host's labels. */
@@ -248,14 +257,6 @@ export interface HomeList {
 	readonly rows: readonly HomeRow[];
 }
 
-export interface HomeNeed {
-	readonly tool: HomeToolId | 'gemini';
-	readonly title: string;
-	readonly detail: string;
-	readonly pill?: { readonly text: string; readonly tone: HomeTone };
-	readonly button: HomeButton;
-}
-
 export interface HomeSetupStep {
 	readonly title: string;
 	readonly detail: string;
@@ -270,9 +271,6 @@ export interface HomeDashboard {
 	readonly context: string;
 	readonly tools: readonly HomeTool[];
 	readonly quickActions: readonly (HomeButton & { readonly tool?: HomeToolId; readonly icon?: string })[];
-	readonly needs: readonly HomeNeed[];
-	/** What Needs you is made of, faint beside its title. */
-	readonly needsQuery: string;
 	readonly cards: readonly HomeCard[];
 	/** First run: nothing connected yet. */
 	readonly setup?: readonly HomeSetupStep[];
@@ -335,7 +333,9 @@ export type FromHome =
 	/** The user is typing a task, so the agent and a session for it can get ready. */
 	| { readonly type: 'typing'; readonly folder: string; readonly ownBranch: boolean }
 	| { readonly type: 'addFolder' | 'agentSetup' | 'openIndex' | 'pickFiles' | 'newProject' }
-	| { readonly type: 'open' | 'stop' | 'review' | 'mergeBack' | 'tryMenu'; readonly id: string }
+	| { readonly type: 'open' | 'stop' | 'review' | 'mergeBack'; readonly id: string }
+	/** A pick from an agent card's Try chevron menu. */
+	| { readonly type: 'tryChoice'; readonly id: string; readonly choice: TryChoice }
 	| { readonly type: 'action'; readonly action: HomeAction }
 	| { readonly type: 'refresh' }
 	| { readonly type: 'layout'; readonly card: HomeCardId; readonly visible?: boolean; readonly move?: number }

@@ -8,6 +8,7 @@
 // loaded when the first project chat opens (chatHtml.ts).
 
 import * as vscode from 'vscode';
+import { tryChoiceStrings } from '../agents/tryChoices';
 import type { ProjectChatStrings } from '../chatStrings';
 
 export function projectStrings(): ProjectChatStrings {
@@ -157,6 +158,7 @@ export function projectStrings(): ProjectChatStrings {
 			tryMenu: vscode.l10n.t("Try in Workspace, Merge Back or Open Merge Request; your pick is remembered for this repository."),
 		},
 		openMr: vscode.l10n.t("Open Merge Request"),
+		tryChoices: tryChoiceStrings(),
 		openToAnswer: vscode.l10n.t("Open to Answer"),
 		steps: {
 			thread: vscode.l10n.t("In the thread"),

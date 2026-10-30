@@ -12,6 +12,7 @@
 import type { IndexToolVerbs, TeamToolVerbs } from '../acp/toolLinks';
 import type { ForkContext, NoticeAction } from '../acp/chatTranscript';
 import type { ThreadAction } from './chatProtocol';
+import type { TryChoiceStrings } from './panelStrings';
 
 /** The strings only a project's chat shows. */
 export interface ProjectChatStrings {
@@ -126,6 +127,8 @@ export interface ProjectChatStrings {
 	readonly actions: { readonly [action in ThreadAction]: string };
 	/** The Try button's label when the repository's remembered choice is a merge request. */
 	readonly openMr: string;
+	/** The Try button's chevron menu. */
+	readonly tryChoices: TryChoiceStrings;
 	/** Each action's tooltip, for the buttons that have one. */
 	readonly tips: { readonly [action in ThreadAction]?: string };
 	readonly openToAnswer: string;

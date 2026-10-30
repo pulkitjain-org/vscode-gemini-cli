@@ -184,6 +184,8 @@ export interface ThreadCard {
 	readonly guide?: boolean;
 	/** What the card's Try button does when not Try in Workspace: the choice remembered for the repository (`tryChoices.ts`). */
 	readonly tryChoice?: 'merge' | 'mr';
+	/** GitLab is connected: the Try chevron's menu offers Open Merge Request. */
+	readonly mergeRequests?: boolean;
 }
 
 /** A thread card's try: how many files, what the last update did, and what the user changed. */

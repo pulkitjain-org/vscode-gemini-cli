@@ -6,6 +6,7 @@
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { AgentChanges, EditedFile, formatCounts } from '../acp/agentChanges';
+import type { TryChoice } from './panelProtocol';
 
 const changesViewId = 'gemini.agentChanges';
 /** Read-only documents holding a file's text from before an agent's first edit. */
@@ -31,8 +32,10 @@ export interface ChangesSource {
 	mergeBack?(): Promise<void>;
 	/** What the Try button does now. */
 	tryChoice?(): 'try' | 'merge' | 'mr';
-	/** The chevron beside it: pick and remember the choice, then run it. */
-	tryMenu?(): Promise<void>;
+	/** A pick from the menu of the chevron beside it: remember the choice, then run it. */
+	chooseTry?(choice: TryChoice): Promise<void>;
+	/** Whether the chevron's menu offers Open Merge Request (GitLab is connected). */
+	mergeRequests?(): boolean;
 	/** Its work is being tried in the user's checkout: Keep Changes and Take Back instead of Merge Back. */
 	readonly trying?: boolean;
 	keep?(): Promise<void>;

@@ -26,6 +26,12 @@
 	cursor: default;
 }
 
+/* The Try button's chevron menu (webview-src/tryChoiceMenu.ts), in the page's body: placed by the button that opened it. */
+.try-choice-menu:not([hidden]) {
+	position: fixed;
+	padding-top: 5px;
+}
+
 .menu[hidden] {
 	display: none;
 }

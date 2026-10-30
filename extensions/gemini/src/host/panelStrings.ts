@@ -7,6 +7,17 @@
 // (`vscode.l10n.t`) and each page reads from its script tag. Kept apart from
 // panelProtocol.ts, which holds the messages between host and page.
 
+/** The Try button's chevron menu (webview-src/tryChoiceMenu.ts): its heading and each choice with what it does. */
+export interface TryChoiceStrings {
+	readonly title: string;
+	readonly tryIn: string;
+	readonly tryInDetail: string;
+	readonly mergeBack: string;
+	readonly mergeBackDetail: string;
+	readonly openMr: string;
+	readonly openMrDetail: string;
+}
+
 export interface ChangesPanelStrings {
 	readonly empty: string;
 	readonly noAgent: string;
@@ -28,6 +39,7 @@ export interface ChangesPanelStrings {
 	readonly openMrTip: string;
 	readonly tryMenu: string;
 	readonly tryMenuTip: string;
+	readonly tryChoices: TryChoiceStrings;
 	readonly keepChanges: string;
 	readonly keepChangesTip: string;
 	readonly takeBack: string;
@@ -102,13 +114,13 @@ export interface HomeStrings {
 	readonly newProject: string;
 	/** Open, for a card's fallback focus; the cards' other buttons come with their labels (`HomeAgent.buttons`). */
 	readonly open: string;
-	/** The Try button's chevron. */
+	/** The Try button's chevron and its menu. */
 	readonly tryMenu: string;
+	readonly tryChoices: TryChoiceStrings;
 	readonly noAgents: string;
 	readonly noWorkspace: string;
 	readonly customize: string;
 	readonly refresh: string;
-	readonly needsYou: string;
 	readonly showCard: string;
 	readonly moveUp: string;
 	readonly moveDown: string;

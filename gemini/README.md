@@ -28,6 +28,7 @@ Documentation:
 - [docs/guide/](docs/guide/): the user docs, one page per area, published as the [GeminiCode docs](https://pulkitjain-org.github.io/vscode-gemini-cli/docs/). They describe what is on `main`; update them in the same pull request as the feature.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how GeminiCode works and why, including the security model, admin policies and the [design rules](docs/ARCHITECTURE.md#design-rules).
 - [docs/PROJECTS.md](docs/PROJECTS.md): how Projects work inside: the coordinator and its threads, how prompts move between them, and what drives the coordinator's decisions.
+- [docs/DEBUG_MODE.md](docs/DEBUG_MODE.md): the design of Debug mode, not yet built: an agent that debugs from evidence of the running program, with the debugger, marked log lines and their cleanup.
 - [docs/FINDINGS.md](docs/FINDINGS.md): Gemini CLI behaviour and measurements the design relies on.
 - [docs/RELEASING.md](docs/RELEASING.md): versions, cutting a release, the download page, and Apple signing.
 - [docs/ROADMAP.md](docs/ROADMAP.md): open work and risks.

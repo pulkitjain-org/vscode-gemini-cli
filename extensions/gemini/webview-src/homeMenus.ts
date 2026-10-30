@@ -4,17 +4,18 @@
  *--------------------------------------------------------------------------------------------*/
 
 // Home's menus: the composer's "+", folder, mode, project and From Your Tools
-// menus, and a dashboard row's "..." menu. A chunk of its own, with the menu class,
+// menus, a dashboard row's "..." menu and an agent card's Try chevron menu. A chunk of its own, with the menu class,
 // which Home loads once it has settled or on the first click on one of their
 // buttons, so Home's startup script stays small. Show All and Customize
 // (homePopups.ts) get the same menu class from here, so opening one menu
 // closes the others.
 
-import type { HomeAction, HomeButton, HomeCard, HomeRow, HomeView } from '../src/host/panelProtocol';
+import type { HomeAction, HomeAgent, HomeButton, HomeCard, HomeRow, HomeView, TryChoice } from '../src/host/panelProtocol';
 import type { HomeStrings } from '../src/host/panelStrings';
 import { Menu, type MenuRow, type MenuSection } from './menu';
 import { modeIcon } from './modeIcon';
 import { format } from './panelDom';
+import { createTryChoiceMenu, type TryChoiceMenu } from './tryChoiceMenu';
 
 export { Menu };
 
@@ -51,6 +52,8 @@ export interface HomeMenus {
 	open(anchor: HTMLElement): void;
 	/** Opens, or closes when open from it, the "..." menu of a row with `items`. */
 	openRow(anchor: HTMLElement, items: readonly HomeButton[]): void;
+	/** Opens, or closes when open from it, the menu of `agent`'s Try chevron; `pick` runs with the choice picked. */
+	toggleTry(anchor: HTMLElement, agent: HomeAgent, pick: (choice: TryChoice) => void): void;
 	/** Draws the open menu again, as when the view changed. */
 	render(): void;
 }
@@ -181,6 +184,8 @@ export function createHomeMenus(host: HomeMenusHost): HomeMenus {
 		tip: host.tip,
 	});
 
+	let tryMenu: TryChoiceMenu | undefined;
+
 	const composerMenus = [plusMenu, fromToolsMenu, modeMenu, folderMenu, projectMenu];
 	const anchors = ['plus', 'from-tools', 'mode', 'workspace', 'project'].map(byId);
 	return {
@@ -197,6 +202,10 @@ export function createHomeMenus(host: HomeMenusHost): HomeMenus {
 			rowAnchor = anchor;
 			anchor.parentElement!.append(rowMenuElement);
 			rowMenu.open();
+		},
+		toggleTry(anchor, agent, pick) {
+			tryMenu ??= createTryChoiceMenu(Menu, strings.tryChoices, host.tip);
+			tryMenu.toggle(anchor, agent.tryChoice ?? 'try', !!agent.mergeRequests, pick);
 		},
 		render() {
 			for (const each of composerMenus) {

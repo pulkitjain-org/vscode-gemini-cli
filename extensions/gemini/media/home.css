@@ -5,7 +5,7 @@
 
 /*
  * Home's dashboard (webview-src/home.ts), on top of panels.css's Agent Home styles: the
- * greeting line, the composer's bar, Needs you and the cards.
+ * greeting line, the composer's bar and the cards.
  */
 
 .home.dash {
@@ -375,9 +375,8 @@ button.dash-quick-action:hover {
 	background: var(--gemini-hover);
 }
 
-/* Get started, Needs you and the cards: panels with a hairline, a step above the page. */
+/* Get started and the cards: panels with a hairline, a step above the page. */
 .dash-setup,
-.dash-needs,
 .dash-card {
 	display: flex;
 	flex-direction: column;
@@ -388,13 +387,11 @@ button.dash-quick-action:hover {
 	background: var(--gemini-card);
 }
 
-.dash-setup,
-.dash-needs {
+.dash-setup {
 	margin-top: 14px;
 }
 
-.dash-setup[hidden],
-.dash-needs[hidden] { display: none; }
+.dash-setup[hidden] { display: none; }
 
 .dash-setup h2 {
 	margin: 0 0 10px;
@@ -636,17 +633,6 @@ button.dash-row-title:hover {
 	max-width: 40%;
 	font-size: 12px;
 	color: var(--gemini-faint);
-}
-
-/* Needs you reads as one line: the title, then what it is about, then the state and the action. */
-.dash-needs .dash-row-title {
-	flex: none;
-	max-width: 45%;
-}
-
-.dash-needs .dash-row-detail {
-	flex: 1;
-	max-width: none;
 }
 
 /* A bar in a row: the sprint's progress, today's quota. */

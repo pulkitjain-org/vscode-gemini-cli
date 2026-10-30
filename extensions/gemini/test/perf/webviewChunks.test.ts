@@ -14,7 +14,7 @@ import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const media = path.join(__dirname, '..', '..', 'media');
-const chunks = ['commentBox', 'emojiPicker', 'figmaDesign', 'homePopups', 'homeMenus', 'draftMarkdown'];
+const chunks = ['commentBox', 'emojiPicker', 'figmaDesign', 'homePopups', 'homeMenus', 'changesMenu', 'draftMarkdown'];
 
 describe('webview chunks loaded on first use', () => {
 	it.skipIf(!process.env.CI && !existsSync(path.join(media, 'figmaDesign.js')))('never acquire the VS Code API: their page already has', () => {

@@ -37,7 +37,7 @@ function view(options: { git?: boolean; projects?: boolean | HomeProject[]; ownB
 		ownBranch: !!options.ownBranch,
 		modes: [{ id: 'default', name: 'Default', description: 'Asks before edits' }, { id: 'autoEdit', name: 'Auto Edit', description: 'Edits without asking' }],
 		dashboard: {
-			greeting: 'Good morning', context: 'shop', tools: [{ id: 'jira', name: 'Jira', tone: 'ok', label: 'Jira: connected' }], quickActions: [], needs: [], needsQuery: 'agent waiting',
+			greeting: 'Good morning', context: 'shop', tools: [{ id: 'jira', name: 'Jira', tone: 'ok', label: 'Jira: connected' }], quickActions: [],
 			cards: [tickets], layout: [{ id: 'tickets', title: 'My tickets', visible: true }, { id: 'gemini', title: 'Gemini', visible: false }], releaseBranches: [], refreshing: false,
 		},
 	};

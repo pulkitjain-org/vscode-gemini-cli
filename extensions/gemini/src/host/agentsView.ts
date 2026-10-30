@@ -292,7 +292,8 @@ export class AgentsView implements vscode.Disposable {
 			tryAction: (id, action) => this.tryAction(id, action),
 			mergeCommits: id => this.tryChoiceOf(id) === 'merge',
 			tryChoice: id => this.tryChoiceOf(id),
-			pickTryChoice: id => this.pickTryChoice(id),
+			chooseTry: (id, choice) => this.chooseTry(id, choice).then(() => undefined),
+			mergeRequests: () => this.mergeRequests(),
 			guideSeen: () => !!context.globalState.get<boolean>('gemini.tries.guideSeen'),
 			setGuideSeen: async seen => { await context.globalState.update('gemini.tries.guideSeen', seen || undefined); },
 			triedEdits: id => this.triedEdits.get(id),
@@ -402,8 +403,8 @@ export class AgentsView implements vscode.Disposable {
 			vscode.commands.registerCommand('gemini.agents.newAgent', (node?: AgentTreeNode) => this.starts.newAgent(node)),
 			vscode.commands.registerCommand('gemini.agents.newAgentOnBranch', (node?: AgentTreeNode) => this.starts.newAgent(node, true)),
 			// The row's menu lists both; Merge Back from there is remembered for the repository, as the chevron's choice is.
-			vscode.commands.registerCommand('gemini.agents.mergeBack', (node?: AgentTreeNode) => node?.kind === 'agent' && this.runTryChoice(node.record.id, 'merge')),
-			vscode.commands.registerCommand('gemini.agents.tryInWorkspace', (node?: AgentTreeNode) => node?.kind === 'agent' && this.runTryChoice(node.record.id, 'try')),
+			vscode.commands.registerCommand('gemini.agents.mergeBack', (node?: AgentTreeNode) => node?.kind === 'agent' && this.chooseTry(node.record.id, 'merge')),
+			vscode.commands.registerCommand('gemini.agents.tryInWorkspace', (node?: AgentTreeNode) => node?.kind === 'agent' && this.chooseTry(node.record.id, 'try')),
 			vscode.commands.registerCommand('gemini.agents.takeBack', (node?: AgentTreeNode) => node?.kind === 'agent' && this.tryAction(node.record.id, 'takeBack')),
 			// The status bar item of a try: Keep Changes, Take Back and the rest.
 			vscode.commands.registerCommand('gemini.tries.menu', (id?: unknown) => this.tries.showMenu(typeof id === 'string' ? id : undefined)),
@@ -720,25 +721,19 @@ export class AgentsView implements vscode.Disposable {
 	/** The choice the Try button runs for the agent's repository. Open Merge Request needs GitLab. */
 	tryChoiceOf(id: string): TryChoice {
 		const choice = this.tryChoices.get(this.tryKey(id));
-		return choice === 'mr' && !this.teamTools?.connectors.gitlab ? 'try' : choice;
+		return choice === 'mr' && !this.mergeRequests() ? 'try' : choice;
 	}
 
-	/** The chevron beside the Try button: the three choices, remembered for the repository and run. */
-	async pickTryChoice(id: string): Promise<void> {
-		const current = this.tryChoiceOf(id);
-		const items: (vscode.QuickPickItem & { readonly choice: TryChoice })[] = [
-			{ choice: 'try' as const, label: `$(beaker) ${vscode.l10n.t("Try in Workspace")}`, detail: vscode.l10n.t("Copy the changes into your workspace as unstaged files, following the agent's later turns, until you keep them or take them back.") },
-			{ choice: 'merge' as const, label: `$(git-merge) ${vscode.l10n.t("Merge Back")}`, detail: vscode.l10n.t("Commit the work on its branch and merge the branch into yours.") },
-			...this.teamTools?.connectors.gitlab ? [{ choice: 'mr' as const, label: `$(git-pull-request) ${vscode.l10n.t("Open Merge Request...")}`, detail: vscode.l10n.t("Push the branch and open a merge request with a title and description Gemini drafts.") }] : [],
-		].map(item => ({ ...item, description: item.choice === current ? vscode.l10n.t("current") : undefined }));
-		const picked = await vscode.window.showQuickPick(items, { title: vscode.l10n.t("How to take the agent's work"), placeHolder: vscode.l10n.t("Remembered for this repository") });
-		if (picked) {
-			await this.runTryChoice(id, picked.choice);
+	/** Whether GitLab is connected, so the Try chevron's menu (webview-src/tryChoiceMenu.ts) offers Open Merge Request. */
+	mergeRequests(): boolean {
+		return !!this.teamTools?.connectors.gitlab;
+	}
+
+	/** A pick from the Try chevron's menu: remembered for the repository, then run. Open Merge Request needs GitLab. */
+	async chooseTry(id: string, choice: TryChoice): Promise<boolean> {
+		if (choice === 'mr' && !this.mergeRequests()) {
+			return false;
 		}
-	}
-
-	/** Runs one choice and remembers it for the repository. */
-	private async runTryChoice(id: string, choice: TryChoice): Promise<boolean> {
 		await this.tryChoices.set(this.tryKey(id), choice);
 		this.refreshTryLabels(id);
 		return this.mergeBack(id);
@@ -1164,7 +1159,8 @@ export class AgentsView implements vscode.Disposable {
 				trying: record.tried?.state === 'trying',
 				mergeBack: async () => { await this.mergeBack(id); },
 				tryChoice: () => this.tryChoiceOf(id),
-				tryMenu: () => this.pickTryChoice(id),
+				chooseTry: async choice => { await this.chooseTry(id, choice); },
+				mergeRequests: () => this.mergeRequests(),
 				keep: async () => { await this.tryAction(id, 'keep'); },
 				takeBack: async () => { await this.tryAction(id, 'takeBack'); },
 			} : { commit: () => live.controller.commit() }),

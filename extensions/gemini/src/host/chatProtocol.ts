@@ -17,12 +17,13 @@ import type { AgentPhase } from '../acp/status';
 import type { TokenColors } from '../acp/tokenColors';
 import type { ContextBreakdown } from '../acp/contextCost';
 import type { PendingPromptView } from '../acp/promptQueue';
+import type { TryChoice } from './panelProtocol';
 
 /**
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 49;
+export const chatProtocolVersion = 50;
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.signIn', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog', 'gemini.agents.openTerminal', 'gemini.designSystem.sync'] as const;
@@ -49,8 +50,8 @@ export type ProjectSettingsAction = 'pickRepository' | 'addFiles' | 'newFile' | 
 /**
  * `startAnyway`: the side panel's Start Anyway, which starts the threads
  * today's quota holds. `merge` is Merge Back's merge commit; `tryMenu` is
- * the chevron beside the Try button, which picks what it does and remembers
- * it for the repository; the rest of the try actions are `TryAction`s.
+ * a pick (`choice`) from the menu of the chevron beside the Try button,
+ * which runs it and remembers it for the repository; the rest of the try actions are `TryAction`s.
  * `guide` shows the first-try guide, `dismissGuide` hides it.
  */
 export type ThreadAction = 'open' | 'stop' | 'merge' | 'review' | 'remove' | 'approve' | 'retry' | 'startAnyway' | TryAction | 'tryMenu' | 'guide' | 'dismissGuide' | 'terminal' | 'checks';
@@ -397,7 +398,7 @@ export type FromWebview =
 	/** A Folders, Symbols or Workspace row of the @ picker: the extension answers with `attach`. */
 	| { readonly type: 'attachMention'; readonly mention: ViewMention }
 	/** A project chat's thread card button. */
-	| { readonly type: 'threadAction'; readonly thread: string; readonly action: ThreadAction; readonly repo?: string }
+	| { readonly type: 'threadAction'; readonly thread: string; readonly action: ThreadAction; readonly repo?: string; readonly choice?: TryChoice }
 	/** The New thread dialog: start a thread directly; the coordinator hears afterwards. */
 	| { readonly type: 'startThread'; readonly thread: NewThread }
 	| { readonly type: 'openParentProject' }

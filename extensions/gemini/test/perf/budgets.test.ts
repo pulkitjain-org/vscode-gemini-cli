@@ -40,7 +40,7 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// settings panel moved to a chunk of its own (media/projectSettings.js), taking it to about 249 KB.
 	'media/chat.js': 260_000,
 	// Home's startup script, about 26 KB: Preview's renderer, the menus and the popups are files of their own.
-	// The dashboard (cards, Needs you, banners), the composer and the themed tooltips take most of it.
+	// The dashboard (cards, banners), the composer and the themed tooltips take most of it.
 	'media/home.js': 30_000,
 	// The Changes panel, about 12 KB.
 	'media/changes.js': 16_000,
@@ -79,16 +79,18 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// Add Figma Design, about 11 KB with its copy of the link parser, loaded the first time a chat opens it from the + menu
 	// or a design's chip.
 	'media/figmaDesign.js': 13_000,
-	// A project thread's card, with its try steps, ⋯ menu and first-try guide, about 5 KB, loaded the first time a
-	// project chat shows a card.
-	'media/threadCard.js': 7_000,
+	// A project thread's card, with its try steps, ⋯ menu, Try chevron menu and first-try guide, about 7 KB, loaded the
+	// first time a project chat shows a card. The Try chevron's menu (tryChoiceMenu.ts) added about 1 KB.
+	'media/threadCard.js': 8_000,
 	// Project settings, about 12 KB with their own copy of the settings logic, loaded the first time a project chat opens them.
 	'media/projectSettings.js': 13_000,
 	// The side question panel (/btw), about 4 KB, loaded the first time a side question is asked.
 	'media/sideChat.js': 5_000,
-	// Home's menus (+, folder, mode, From Your Tools, a row's "...") with the menu class, about 7.6 KB, loaded once
-	// Home has settled or on the first click on a menu's button.
-	'media/homeMenus.js': 9_500,
+	// Home's menus (+, folder, mode, From Your Tools, a row's "...", an agent card's Try chevron) with the menu class,
+	// about 10 KB, loaded once Home has settled or on the first click on a menu's button. The Try chevron's menu added about 1 KB.
+	'media/homeMenus.js': 11_000,
+	// The Changes panel's Try chevron menu with the menu class, about 6 KB, loaded on the first click on the chevron.
+	'media/changesMenu.js': 7_500,
 	// The emoji picker, about 97 KB, loaded the first time a reaction button is hovered or focused: about 88 KB
 	// of emoji data (1,923 emoji with their names and three search words each) and its own code.
 	'media/emojiPicker.js': 105_000,

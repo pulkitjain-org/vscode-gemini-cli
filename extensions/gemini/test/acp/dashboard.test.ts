@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { describe, expect, it } from 'vitest';
-import { cardOrder, firstName, isReadyToMerge, moveCard, needsYou, partOfDay, sprintProgress, ticketGroups, ticketOrder, toggleCard } from '../../src/acp/dashboard';
+import { cardOrder, firstName, isReadyToMerge, moveCard, partOfDay, rankReviews, sprintProgress, ticketGroups, ticketOrder, toggleCard } from '../../src/acp/dashboard';
 import type { GitLabMr, GitLabMrSummary } from '../../src/acp/gitlab';
 import type { JiraIssueSummary } from '../../src/acp/jira';
 
@@ -20,19 +20,7 @@ function mr(iid: number, extra: Partial<GitLabMr> = {}): GitLabMr {
 }
 
 describe('dashboard', () => {
-	it('puts the most urgent things first in Needs you', () => {
-		const reviews: GitLabMrSummary[] = [mr(322), mr(330, { draft: true })];
-		const items = needsYou({
-			agents: [{ id: 'a1', title: 'ACME-409', state: 'waiting', status: 'Wants to run npm install' }, { id: 'a2', title: 'x', state: 'working', status: '' }, { id: 'a3', title: 'Header', state: 'done', status: '', tryReady: true }],
-			reviews,
-			mine: [mr(318, { pipeline: { id: 9, status: 'failed' } }), mr(301, { pipeline: { id: 8, status: 'success' }, mergeStatus: 'mergeable', approvals: { given: 2, required: 2, approvedByMe: false } }), mr(299, { unresolved: true })],
-			tickets: [ticket('ACME-377', 'Reopened', 'new'), ticket('ACME-415', 'To Do', 'new')],
-		}, 7);
-		expect(items.map(i => i.kind)).toEqual(['agentWaiting', 'reply', 'pipelineFailed', 'readyToMerge', 'tryReady', 'review', 'reopened']);
-		expect(needsYou({ agents: [], reviews }, 4)).toHaveLength(1);
-	});
-
-	it('shows at most two reviews, the ones that need the user most, and counts the rest', () => {
+	it('ranks the reviews that need the user most first, and leaves out drafts and ones they gave', () => {
 		const reviews: GitLabMrSummary[] = [
 			mr(1, { updatedAt: '2026-10-20T10:00:00Z', reviewers: ['pj', 'ana'] }),
 			mr(2, { updatedAt: '2026-10-24T10:00:00Z', reviewers: ['pj'] }),
@@ -40,11 +28,9 @@ describe('dashboard', () => {
 			mr(4, { updatedAt: '2026-10-19T10:00:00Z', mergeStatus: 'conflict', reviewers: ['pj'] }),
 			mr(5, { updatedAt: '2026-10-25T10:00:00Z', reviewers: ['pj', 'ana'] }),
 			mr(6, { updatedAt: '2026-10-26T10:00:00Z', reviewers: ['pj', 'ana'] }),
+			mr(7, { updatedAt: '2026-10-17T10:00:00Z', draft: true }),
 		];
-		const items = needsYou({ agents: [], reviews, reviewing: new Set(['shop/a!6']), me: 'pj' });
-		expect(items.map(item => item.kind === 'review' ? item.mr.iid : item.kind === 'moreReviews' ? `${item.count} more since ${item.oldest}` : item.kind)).toEqual([
-			6, 2, '3 more since 2026-10-19T10:00:00Z',
-		]);
+		expect(rankReviews({ reviews, reviewing: new Set(['shop/a!6']), me: 'pj' }).map(r => r.iid)).toEqual([6, 2, 1, 5, 4]);
 	});
 
 	it('says a merge request is ready only when GitLab, the approvals and the pipeline agree', () => {

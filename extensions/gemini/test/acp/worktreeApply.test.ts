@@ -198,6 +198,23 @@ describe('worktreeApply', () => {
 		});
 	});
 
+	it('starts from where a review branch was last reset to its merge request, not where it was made', async () => {
+		await git(repo, ['branch', 'feature']);
+		const folder = path.join(home, 'review');
+		await git(repo, ['worktree', 'add', '--quiet', '-b', 'review/1-feature', folder, 'feature']);
+		// The merge request gets a commit, and the review checkout is reset to it, as reviewWorktree does.
+		await git(repo, ['checkout', '--quiet', 'feature']);
+		await write(repo, 'src/feedback.ts', 'export const feedback = true;\n');
+		await commitAll(repo, 'Feedback');
+		await git(folder, ['reset', '--quiet', '--hard', 'feature']);
+		const head = (await git(repo, ['rev-parse', 'HEAD'])).trim();
+		// The agent's own work, and a reset to a commit (as Discard does), which keeps the start.
+		await write(folder, 'src/cart.ts', cart(2, '[]'));
+		await git(folder, ['reset', '--quiet', head]);
+		const start = (await startOf(repo, 'review/1-feature', 'feature'))!;
+		expect({ start: start === head, files: await changedFiles(repo, await treeOf(repo, start), await snapshotTree(folder)) }).toEqual({ start: true, files: ['src/cart.ts'] });
+	});
+
 	it('starts from where the thread started, not where the user\'s checkout meets it', async () => {
 		await git(repo, ['branch', 'old']);
 		await write(repo, 'src/new.ts', 'export const fresh = true;\n');

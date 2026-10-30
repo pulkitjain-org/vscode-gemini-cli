@@ -26,7 +26,7 @@ function view(active: readonly HomeAgent[], cards: readonly HomeCard[] = [ticket
 		earlier: [],
 		ownBranch: false,
 		modes: [{ id: 'default', name: 'Default', description: 'Asks before edits' }],
-		dashboard: { greeting: 'Good morning', context: 'shop', tools: [], quickActions: [], needs: [], needsQuery: '', cards, layout: [], releaseBranches: [], refreshing: false },
+		dashboard: { greeting: 'Good morning', context: 'shop', tools: [], quickActions: [], cards, layout: [], releaseBranches: [], refreshing: false },
 	};
 }
 
