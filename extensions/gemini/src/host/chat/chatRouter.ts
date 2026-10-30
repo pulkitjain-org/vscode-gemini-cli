@@ -85,7 +85,7 @@ export interface RouterHost {
 export function chatRouter(
 	service: Pick<ChatHost, 'open' | 'writeLog'>,
 	transcript: ChatTranscript,
-	options: Pick<ChatControllerOptions, 'project' | 'reviewPlan' | 'sharedFiles'>,
+	options: Pick<ChatControllerOptions, 'project' | 'reviewPlan' | 'sharedFiles' | 'teamTools'>,
 	features: RouterFeatures,
 	host: RouterHost,
 ): (message: FromWebview) => void {
@@ -115,6 +115,12 @@ export function chatRouter(
 
 	const handlers = {
 		shown: () => service.open?.(),
+		useTeamTools: () => {
+			if (options.teamTools) {
+				options.teamTools.enable();
+				host.post({ type: 'teamTools', state: 'on' });
+			}
+		},
 		turnRendered: message => {
 			// One line per turn in the Gemini log: the agent's time, the model's first output, and the view's share.
 			const item = transcript.items.find(i => i.id === message.turnEnd);

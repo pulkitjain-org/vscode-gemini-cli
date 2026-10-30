@@ -16,8 +16,13 @@ import { aliasedSetting } from '../acp/settingAlias';
 import { AgentService } from './agentService';
 import { configSection, getProjectSettings } from './configuration';
 
-/** How long after activation the agent starts, so the window's own startup goes first. */
-const startDelayMs = 3_000;
+/**
+ * How long after activation the agent starts: at once, on the next turn of
+ * the event loop. It took 6 to 21 s from spawn to ready on real machines
+ * (FINDINGS.md), so a delay for the window's sake only pushed the first
+ * chat's wait later.
+ */
+const startDelayMs = 0;
 
 /** Whether the CLI can start with `auth` without asking the user to sign in. */
 export async function startsQuietly(auth: DirectAuth, exists: (file: string) => Promise<boolean> = fileExists): Promise<boolean> {

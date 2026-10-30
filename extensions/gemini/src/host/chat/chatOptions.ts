@@ -76,6 +76,19 @@ export interface ChatControllerOptions {
 	indexContext?(draft: string): Promise<string | undefined>;
 	/** A note telling the agent to use the index tools, when its folder's index is built; sent once per session. */
 	indexHint?(): string | undefined;
+	/**
+	 * The team tools for this agent: listed to its sessions only once its task needs them
+	 * (a ticket or merge request in a prompt or an attachment, a flow, or the user's choice).
+	 */
+	readonly teamTools?: {
+		/** Whether any team tool is connected, so they can be turned on. */
+		available(): boolean;
+		enabled(): boolean;
+		/** Turns them on for good; a running session hears through tools/list_changed. */
+		enable(): void;
+		/** Turns them on when `text` or `attachments` refer to a ticket, merge request, page or design. */
+		notePrompt(text: string, attachments: readonly Attachment[]): void;
+	};
 	/** What Read the code too needs: the agent process, the folder, and the index's servers and outline for it. Unset in a project's chats, whose threads do the reading. */
 	research?: ChatResearchHost;
 	/** The notice for errors the language servers report in the folder's changed files after a turn that edited them; undefined without any. */

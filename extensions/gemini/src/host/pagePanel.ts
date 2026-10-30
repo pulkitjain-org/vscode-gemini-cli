@@ -15,7 +15,7 @@ import * as vscode from 'vscode';
 import { createNonce, escapeAttribute } from './webviewHtml';
 
 /** The stylesheets every page loads, in order, before its own: the icons, the menus, the pages' shared look and its glass. */
-const sharedStyles = ['codicon.css', 'menu.css', 'panels.css'] as const;
+const sharedStyles = ['tokens.css', 'codicon.css', 'menu.css', 'panels.css'] as const;
 const glassStyle = 'glass.css';
 
 /** What a page's document is made of. */

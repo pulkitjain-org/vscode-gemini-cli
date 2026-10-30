@@ -115,7 +115,8 @@ function renderTurnEnd(item: ItemOf<'turnEnd'>): HTMLElement {
 	const node = el('div', 'turn-end');
 	// Hidden when the turn's fold says it (transcript.ts, `has-fold`).
 	node.append(el('span', 'worked-for', format(item.steered ? strings.stoppedForMessage : strings.workedFor, formatDuration(item.durationMs))));
-	if (item.firstTokenMs !== undefined) {
+	// A developer's figure: how long the model took to answer, not something a reply needs to say.
+	if (item.firstTokenMs !== undefined && state.developer) {
 		node.append(el('span', 'turn-dot', '·'), el('span', 'first-token', format(strings.firstToken, shortMs(item.firstTokenMs))));
 	}
 	if (item.at) {

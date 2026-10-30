@@ -40,6 +40,7 @@ import { createNonce, escapeAttribute } from './webviewHtml';
 import { openTeamLink } from './teamLinks';
 import { showError } from './errorNotice';
 import { markStartup } from './startup';
+import { background } from './background';
 
 const homeViewType = 'gemini.agentHome';
 const layoutKey = 'gemini.home.layout';
@@ -159,6 +160,8 @@ export class AgentHome implements vscode.Disposable {
 		const panel = vscode.window.createWebviewPanel(homeViewType, vscode.l10n.t("Home"), { viewColumn, preserveFocus }, {
 			enableScripts: true,
 			localResourceRoots: [media],
+			// Kept while an agent's tab is in front, so coming back to Home is a tab switch, not a page load and a rebuild.
+			retainContextWhenHidden: true,
 		});
 		panel.iconPath = vscode.Uri.joinPath(this.extensionUri, 'media', 'gemini.svg');
 		panel.webview.html = this.html(panel.webview, media);
@@ -246,7 +249,7 @@ export class AgentHome implements vscode.Disposable {
 		}
 		this.timer = setTimeout(() => {
 			this.timer = undefined;
-			void this.update();
+			background('Rebuilding Home', this.update());
 		}, delay);
 	}
 
@@ -795,6 +798,7 @@ export class AgentHome implements vscode.Disposable {
 		const style = webview.asWebviewUri(vscode.Uri.joinPath(media, 'panels.css'));
 		const menuStyle = webview.asWebviewUri(vscode.Uri.joinPath(media, 'menu.css'));
 		const homeStyle = webview.asWebviewUri(vscode.Uri.joinPath(media, 'home.css'));
+		const tokens = webview.asWebviewUri(vscode.Uri.joinPath(media, 'tokens.css'));
 		const codicons = webview.asWebviewUri(vscode.Uri.joinPath(media, 'codicon.css'));
 		const glassStyle = webview.asWebviewUri(vscode.Uri.joinPath(media, 'glass.css'));
 		return `<!DOCTYPE html>
@@ -803,6 +807,7 @@ export class AgentHome implements vscode.Disposable {
 	<meta charset="UTF-8">
 	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; font-src data: ${webview.cspSource}; img-src data:; style-src ${webview.cspSource}; script-src 'nonce-${nonce}' ${webview.cspSource};">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<link href="${tokens}" rel="stylesheet">
 	<link href="${codicons}" rel="stylesheet">
 	<link href="${menuStyle}" rel="stylesheet">
 	<link href="${style}" rel="stylesheet">

@@ -493,8 +493,11 @@ describe('BrowserMcpServer', () => {
 		const missing = await post(config.url, auth, { jsonrpc: '2.0', id: 4, method: 'resources/list' });
 		expect(missing.json).toMatchObject({ id: 4, error: { code: -32601 } });
 
+		// A GET is the session's notification stream (localMcpServer.ts); a PUT is nothing.
 		const get = await fetch(config.url, { headers: auth });
-		expect(get.status).toBe(405);
+		expect([get.status, get.headers.get('content-type')]).toEqual([200, 'text/event-stream']);
+		await get.body?.cancel();
+		expect((await fetch(config.url, { method: 'PUT', headers: auth })).status).toBe(405);
 		expect((await fetch(config.url.replace('/mcp/', '/other/'), { method: 'POST', headers: auth })).status).toBe(404);
 	});
 

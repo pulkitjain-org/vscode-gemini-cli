@@ -137,7 +137,7 @@ export class ChatTurn {
 	constructor(
 		private readonly service: Pick<ChatHost, 'client' | 'ensureReady' | 'open' | 'writeLog'>,
 		private readonly transcript: ChatTranscript,
-		private readonly options: Pick<ChatControllerOptions, 'project' | 'indexHint' | 'designSystemNote' | 'reviewPlan' | 'errorsAfterTurn' | 'sendTriedEdits'>,
+		private readonly options: Pick<ChatControllerOptions, 'project' | 'indexHint' | 'designSystemNote' | 'reviewPlan' | 'errorsAfterTurn' | 'sendTriedEdits' | 'teamTools'>,
 		private readonly features: TurnFeatures,
 		private readonly host: TurnHost,
 		private readonly post: (message: ToWebview) => void,
@@ -307,6 +307,8 @@ export class ChatTurn {
 			this.host.promptSent(text);
 		}
 		this._lastPrompt = { text, attachments, ...(reactions.length ? { reactions } : {}) };
+		// A ticket, merge request, page or design named here turns the team tools on for the agent before the prompt goes.
+		this.options.teamTools?.notePrompt(text, attachments);
 		await this.runTurn(text, attachments, true, false, reactions, extras);
 	}
 

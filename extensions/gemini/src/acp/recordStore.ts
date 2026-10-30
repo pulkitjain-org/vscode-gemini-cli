@@ -15,6 +15,7 @@
 
 import { promises as fs, watch, type FSWatcher } from 'node:fs';
 import * as path from 'node:path';
+import { mapLimit } from './concurrency';
 import { isQuarantined, isRecord, privateWrite, quarantine, writeFileAtomic } from './fsUtil';
 
 /** What a record needs: an id that is unique in its list. */
@@ -50,6 +51,8 @@ interface Envelope {
 }
 
 const defaultTombstoneMs = 30 * 24 * 60 * 60 * 1000;
+/** Record files read at once on load. */
+const loadConcurrency = 16;
 /** A watch event is read this long after the last one, so a burst of writes is read once. */
 const watchDelayMs = 100;
 
@@ -91,7 +94,8 @@ export class RecordStore<T extends StoredRecord> {
 		return this.enqueue(async () => {
 			const names = await fs.readdir(this.dir).catch(() => [] as string[]);
 			const loaded: { readonly record: T; readonly order: number }[] = [];
-			await Promise.all(names.map(async name => {
+			// A few files at a time: a long-used window has hundreds of records, and opening them all at once is what activation waited on.
+			await mapLimit(names, loadConcurrency, async name => {
 				const file = path.join(this.dir, name);
 				if (name.endsWith('.tmp')) {
 					// Left by a window that quit mid-write; one a day old is not being written any more.
@@ -114,7 +118,7 @@ export class RecordStore<T extends StoredRecord> {
 				} else if (read?.kind === 'deleted' && read.at < this.now() - (this.options.tombstoneMs ?? defaultTombstoneMs)) {
 					await fs.rm(file, { force: true });
 				}
-			}));
+			});
 			return loaded.sort((a, b) => a.order - b.order || (a.record.id < b.record.id ? -1 : 1)).map(each => each.record);
 		});
 	}

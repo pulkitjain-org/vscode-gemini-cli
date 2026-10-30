@@ -7,6 +7,7 @@
 // and paths weighted above body text), where a symbol is defined and used,
 // which files go with a file, and an outline of the folder.
 
+import { bodyLines } from './format';
 import { splitIdentifier } from './identifiers';
 import { IgnoreRules } from './ignore';
 import { IndexStore, unpackText } from './indexStore';
@@ -45,6 +46,8 @@ export interface SymbolHit {
 	readonly exported: boolean;
 	/** The definition's first line. */
 	readonly signature: string;
+	/** The lines after the signature, up to `bodyLines` (format.ts); only the first definition carries them. */
+	readonly body?: string;
 }
 
 export interface SymbolResult {
@@ -238,7 +241,8 @@ export function findSymbol(store: IndexStore, name: string, options: { readonly 
 	const order = 'ORDER BY exported DESC, length(path), path, line LIMIT 20';
 	const containerClause = container ? ' AND container = ? COLLATE NOCASE' : '';
 	const rows = store.statement(`${select} WHERE name = ? COLLATE NOCASE${containerClause}${kind} ${order}`).all(...args(base)) as unknown as RawSymbol[];
-	const definitions = rows.map(row => withSignature(store, row));
+	// The first definition is shown in full, so the model needn't open the file for it.
+	const definitions = rows.map((row, index) => withSignature(store, row, index === 0));
 	const similar = definitions.length ? [] : (store.statement(`${select} WHERE name LIKE ? ESCAPE '\\'${kind} ${order}`).all(`%${base.replace(/[%_\\]/g, '\\$&')}%`, ...options.kind ? [options.kind] : []) as unknown as RawSymbol[]).slice(0, 10).map(row => withSignature(store, row));
 	if (!options.references || !/^\w+$/.test(base)) {
 		return { definitions, similar, references: [], referenceTotal: 0 };
@@ -277,10 +281,13 @@ interface RawSymbol {
 	readonly exported: number;
 }
 
-function withSignature(store: IndexStore, row: RawSymbol): SymbolHit {
+function withSignature(store: IndexStore, row: RawSymbol, withBody = false): SymbolHit {
 	const chunk = store.statement('SELECT start_line AS startLine, body FROM chunks WHERE path = ? AND start_line <= ? AND end_line >= ? LIMIT 1').get(row.path, row.line, row.line) as { startLine: number; body: Uint8Array } | undefined;
-	const signature = chunk ? (unpackText(chunk.body).split('\n')[row.line - chunk.startLine] ?? '').trim() : '';
-	return { name: row.name, kind: row.kind, path: row.path, line: row.line, endLine: row.endLine, container: row.container ?? undefined, exported: !!row.exported, signature };
+	const lines = chunk ? unpackText(chunk.body).split('\n') : [];
+	const signature = (lines[row.line - (chunk?.startLine ?? 0)] ?? '').trim();
+	// What the chunk holds of the definition after its signature; a definition longer than its chunk ends where the chunk does.
+	const rest = chunk && withBody && row.endLine > row.line ? lines.slice(row.line - chunk.startLine + 1, Math.min(row.endLine, row.line + bodyLines) - chunk.startLine + 1) : [];
+	return { name: row.name, kind: row.kind, path: row.path, line: row.line, endLine: row.endLine, container: row.container ?? undefined, exported: !!row.exported, signature, ...(rest.length ? { body: rest.join('\n') } : {}) };
 }
 
 export function relatedFiles(store: IndexStore, relative: string): RelatedResult {

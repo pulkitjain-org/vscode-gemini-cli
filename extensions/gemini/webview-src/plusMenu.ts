@@ -123,6 +123,8 @@ function sections(): MenuSection[] {
 	result.push({
 		rows: [
 			{ icon: 'files', name: strings.menuFiles, detail: strings.menuFilesDetail, tooltip: strings.attachFiles, run: () => { closePlusMenu(); vscode.postMessage({ type: 'pickFiles' }); } },
+			// Offered while a team tool is connected and this agent doesn't have them yet.
+			...state.teamTools === 'available' ? [{ icon: 'plug', name: strings.menuTeamTools, detail: strings.menuTeamToolsDetail, run: () => { closePlusMenu(); vscode.postMessage({ type: 'useTeamTools' }); } }] : [],
 			{ icon: 'mention', name: strings.menuContext, detail: strings.menuContextDetail, run: () => { closePlusMenu(false); startMention(); } },
 			{
 				icon: 'eye', name: strings.menuFollow, detail: strings.menuFollowDetail, switchOn: state.following,

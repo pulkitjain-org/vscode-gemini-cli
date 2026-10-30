@@ -145,6 +145,8 @@ export class AgentRuntime {
 	private connection: AgentConnection | undefined;
 	private readonly sessions = new Map<string, SessionHandlers>();
 	private readonly earlyUpdates = new Map<string, { readonly since: number; readonly updates: acp.SessionUpdate[] }>();
+	/** A reopened session's check waiting for its replayed prompt (`replayStartsWith`). */
+	private readonly replayWaiters = new Map<string, () => void>();
 	private readonly closedSessions = new Set<string>();
 	/** A session opened ahead of use (`prepareSession`), keyed by its folder and servers. */
 	private spare: { readonly key: string; readonly connection: AgentConnection; readonly session: Promise<RuntimeSession> } | undefined;
@@ -507,7 +509,16 @@ export class AgentRuntime {
 			if (replayed !== undefined) {
 				return replayed.startsWith(expected.slice(0, 40)) || expected.startsWith(replayed.slice(0, 40));
 			}
-			await new Promise(resolve => setTimeout(resolve, 20));
+			// Woken by the next replayed prompt (`onSessionUpdate`), or at the deadline.
+			await new Promise<void>(resolve => {
+				const timer = setTimeout(wake, Math.max(0, deadline - Date.now()));
+				function wake(): void {
+					clearTimeout(timer);
+					resolve();
+				}
+				this.replayWaiters.set(sessionId, wake);
+			});
+			this.replayWaiters.delete(sessionId);
 		} while (Date.now() < deadline);
 		return true;
 	}
@@ -709,6 +720,9 @@ export class AgentRuntime {
 			this.earlyUpdates.set(params.sessionId, early);
 		}
 		early.updates.push(params.update);
+		if (params.update.sessionUpdate === 'user_message_chunk') {
+			this.replayWaiters.get(params.sessionId)?.();
+		}
 		if (early.updates.length > maxEarlyUpdates + earlyUpdatesSlack) {
 			// The oldest go: a session registered late wants the newest, such as the end of a replay. In batches, so a long replay is not shifted once per update.
 			early.updates.splice(0, early.updates.length - maxEarlyUpdates);

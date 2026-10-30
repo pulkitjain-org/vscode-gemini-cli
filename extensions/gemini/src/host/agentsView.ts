@@ -53,6 +53,7 @@ import { agentState, AgentTree, WorkspaceSummary } from './agents/agentTree';
 import { AgentWorktrees } from './agents/agentWorktrees';
 import { spareDelayMs, SpareSession } from './agents/spareSession';
 import type { FolderTrust } from './folderTrust';
+import { background } from './background';
 export type { WorkspaceSummary } from './agents/agentTree';
 
 /** The agent list as the window starts with it, and the store it is saved to. */
@@ -389,7 +390,7 @@ export class AgentsView implements vscode.Disposable {
 			this.prepareStart(folder, spareDelayMs);
 		}
 		// Merged threads keep their chats, not their checkpoints; dropped once the window has settled.
-		const settle = setTimeout(() => void this.persistence.dropMergedCheckpoints(), 30_000);
+		const settle = setTimeout(() => background('Dropping merged threads\' checkpoints', this.persistence.dropMergedCheckpoints()), 30_000);
 		this.disposables.push({ dispose: () => clearTimeout(settle) });
 	}
 

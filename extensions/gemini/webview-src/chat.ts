@@ -174,6 +174,10 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 		case 'capabilities':
 			state.imageInput = message.image;
 			break;
+		case 'teamTools':
+			state.teamTools = message.state;
+			updatePlusMenu();
+			break;
 		case 'composerHeight':
 			restoreComposerHeight(message.height);
 			break;

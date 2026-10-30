@@ -150,6 +150,10 @@ export class AgentStarter {
 			onDidOpenSession: servers => {
 				host.view.browser?.bindSession(record.id, folder, servers);
 				host.view.teamTools?.bindSession(record.id, folder, servers);
+				// An agent whose task needed the team tools keeps them on every session.
+				if (host.model.agent(record.id)?.teamTools) {
+					host.view.teamTools?.enableTeamTools(record.id);
+				}
 				host.view.index?.bindSession(record.id, folder, servers);
 				// Refill, for the next agent, which most likely starts in the same folder; not in an agent's own worktree.
 				if (!host.model.agent(record.id)?.worktree) {
@@ -198,6 +202,20 @@ export class AgentStarter {
 					return found && errorsNotice(folder, found.diagnostics);
 				},
 				designSystemNote: async () => host.view.teamTools ? host.features.onDemand().designSystemNoteFor(await host.view.teamTools.defaults(cwd)) : undefined,
+				teamTools: {
+					available: () => !!host.view.teamTools?.connected.size,
+					enabled: () => !!host.view.teamTools?.teamToolsEnabled(record.id),
+					enable: () => {
+						host.model.setTeamTools(record.id);
+						host.view.teamTools?.enableTeamTools(record.id);
+					},
+					notePrompt: (text, attachments) => {
+						if (host.view.teamTools?.promptNeedsTools(text, attachments)) {
+							host.model.setTeamTools(record.id);
+							host.view.teamTools.enableTeamTools(record.id);
+						}
+					},
+				},
 				// Research reads the agent's own folder with workers of its own; not in a project's chats, whose threads do the reading.
 				...project ? {} : {
 					research: {

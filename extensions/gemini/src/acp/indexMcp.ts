@@ -54,7 +54,7 @@ export const researchWorkerPrefix = 'research-';
 /** The one line a session's first prompt carries once the folder's index is built: without it the model reaches for grep_search first (FINDINGS.md). */
 export function indexHint(options: { readonly languageServers?: boolean; readonly research?: boolean } = {}): string {
 	return [
-		'This workspace has a code index: use the geminicode-index tools (code_search, find_symbol, related_files, repo_map) before grep_search, glob or reading whole files. Their results are complete: read only the lines they point to, and don\'t search again for what they found.',
+		'This workspace has a code index: use the geminicode-index tools (code_search, find_symbol, related_files, repo_map) before grep_search, glob or reading whole files. Their results are complete and show the code they found: work from it, read a file only for lines past a result\'s end, and don\'t search again for what they found.',
 		...options.languageServers ? ['Before renaming or changing a signature, list its uses with find_symbol and references. After editing code, check it with code_diagnostics before you finish, instead of running a build.'] : [],
 		...options.research ? ['For a broad question that needs reading many parts of the code (where something happens everywhere, an audit of every place that does X), call research instead of reading them one by one.'] : [],
 	].join(' ');
@@ -163,7 +163,7 @@ export class IndexMcpServer {
 			'- repo_map: an outline of the folder or a subfolder.',
 			...this.backend.languageServers?.() ? [editorToolsInstruction] : [],
 			...this.backend.researchOn?.() ? ['- research: a broad question answered by several read-only readers at once, with file:line evidence; for questions that need many parts of the code read.'] : [],
-			'Results give paths with line ranges and are complete for the folder: read only those lines with read_file, and don\'t repeat the search with grep_search.',
+			'Results give paths with line ranges, show the matching code, and are complete for the folder: work from what they show, read a file only for lines past a result\'s end, and don\'t repeat the search with grep_search.',
 		];
 		const docs = folder ? this.backend.docs(folder) : [];
 		if (docs.length) {

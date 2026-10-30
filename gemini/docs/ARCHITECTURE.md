@@ -128,7 +128,7 @@ The command is worked out without blocking the extension host. The CLI's resolut
 
 The agent's status (status bar, Home) comes from the process and from how opening sessions went for every chat (`describeRuntimeStatus`): a sign-in, project, network or timeout error from any chat's session shows once as a notification. The service's own session (`AgentService.client`) opens only when something asks for it, such as the walkthrough's Sign In, so a process start opens no session of its own.
 
-`AgentWarmup` starts the process 3 s after the window opens (`gemini.agents.startEarly`, which still reads its old name, `gemini.agent.startEarly`), but only when it can start without asking anything: setup finished before, a saved sign-in or API key, and no project problem. A CLI with no saved sign-in opens the sign-in flow as it starts.
+`AgentWarmup` starts the process as soon as the extension has activated (`gemini.agents.startEarly`, which still reads its old name, `gemini.agent.startEarly`; before 1.8 it waited 3 s, which only pushed the process's own 6 to 21 s start later, FINDINGS.md), but only when it can start without asking anything: setup finished before, a saved sign-in or API key, and no project problem. A CLI with no saved sign-in opens the sign-in flow as it starts.
 
 While the user types on Agent Home, `AgentRuntime.prepareSession` opens a spare session for that folder and the agent's browser servers (the agent id is chosen ahead for that). The next `newSession` with the same key takes it, so starting the agent waits for no `session/new`. A project's coordinator and threads never take a spare, because their sessions need the project's MCP server, which a spare opens without.
 

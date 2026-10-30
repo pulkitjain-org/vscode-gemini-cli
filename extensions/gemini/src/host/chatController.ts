@@ -831,6 +831,13 @@ export class ChatController implements vscode.Disposable {
 			void this.sessions.postSessions();
 		}
 		void this.usage.postContext();
+		this.postTeamTools();
+	}
+
+	/** Tells the view whether the team tools are on offer in its + menu, on for this agent, or not connected. */
+	postTeamTools(): void {
+		const tools = this.options.teamTools;
+		this.post({ type: 'teamTools', state: !tools?.available() ? 'none' : tools.enabled() ? 'on' : 'available' });
 	}
 
 	/** The stall notice for the chat, while its own turn (not a quiet one, such as Compact's) stalls. */

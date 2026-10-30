@@ -19,6 +19,7 @@ import type { CleanupItem, WorktreeCandidate } from '../../acp/storageUsage';
 import { cleanupWorktrees } from '../../acp/worktreeCleanup';
 import { AgentWorktree, inRepository, removeWorktree, repositoryRoot } from '../../acp/worktrees';
 import type { ChatActivity, ChatController } from '../chatController';
+import { background } from '../background';
 
 /** Where the agent list was kept before the record store; still written when a window closes, for a downgrade. */
 export const storageKey = 'gemini.agents';
@@ -93,7 +94,7 @@ export class AgentPersistence implements vscode.Disposable {
 		if (!this.store) {
 			return this.context.globalState.update(storageKey, this.model.stored());
 		}
-		void this.dropMergedCheckpoints();
+		background('Dropping merged threads\' checkpoints', this.dropMergedCheckpoints());
 		return this.store.save(this.model);
 	}
 

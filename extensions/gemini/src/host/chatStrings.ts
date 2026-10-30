@@ -549,6 +549,8 @@ export interface ChatStrings {
 	readonly menuSearch: string;
 	readonly menuFiles: string;
 	readonly menuFilesDetail: string;
+	readonly menuTeamTools: string;
+	readonly menuTeamToolsDetail: string;
 	readonly menuContext: string;
 	readonly menuContextDetail: string;
 	readonly menuFollow: string;

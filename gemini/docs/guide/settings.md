@@ -15,7 +15,7 @@ A setting in a workspace's settings applies only to that folder, and is shared w
 | `gemini.cli.version` *(machine)* | empty | Which of GeminiCode's own Gemini CLI copies to run, such as `0.66.0`; empty runs the newest. Changing this restarts the agent. |
 | `gemini.cli.checkForUpdates` *(machine)* | on | Once a day, check the npm registry for a newer Gemini CLI and offer to install it. Nothing installs without your click. |
 | `gemini.app.checkForUpdates` *(machine)* | on | Every few hours, check the GeminiCode download page for a newer GeminiCode and say so. GeminiCode downloads nothing itself. |
-| `gemini.agents.startEarly` *(machine)* | on | Start the Gemini CLI a few seconds after GeminiCode opens, once you have signed in, so the first prompt does not wait for it. It uses about 230 MB of memory before the first chat. |
+| `gemini.agents.startEarly` *(machine)* | on | Start the Gemini CLI as soon as GeminiCode opens, once you have signed in, so the first prompt does not wait for it. It uses about 230 MB of memory before the first chat. |
 | `gemini.cli.registry` *(machine)* | empty | The npm registry GeminiCode installs its Gemini CLI copies from, such as your organisation's mirror; empty uses the public registry. It must be an `https` address without credentials, and downloads are still checked against the registry's SHA-512 checksum. |
 
 ## Agents

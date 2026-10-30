@@ -52,10 +52,11 @@ Re-check both kinds when GeminiCode moves to a new CLI version.
 | Agent spawned | 4,868 | 3,560 to 5,403 |
 | Agent ready (`initialize` answered) | 15,252 | 11,433 to 24,641 |
 
-- The agent is spawned about 3 s after services are up: the warm-up's delay (`agentWarmup.ts`), there so the window's own startup goes first.
+- The agent was spawned about 3 s after services were up: the warm-up's delay (`agentWarmup.ts`), there so the window's own startup went first. Since the process then took 6 to 21 s to answer `initialize`, the delay only pushed the first chat's wait later; 1.8 starts the process as soon as activation ends.
 - From spawn to `initialize` took 6 to 21 s (median 9.8 s), against 2.9 s for `perf-real.mts` on the same CLI. The difference is what the window is doing meanwhile (the index, the team tools' keychain reads, Home) and the sign-in.
 - The first session opens when the user opens a chat, so its mark says when they did, not what they waited; the first prompt's marks are the ones to read for that.
-- The real start takes about 2.1 s longer than the stand-in's. The stand-in uses an API key, so the difference is the Google sign-in's own work at start (inferred from the two setups, not traced). GeminiCode hides it by starting the agent a few seconds after the window opens when a sign-in is saved.
+- Activation reads every agent record before the pane is built. On this machine that is 3 files (60 KB), so it is not where the time goes; the reads are now bounded to 16 at a time (`recordStore.ts`) for a window with hundreds, and the "records loaded" mark says what they cost on any machine.
+- The real start takes about 2.1 s longer than the stand-in's. The stand-in uses an API key, so the difference is the Google sign-in's own work at start (inferred from the two setups, not traced). GeminiCode hides it by starting the agent as soon as the window has opened when a sign-in is saved.
 
 ## Sessions
 
@@ -148,6 +149,13 @@ Verdict: go. Projects are built on these results: one process holds a project, a
 ## Reopening a session (`session/load`)
 
 Read from the CLI and checked by `realAgentSessions.test.ts`.
+
+### Giving a session a server later
+
+`test/acp/realMcpReload.test.ts`, gemini-cli 0.66.0, with a fake model on loopback that records the tools each request declares:
+
+- `session/load` by id with an HTTP MCP server the session did not open with starts the server (`initialize`, `tools/list`), declares its tools to the model on the next prompt as `mcp_<server>_<tool>`, and replays the conversation as before. So a running chat can be given a server by reloading its session.
+- Cheaper still: the CLI keeps one notification stream (a `GET` on the server's URL) open per HTTP server, and on `notifications/tools/list_changed` it lists the server's tools again, so the next prompt declares a tool added since. GeminiCode's own servers use this: a session opens with every server listed, each offering only the tools the agent needs then, and a server whose tools change (team tools once a task needs them, Debug mode's on entry) sends the notice. No reload, no replay.
 
 ### Finding the session
 
