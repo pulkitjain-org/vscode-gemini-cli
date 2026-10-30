@@ -1,0 +1,12 @@
+diff --git a/build/npm/dirs.ts b/build/npm/dirs.ts
+index 17badba1cc8796610d3d7dea9cc70042c998488d..11e9f15d033a2f77fe5b82c307bc508940c6e955 100644
+--- a/build/npm/dirs.ts
++++ b/build/npm/dirs.ts
+@@ -22,6 +22,7 @@ export const dirs = [
+ 	'extensions/debug-server-ready',
+ 	'extensions/emmet',
+ 	'extensions/extension-editing',
++	'extensions/gemini', // GEMINI-FORK
+ 	'extensions/git',
+ 	'extensions/git-base',
+ 	'extensions/github',

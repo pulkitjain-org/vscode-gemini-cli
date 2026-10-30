@@ -200,6 +200,19 @@ export async function mainRepository(folder: string): Promise<string> {
 }
 
 /** What `folder`'s repository is in the middle of, which a fork can't carry: a merge, rebase, cherry-pick or revert. */
+/**
+ * Why `repository` cannot take a merge now: no branch checked out (a merge
+ * onto a detached HEAD lands on no branch), or a merge, rebase, cherry-pick
+ * or revert still in progress. Undefined when it can.
+ */
+export async function mergeRefusal(repository: string): Promise<'detached' | 'merge' | 'rebase' | 'cherry-pick' | 'revert' | undefined> {
+	const head = (await git(repository, ['rev-parse', '--abbrev-ref', 'HEAD'])).trim();
+	if (head === 'HEAD') {
+		return 'detached';
+	}
+	return unfinishedOperation(repository);
+}
+
 export async function unfinishedOperation(folder: string): Promise<'merge' | 'rebase' | 'cherry-pick' | 'revert' | undefined> {
 	const marks = [['MERGE_HEAD', 'merge'], ['rebase-merge', 'rebase'], ['rebase-apply', 'rebase'], ['CHERRY_PICK_HEAD', 'cherry-pick'], ['REVERT_HEAD', 'revert']] as const;
 	for (const [mark, operation] of marks) {
@@ -323,10 +336,14 @@ export async function worktreeStatus(worktree: AgentWorktree, into: string): Pro
 	return { uncommitted: status.split('\n').filter(Boolean).length, commits: Number(count.trim()) || 0 };
 }
 
-/** Commits everything in the worktree. */
+/**
+ * Commits everything in the worktree, running no hook: the commit is
+ * GeminiCode's, on an agent's behalf, and a hook in the checkout may be
+ * the agent's own work.
+ */
 export async function commitAll(folder: string, message: string): Promise<void> {
 	await git(folder, ['add', '-A']);
-	await git(folder, ['commit', '--quiet', '-m', message]);
+	await git(folder, ['-c', 'core.hooksPath=/dev/null', 'commit', '--quiet', '--no-verify', '-m', message]);
 }
 
 export type MergeResult =

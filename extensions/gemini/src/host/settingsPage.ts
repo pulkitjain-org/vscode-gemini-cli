@@ -7,7 +7,7 @@ import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { CliExtension, isExtensionSource, parseExtensionList, parseMemoryList, runCliCommands } from '../acp/cliCommands';
-import { CliPreference, defaultKeepChats, isKeepChats, keepChatsChoices, keepChatsForever, readCliPreferences, setCliPreference } from '../acp/cliPreferences';
+import { CliPreference, defaultApprovalModes, defaultKeepChats, isKeepChats, keepChatsChoices, keepChatsForever, readCliPreferences, setCliPreference } from '../acp/cliPreferences';
 import { geminiDir } from '../acp/directRequest';
 import { appendMemory } from '../acp/memory';
 import { errorMessage } from '../acp/errors';
@@ -19,11 +19,15 @@ import { ownTrustRules, readTrustRules, staleTrustRules, type TrustLevel, type T
 import { trustRows, type TrustRow } from '../acp/trustRows';
 import type { AgentService } from './agentService';
 import { type getAgentCommand, getWorkspaceCwd, workspaceFolderPaths } from './configuration';
+import { configuredDefaultMode } from './defaultMode';
+import { developerToolsOn } from './developerTools';
 import { tildify } from './displayText';
-import { CliReport, ContextCostView, ExtensionView, FromSettingsPage, HookView, McpServerView, MemoryFileView, PreferencesView, RulesFileView, SettingsPageStrings, SettingsPageView, SkillView, ToSettingsPage, TrustRowView, TrustView } from './panelProtocol';
-import { StorageSection, type StorageHost } from './storageSection';
+import { CliReport, ContextCostView, ExtensionView, FromSettingsPage, HookView, McpServerView, MemoryFileView, PreferencesView, RulesFileView, SettingsPageView, SkillView, ToSettingsPage, TrustRowView, TrustView } from './panelProtocol';
+import { SettingsPageStrings } from './panelStrings';
 import type { forgetSkills } from './teamCommands';
-import { createNonce, escapeAttribute } from './webviewHtml';
+import { cliModeList } from '../acp/sessionSettings';
+import { PagePanel, PageShell, SinglePage } from './pagePanel';
+import { agentSetupTabs, agentSetupTabsLabel, agentSetupTitle, openAgentSetupTab } from './agentSetupTabs';
 import { ContextCost, estimateTokens, heavyContextTokens, heavyServerTokens, measureCalls, measureTokens } from '../acp/contextCost';
 import type { ContextMeasures } from './chat/chatContext';
 import { showError } from './errorNotice';
@@ -53,14 +57,13 @@ export interface SettingsHost {
 	/** Drops the cached skills, so a skill turned on or off shows in the next list. */
 	readonly forgetSkills: typeof forgetSkills;
 	/** What the Storage section measures and cleans up; without it, the section isn't shown. */
-	readonly storage?: StorageHost;
 	/** The team tools' audit log, where Trusted Folders records each change; without it, changes are only logged. */
 	readonly audit?: AuditLog;
 }
 
 export class SettingsPage implements vscode.Disposable {
 
-	private panel: vscode.WebviewPanel | undefined;
+	private readonly page = new SinglePage<ToSettingsPage, FromSettingsPage>(() => this.create());
 	/** The files the page shows; the only ones it may open or create. */
 	private files = new Set<string>();
 	/** The extension and memory lists the CLI last reported. */
@@ -73,15 +76,11 @@ export class SettingsPage implements vscode.Disposable {
 	private cliStale = false;
 	private readonly disposables: vscode.Disposable[] = [];
 
-	/** The Storage section, measured the first time it scrolls into view. */
-	private readonly storage: StorageSection | undefined;
-
 	/** The folder Context per model call shows, when the user picked one of a multi-root window's. */
 	private contextFolder: string | undefined;
 
 	/** `contextCost` measures what every model call carries in each folder and keeps the results (chatContext.ts). */
 	constructor(private readonly extensionUri: vscode.Uri, private readonly service: AgentService, private readonly host: SettingsHost, private readonly contextCost?: SettingsContextCost) {
-		this.storage = host.storage && new StorageSection(host.storage, () => void this.update());
 		this.disposables.push(
 			// A measure started here or from a chat's usage popover.
 			...contextCost ? [contextCost.onDidChange(folder => folder === this.measuredFolder() && void this.update())] : [],
@@ -92,7 +91,7 @@ export class SettingsPage implements vscode.Disposable {
 			service.trust.onDidChange(() => void this.update()),
 			// The CLI could not be asked while the agent was not running; ask now.
 			// Each ask opens a CLI session, so a hidden page asks once it shows again.
-			service.runtime.onDidChangeState(state => state.kind === 'ready' && this.panel && this.refreshCliWhenShown()),
+			service.runtime.onDidChangeState(state => state.kind === 'ready' && this.page.page && this.refreshCliWhenShown()),
 			vscode.window.onDidCloseTerminal(terminal => {
 				if (terminal === this.terminal) {
 					// An install, update or removal finished.
@@ -104,38 +103,28 @@ export class SettingsPage implements vscode.Disposable {
 	}
 
 	show(): void {
-		if (this.panel) {
-			this.panel.reveal();
+		if (this.page.show()) {
 			return;
 		}
-		const media = vscode.Uri.joinPath(this.extensionUri, 'media');
-		const panel = vscode.window.createWebviewPanel(viewType, vscode.l10n.t("Agent Setup"), vscode.ViewColumn.Active, {
-			enableScripts: true,
-			localResourceRoots: [media],
-		});
-		panel.iconPath = new vscode.ThemeIcon('server-environment');
-		panel.webview.html = this.html(panel.webview, media);
-		panel.webview.onDidReceiveMessage((message: FromSettingsPage) => this.onMessage(message));
-		panel.onDidChangeViewState(e => {
-			if (e.webviewPanel.visible && this.cliStale) {
-				this.cliStale = false;
-				void this.refreshCli();
-			} else if (e.webviewPanel.active) {
-				void this.update();
-			}
-		});
-		panel.onDidDispose(() => {
-			if (this.panel === panel) {
-				this.panel = undefined;
-			}
-		});
-		this.panel = panel;
 		void this.refreshCli();
 		void this.forgetGoneFolders();
 	}
 
+	private create(): PagePanel<ToSettingsPage, FromSettingsPage> {
+		const page = new PagePanel<ToSettingsPage, FromSettingsPage>(this.extensionUri, { viewType, title: agentSetupTitle('loads'), icon: new vscode.ThemeIcon('server-environment'), openTab: tab => void openAgentSetupTab(tab).then(() => this.page.dispose()) }, this.shell(), message => this.onMessage(message));
+		page.onDidChangeVisibility(visible => {
+			if (visible && this.cliStale) {
+				this.cliStale = false;
+				void this.refreshCli();
+			} else if (page.active) {
+				void this.update();
+			}
+		});
+		return page;
+	}
+
 	private refreshCliWhenShown(): void {
-		if (this.panel?.visible) {
+		if (this.page.page?.visible) {
 			void this.refreshCli();
 		} else {
 			this.cliStale = true;
@@ -143,24 +132,24 @@ export class SettingsPage implements vscode.Disposable {
 	}
 
 	dispose(): void {
-		this.panel?.dispose();
+		this.page.dispose();
 		vscode.Disposable.from(...this.disposables).dispose();
 	}
 
 	private async update(): Promise<void> {
-		const panel = this.panel;
-		if (!panel?.visible) {
+		const page = this.page.page;
+		if (!page?.visible) {
 			return;
 		}
 		const view = await this.build();
-		if (this.panel !== panel) {
+		if (this.page.page !== page) {
 			return;
 		}
 		this.files = new Set([
 			...view.servers.map(s => s.file), ...view.rules.map(r => r.path), ...view.skills.flatMap(s => [s.file, s.settingsFile]), ...view.hooks.map(h => h.file),
 			...view.memory.state === 'ready' ? view.memory.items.map(m => m.path) : [],
 		]);
-		void panel.webview.postMessage({ type: 'view', view } satisfies ToSettingsPage);
+		page.post({ type: 'view', view });
 	}
 
 	/**
@@ -272,8 +261,9 @@ export class SettingsPage implements vscode.Disposable {
 			servers: servers.map(server => scopes.has(server.scope) && measured.has(server.name) ? { ...server, tokens: measured.get(server.name) } : server),
 			skills, hooks, extensions: this.extensions, memory: this.memory, rules, preferences: this.preferencesView(personal),
 			contextCost: await this.contextCostView(folder, cost),
+			// Measuring costs model calls: a developer's button. The measures the chat made still show.
+			developer: developerToolsOn(),
 			trust: await trust,
-			...this.storage ? { storage: this.storage.view() } : {},
 		};
 	}
 
@@ -392,9 +382,14 @@ export class SettingsPage implements vscode.Disposable {
 			[keepChatsForever]: vscode.l10n.t("Until I delete them"),
 		};
 		const values = keepChatsChoices.includes(preferences.keepChats) ? keepChatsChoices : [...keepChatsChoices, preferences.keepChats];
+		// The CLI's own names for its modes, as a session lists them.
+		const modeNames = new Map(cliModeList.map(mode => [mode.id, mode.name]));
+		const own = configuredDefaultMode();
 		return {
 			...preferences,
 			keepChatsChoices: values.map(value => ({ value, label: value === defaultKeepChats ? vscode.l10n.t("{0} (default)", labels[value]) : labels[value] ?? value })),
+			defaultApprovalModeChoices: defaultApprovalModes.map(value => ({ value, label: value === 'default' ? vscode.l10n.t("{0} (the CLI's default)", modeNames.get(value) ?? value) : modeNames.get(value) ?? value })),
+			...own !== undefined ? { ownDefaultMode: modeNames.get(own) ?? own } : {},
 			display: tildify(this.personalSettings()),
 		};
 	}
@@ -418,20 +413,6 @@ export class SettingsPage implements vscode.Disposable {
 					if (workspaceFolderPaths().includes(message.folder)) {
 						this.contextFolder = message.folder;
 						await this.update();
-					}
-					return;
-				case 'measureStorage':
-					void this.storage?.measure();
-					return;
-				case 'cleanUp':
-					await this.storage?.cleanUp();
-					return;
-				case 'setKeepLogs':
-					await this.storage?.setKeepLogs(message.days);
-					return;
-				case 'storageAction':
-					if (message.action === 'showIndex' || message.action === 'openFolder') {
-						await this.storage?.action(message.action);
 					}
 					return;
 				case 'restart':
@@ -715,11 +696,13 @@ export class SettingsPage implements vscode.Disposable {
 			written = await setCliPreference(file, key, value);
 		} else if ((key === 'permanentApproval' || key === 'planRouting' || key === 'usageStatistics') && typeof value === 'boolean') {
 			written = await setCliPreference(file, key, value);
+		} else if (key === 'defaultApprovalMode' && typeof value === 'string' && defaultApprovalModes.includes(value)) {
+			written = await setCliPreference(file, key, value);
 		} else {
 			return;
 		}
 		if (!written) {
-			await this.cannotRewrite(file, key === 'keepChats' ? '"general"' : key === 'permanentApproval' ? '"security"' : key === 'planRouting' ? '"general"' : '"privacy"');
+			await this.cannotRewrite(file, key === 'keepChats' || key === 'defaultApprovalMode' ? '"general"' : key === 'permanentApproval' ? '"security"' : key === 'planRouting' ? '"general"' : '"privacy"');
 			return;
 		}
 		this.offerRestart(vscode.l10n.t("Saved to {0}. New agents use it.", tildify(file)));
@@ -801,8 +784,7 @@ export class SettingsPage implements vscode.Disposable {
 		void vscode.window.showInformationMessage(message, restart).then(choice => choice === restart && this.service.restart());
 	}
 
-	private html(webview: vscode.Webview, media: vscode.Uri): string {
-		const nonce = createNonce();
+	private shell(): PageShell {
 		const strings: SettingsPageStrings = {
 			contextTitle: vscode.l10n.t("Context per model call"),
 			contextHint: vscode.l10n.t("What every model call sends before your prompt in {0}. A large context makes every step of an agent slower and uses more of your quota."),
@@ -856,6 +838,9 @@ export class SettingsPage implements vscode.Disposable {
 			signIn: vscode.l10n.t("Sign In"),
 			preferences: vscode.l10n.t("Gemini CLI settings"),
 			preferencesHint: vscode.l10n.t("Your own settings in {0}. A project's .gemini/settings.json can override them."),
+			defaultApprovalMode: vscode.l10n.t("Default approval mode"),
+			defaultApprovalModeHint: vscode.l10n.t("The mode a new agent starts in, as the CLI's own /settings sets it. YOLO is picked on purpose, never by default."),
+			ownDefaultModeNote: vscode.l10n.t("GeminiCode's gemini.agents.defaultMode is set to {0}, which wins here; clear it to follow the CLI."),
 			permanentApproval: vscode.l10n.t("Allow for all future sessions"),
 			permanentApprovalHint: vscode.l10n.t("Permission prompts offer to allow a tool or command from now on, so trusted commands such as npm test stop asking in every new chat."),
 			planRouting: vscode.l10n.t("Plan with Pro, build with Flash"),
@@ -864,11 +849,6 @@ export class SettingsPage implements vscode.Disposable {
 			usageStatisticsHint: vscode.l10n.t("The Gemini CLI sends anonymous usage statistics to Google to improve it."),
 			keepChats: vscode.l10n.t("Keep saved chats for"),
 			keepChatsHint: vscode.l10n.t("The Gemini CLI deletes saved chats older than this, so they no longer show under Restore Session."),
-			storage: vscode.l10n.t("Storage"),
-			storageHint: vscode.l10n.t("What GeminiCode keeps on this Mac, and how much room each part takes."),
-			storageMeasuring: vscode.l10n.t("Measuring\u2026"),
-			cleanUp: vscode.l10n.t("Clean Up..."),
-			keepLogs: vscode.l10n.t("Keep logs for"),
 			trust: vscode.l10n.t("Trusted Folders"),
 			trustHint: vscode.l10n.t("Where the Gemini CLI loads a folder's own settings, hooks and MCP servers. Shared with the terminal."),
 			trustFolder: vscode.l10n.t("Trust Folder..."),
@@ -877,28 +857,7 @@ export class SettingsPage implements vscode.Disposable {
 			removeTrust: vscode.l10n.t("Remove"),
 			noTrust: vscode.l10n.t("No trusted folders yet."),
 		};
-		const script = webview.asWebviewUri(vscode.Uri.joinPath(media, 'settings.js'));
-		const style = webview.asWebviewUri(vscode.Uri.joinPath(media, 'panels.css'));
-		const menuStyle = webview.asWebviewUri(vscode.Uri.joinPath(media, 'menu.css'));
-		const codicons = webview.asWebviewUri(vscode.Uri.joinPath(media, 'codicon.css'));
-		const glassStyle = webview.asWebviewUri(vscode.Uri.joinPath(media, 'glass.css'));
-		return `<!DOCTYPE html>
-<html lang="en">
-<head>
-	<meta charset="UTF-8">
-	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; font-src data: ${webview.cspSource}; img-src data:; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
-	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<link href="${codicons}" rel="stylesheet">
-	<link href="${menuStyle}" rel="stylesheet">
-	<link href="${style}" rel="stylesheet">
-	<link href="${glassStyle}" rel="stylesheet">
-	<title>${strings.title}</title>
-</head>
-<body class="settings-page">
-	<main id="page" class="settings"></main>
-	<script nonce="${nonce}" type="module" src="${script}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
-</body>
-</html>`;
+		return { script: 'settings.js', styles: [], title: strings.title, bodyClass: 'settings-page', mainClass: 'settings', strings, tabs: agentSetupTabs('loads'), tabsLabel: agentSetupTabsLabel() };
 	}
 }
 

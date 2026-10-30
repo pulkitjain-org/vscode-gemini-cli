@@ -22,7 +22,9 @@
 import { promises as dns } from 'node:dns';
 import { isIP } from 'node:net';
 import type { DocsPage } from '../index/indexerProtocol';
-import type { DocsScope } from './docsProtocol';
+import { domainAllowed, type DocsScope } from './docsProtocol';
+
+export { domainAllowed };
 
 export interface CrawlOptions {
 	readonly url: string;
@@ -512,12 +514,6 @@ export function markdownLinks(markdown: string, base: string): string[] {
 	return [...new Set(links)];
 }
 
-/** Whether `host` may be fetched from, per patterns such as `react.dev` or `*.example.com`; none allows every site. */
-export function domainAllowed(host: string, patterns: readonly string[]): boolean {
-	const name = host.toLowerCase();
-	const list = patterns.map(p => p.trim().toLowerCase()).filter(Boolean);
-	return !list.length || list.some(pattern => pattern === '*' || (pattern.startsWith('*.') ? name.endsWith(pattern.slice(1)) || name === pattern.slice(2) : name === pattern));
-}
 
 function isSignIn(final: URL, start: URL): boolean {
 	return signInPath.test(final.pathname) || (final.hostname !== start.hostname && /(?:login|signin|auth|sso|okta|accounts)\./i.test(final.hostname));

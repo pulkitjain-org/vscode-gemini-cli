@@ -1,0 +1,39 @@
+diff --git a/src/vs/platform/browserView/electron-main/browserSession.ts b/src/vs/platform/browserView/electron-main/browserSession.ts
+index 5bd08892401fe5fb20d13abe185a66f138e61d22..1274a52a0ccbde875543fc81f2c64f46594b57a9 100644
+--- a/src/vs/platform/browserView/electron-main/browserSession.ts
++++ b/src/vs/platform/browserView/electron-main/browserSession.ts
+@@ -22,6 +22,7 @@ import { IInstantiationService } from '../../instantiation/common/instantiation.
+ import { localize } from '../../../nls.js';
+ import { IAgentNetworkFilterService } from '../../networkFilter/common/networkFilterService.js';
+ import { ISandboxNetworkRestrictions } from '../../sandbox/common/sandboxSettingsResolutionHelper.js';
++import { geminiAgentFiles } from './geminiAgentFiles.js'; // GEMINI-FORK
+ 
+ /**
+  * Holds an Electron session along with its storage scope and unique browser
+@@ -389,7 +390,8 @@ export class BrowserSession {
+ 			return;
+ 		}
+ 		this._networkFilterEnabled = enabled;
+-		this.electronSession.webRequest.onBeforeRequest(enabled ? (details, callback) => {
++		// GEMINI-FORK: the session's one onBeforeRequest listener also checks Gemini agents' file loads (geminiAgentFiles.ts)
++		geminiAgentFiles.setNetworkFilter(this.electronSession, enabled ? (details, callback) => {
+ 			let uri: URI;
+ 			try {
+ 				uri = URI.parse(details.url, true);
+@@ -410,12 +412,15 @@ export class BrowserSession {
+ 			type: 'frame',
+ 			filePath: FileAccess.asFileUri('vs/platform/browserView/electron-browser/preload-browserView.js').fsPath
+ 		});
++		// GEMINI-FORK: a Gemini agent's page loads only the files its agent may read (geminiAgentFiles.ts)
++		geminiAgentFiles.listen(this.electronSession);
+ 		this.electronSession.protocol.handle(Schemas.file, request => {
+ 			const filePath = normalize(URI.parse(request.url).fsPath);
+ 			if (!BrowserSession._trustAllFiles && !BrowserSession._trustedFileRoots.findSubstr(filePath)) {
+ 				return new Response(localize('browserSession.untrustedFile', 'Forbidden. File does not reside within a trusted folder.'), { status: 403 });
+ 			}
+-			return this.electronSession.fetch(request, { bypassCustomProtocolHandlers: true });
++			// GEMINI-FORK: this read comes back through the session with no page; the file check lets it through
++			return geminiAgentFiles.readOwn(this.electronSession, request.url, () => this.electronSession.fetch(request, { bypassCustomProtocolHandlers: true }));
+ 		});
+ 	}
+ 

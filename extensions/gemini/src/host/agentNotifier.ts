@@ -10,6 +10,7 @@
 // shows the count.
 
 import * as vscode from 'vscode';
+import { aliasedSetting } from '../acp/settingAlias';
 import { configSection } from './configuration';
 
 const showToastCommand = '_gemini.showToast';
@@ -23,7 +24,8 @@ export class AgentNotifier implements vscode.Disposable {
 
 	/** Tells the user, unless they are already looking at GeminiCode. `open` brings the agent up when they click. */
 	notify(agentId: string, kind: 'permission' | 'done', title: string, open: () => void): void {
-		if (!enabled() || vscode.window.state.focused) {
+		const wanted = level();
+		if (wanted === 'off' || (wanted === 'needsYou' && kind === 'done') || vscode.window.state.focused) {
 			return;
 		}
 		const body = kind === 'permission'
@@ -46,7 +48,8 @@ export class AgentNotifier implements vscode.Disposable {
 
 	/** Shows `count` waiting agents on the Dock icon. */
 	setWaiting(count: number): void {
-		const value = enabled() ? count : 0;
+		// The Dock icon counts the agents waiting whatever the notifications setting says.
+		const value = count;
 		if (value === this.badge) {
 			return;
 		}
@@ -63,6 +66,12 @@ export class AgentNotifier implements vscode.Disposable {
 	}
 }
 
-function enabled(): boolean {
-	return vscode.workspace.getConfiguration(configSection).get<boolean>('notifications.enabled', true);
+type Level = 'all' | 'needsYou' | 'off';
+
+/** `gemini.notifications`, or its old boolean `gemini.notifications.enabled` (true is all, false is off) where only that is set. */
+function level(): Level {
+	const config = vscode.workspace.getConfiguration(configSection);
+	const old = config.inspect<boolean>('notifications.enabled');
+	const asLevel = (value: boolean | undefined): Level | undefined => value === undefined ? undefined : value ? 'all' : 'off';
+	return aliasedSetting<Level>(config.inspect<Level>('notifications'), old && { workspaceFolderValue: asLevel(old.workspaceFolderValue), workspaceValue: asLevel(old.workspaceValue), globalValue: asLevel(old.globalValue) }, 'all');
 }

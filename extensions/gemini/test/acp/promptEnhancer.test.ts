@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -61,7 +61,8 @@ describe('PromptEnhancer', () => {
 	let sidecar: AgentSidecar | undefined;
 	let runtime: AgentRuntime | undefined;
 	let enhancer: PromptEnhancer | undefined;
-	const cwd = mkdtempSync(path.join(tmpdir(), 'enhance-test-'));
+	// The real path: sessions open on it, as a terminal's CLI keys them.
+	const cwd = realpathSync(mkdtempSync(path.join(tmpdir(), 'enhance-test-')));
 
 	afterEach(() => {
 		vi.restoreAllMocks();
@@ -212,6 +213,13 @@ describe('PromptEnhancer', () => {
 		await vi.waitFor(() => expect(cancel).toHaveBeenCalledOnce());
 		expect(onDidEnhance).toHaveBeenCalledWith(expect.objectContaining({ model: 'a direct request' }));
 		expect(onDirectFailed).not.toHaveBeenCalled();
+	});
+
+	it('answers a side question with the slow direct request alone, past the rewrite\'s cap, starting no CLI session', async () => {
+		const { runtime, enhancer } = await start({ turns: [[reply('late')]] }, undefined, { direct: slowDirect(120, ' The agent used axios. '), hedgeAfterMs: 20, directTimeoutMs: 50 });
+		const newSession = vi.spyOn(runtime, 'newSession');
+		expect(await enhancer.ask('system', 'Side question: why axios?')).toBe('The agent used axios.');
+		expect(newSession).not.toHaveBeenCalled();
 	});
 
 	it('uses the CLI\'s rewrite when it answers before the slow direct request, and stops the direct request without counting it as failed', async () => {

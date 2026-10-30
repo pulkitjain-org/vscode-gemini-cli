@@ -4,8 +4,8 @@ This page records what GeminiCode's design relies on about the Gemini CLI, and w
 
 Every entry is one of two kinds:
 
-- **Measured.** Taken on 18 Oct 2026 on an Apple M3 Pro Mac (12 cores, 36 GB, macOS 26.7) with gemini-cli 0.64.0, the version GeminiCode bundles, unless the section gives another date. *Real account* means a Google sign-in with a Gemini Code Assist license, billed to a Google Cloud project, over the network. *Stand-in* means a local fake of the Gemini API that answers each model call after a fixed delay, with an API key and no network; it measures everything except the model and the sign-in. Each table names the script in `extensions/gemini/scripts/` that takes it again.
-- **Read from the CLI.** Behaviour read from the 0.64.0 bundle (`extensions/gemini/cli/0.64.0/bundle/`). Where a real-CLI test (`extensions/gemini/test/acp/real*.test.ts`) checks it, the test is named. All of those tests pass against 0.64.0.
+- **Measured.** Taken on 18 Oct 2026 on an Apple M3 Pro Mac (12 cores, 36 GB, macOS 26.7) with gemini-cli 0.64.0, unless the section gives another date. GeminiCode bundles 0.66.0 since 29 Oct 2026; the real-CLI tests pass against it, and the measurements were not taken again, since nothing in the 0.65 and 0.66 release notes touches the paths they time. *Real account* means a Google sign-in with a Gemini Code Assist license, billed to a Google Cloud project, over the network. *Stand-in* means a local fake of the Gemini API that answers each model call after a fixed delay, with an API key and no network; it measures everything except the model and the sign-in. Each table names the script in `extensions/gemini/scripts/` that takes it again.
+- **Read from the CLI.** Behaviour read from the 0.64.0 bundle and checked again in the 0.66.0 bundle (`extensions/gemini/cli/0.66.0/bundle/`) on 29 Oct 2026. Where a real-CLI test (`extensions/gemini/test/acp/real*.test.ts`) checks it, the test is named. All of those tests pass against 0.66.0.
 
 Re-check both kinds when GeminiCode moves to a new CLI version.
 
@@ -55,8 +55,8 @@ Same runs as above.
 
 - With a Google sign-in a session costs most of a second, against well under 100 ms with an API key. GeminiCode hides it behind a spare session opened while the user types.
 - One process serves any number of sessions, each with its own `cwd`. Each session loads the settings of its own folder, so one process serves agents in different folders. The process environment, such as `GOOGLE_CLOUD_PROJECT`, is shared, so agents that need another project need another process.
-- Over ACP, gemini-cli 0.64.0 implements `initialize`, `authenticate`, `session/new`, `session/load`, `session/cancel`, `session/prompt`, `session/set_mode` and `session/set_model`.
-- `session/new` and `initialize` have no time limit of their own, and there is no `$/cancel_request`: a request GeminiCode gives up on keeps running in the CLI. GeminiCode gives `initialize`, `session/new` and `session/load` 120 s and `authenticate` 330 s, since the CLI's browser sign-in waits up to 5 minutes ("Authentication timed out after 5 minutes"). `session/new` does not wait for MCP servers; `session/prompt` does (`waitForMcpInit`), so a hung MCP server holds up the first prompt, not the session.
+- Over ACP, gemini-cli 0.66.0 implements `initialize`, `authenticate`, `session/new`, `session/load`, `session/cancel`, `session/prompt`, `session/set_mode` and `session/set_model`, as 0.64.0 did.
+- `session/new` and `initialize` have no time limit of their own, and there is no `$/cancel_request`: a request GeminiCode gives up on keeps running in the CLI. GeminiCode gives `initialize`, `session/new` and `session/load` 120 s, `session/set_mode`, `session/set_model` and `session/close` 15 s, and `authenticate` 330 s, since the CLI's browser sign-in waits up to 5 minutes ("Authentication timed out after 5 minutes"). `session/new` does not wait for MCP servers; `session/prompt` does (`waitForMcpInit`), so a hung MCP server holds up the first prompt, not the session.
 - It advertises `loadSession`, `promptCapabilities` (`image`, `audio`, `embeddedContext`) and `mcpCapabilities` (`http`, `sse`), and no `sessionCapabilities`. There is no `session/close`, `session/list`, `session/fork`, `session/resume` or `session/set_config_option`, so a session stays in the process until it exits. GeminiCode closes the sessions it leaves only when a CLI advertises `sessionCapabilities.close`.
 
 ## A prompt's first reply
@@ -137,6 +137,8 @@ Read from the CLI and checked by `realAgentSessions.test.ts`.
 
 ### Finding the session
 
+The CLI registers two folders for one directory reached through a link: its process's `process.cwd()`, the real path, when it starts, and the path `session/new` was given. Sessions are saved under the given path's folder. GeminiCode opens every session on the real path, so both coincide; for a session opened elsewhere on the given path, the lookup reads every folder the directory is registered under (`chatsFolders` in `cliSessions.ts`), and a copy for `session/load` goes in the folder of the path the load will be given.
+
 - `session/load` takes `sessionId`, `cwd` and `mcpServers`. It finds the session among the chat files the CLI saves for the folder: `~/.gemini/tmp/<project>/chats/session-<time>-<first 8 characters of the id>.jsonl`, where `<project>` is the short name `~/.gemini/projects.json` gives the folder (older CLIs used a SHA-256 of its path).
 - The CLI matches the exact id and does not reset the session, so the same session can be reopened again and again.
 - A chat is saved only once it has messages, so an empty session cannot be reopened. Like `session/new`, `session/load` needs `security.auth.selectedType` in the user's settings.
@@ -206,6 +208,8 @@ Read from `AcpFileSystemService` and the tool-confirmation code.
 - Before every shell command the CLI runs a taint check (`hasTaintedOrBuildFileRisk`). A command that reuses a path or a flag's value seen in earlier tool output, or a build command after build files changed, always asks, and its "Allow for this session" is accepted but not kept. ACP still offers the option and sends no taint details. GeminiCode keeps its own session approvals of shell programs (`sessionApprovals.ts`), which lapse for task runners when the agent writes a build file.
 - A shell request's title is the whole command.
 - The CLI reads its trusted folders once per process (`loadTrustedFolders`), so a folder trusted while it runs counts only after a restart.
+- `general.defaultApprovalMode` (0.66: `default`, `autoEdit` or `plan`; `yolo` is refused on purpose) is the mode `session/new` opens in, and the mode list it returns is the CLI's own: `default`, `autoEdit`, `plan` and, where policy allows it, `yolo`, in that order, with the CLI's names. GeminiCode lists them as they come and reads the default from the same key, so the composer, Agent Setup and the terminal's dialog show one list. The terminal's /model dialog saves its default under `model.name` in the user settings (`saveModelChange`); the model menu's Set as Default for the CLI writes the same key.
+- The CLI's permanent allow (`proceed_always_and_save`, offered only with `security.enablePermanentToolApproval`) writes its policy file with the mode the session is in, and the rule applies there and in every mode that approves more. ACP carries no scope with the option, so GeminiCode adds the scope to the option's label itself (`withPermanentScope`).
 
 ## The model list
 
@@ -264,6 +268,17 @@ Measured on 25 Oct 2026 on a checkout of this repository (21,368 files), with th
 
 The top five results for six queries were the same before and after.
 
+Taken again on 29 Oct 2026 for what a commit costs the window's index (`src/host/indexWatchers.ts`), on this repository at 22,474 tracked files:
+
+| What | Before | After |
+| --- | --- | --- |
+| A commit on another branch of the same repository (an agent's worktree, which shares the refs) | a reconcile of the whole index, 0.85 s | two git calls to see HEAD did not move (`headPosition`), about 60 ms, and no indexer work |
+| A commit, pull or reset on the checked-out branch | a reconcile, 0.85 s | `git diff --name-only` between the two commits, about 120 ms for three commits, and a change batch of those files; a reconcile only for a branch switch, a commit git no longer has, or more than 300 changed files |
+| The repo map of a folder | `LIKE 'folder/%'` over every row of `files` and `symbols` | a range on the primary key (`prefixRange`) |
+| The files a file changes with | a scan of `cochange` for the second column | an index on it (`cochange_b`) |
+
+The indexer's memory on a folder of 100,000 generated TypeScript files (`test/acp/index/indexerMemory.test.ts`, run with `GEMINI_INDEX_PERF=1`), measured on 29 Oct 2026: the build took 32 s and the process sat at 182 MB resident afterwards, well under the 512 MB the test allows, so the inventory is compared whole; the `files` answer lists the first 50,000 paths, its cap.
+
 ### When the indexer gives up
 
 After three crashes the indexer stops for ten minutes. New sessions then get no `geminicode-index` server in `session/new` and no `indexHint`; `mcpServers` per session is what the CLI already supports. The CLI 0.64.0 does handle `notifications/tools/list_changed` (its MCP client calls `refreshTools`), but GeminiCode's local MCP server (`localMcpServer.ts`) answers requests only and has no stream to send notifications on, so a session already running keeps the tools, and their calls fail with a message.
@@ -310,7 +325,7 @@ Read from the CLI: in ACP mode it finds code with `glob`, `grep_search` (ripgrep
 
 ## Forking and compacting a session
 
-Read from gemini-cli 0.64.0's bundle and checked by `realSessionSnapshot.test.ts`.
+Read from gemini-cli 0.64.0's bundle, the same in 0.66.0, and checked by `realSessionSnapshot.test.ts`.
 
 - There is no fork over ACP. The ACP library the CLI bundles routes `session/fork` to `agent.unstable_forkSession`, which the Gemini agent does not implement, so the call fails as an unknown method. `sessionCapabilities` advertises neither fork nor resume.
 - ACP mode registers six commands: `memory`, `extensions`, `init`, `restore`, `about` and `help`. `/chat save` and `/chat resume` (chat checkpoints) and `/compress` exist only in the terminal UI.
@@ -324,7 +339,7 @@ Read from gemini-cli 0.64.0's bundle and checked by `realSessionSnapshot.test.ts
 
 ## Steering a running turn
 
-Read from gemini-cli 0.64.0's bundle and the 0.67.0 nightly of 2026-10-23; the ACP loop is the same in both.
+Read from gemini-cli 0.64.0's bundle and the 0.67.0 nightly of 2026-10-23; the ACP loop is the same in both, and in 0.66.0.
 
 - The terminal UI queues by default. A message typed while the agent works waits and goes as the next prompt once the turn ends.
 - Steering mid-turn is terminal-only and experimental. With `experimental.modelSteering` on (off by default), a message typed while tools run is kept as a `user_steering` injection (`injectionService.addInjection`). It is put in front of the next tool results as "User steering update", with `USER_STEERING_INSTRUCTION` telling the model to change only the tasks it affects. This happens in the terminal UI's `useGeminiStream`, not in core.
@@ -379,10 +394,11 @@ Production bundle sizes:
 
 | File | Bytes |
 | --- | --- |
-| `dist/extension.js` | 1,178,837 |
-| `media/chat.js` | 240,543 |
+| `dist/extension.js` | 955,144 (29 Oct 2026; 1,212,205 before the ACP SDK moved out) |
+| `dist/connection.js` | 253,633 (the ACP SDK and zod with English messages only, loaded when the first agent process starts) |
+| `media/chat.js` | 253,936 |
 | `media/draftMarkdown.js` | 126,052 |
-| `media/home.js` | 25,894 |
+| `media/home.js` | 28,043 |
 | `media/teamFlow.js` | 25,130 |
 
-KaTeX (271,660 bytes) and the highlighter (158,012) load only when a reply needs them. The ACP SDK and zod are in `extension.js` but run only when the first agent starts, not at activation.
+KaTeX (271,660 bytes) and the highlighter (158,012) load only when a reply needs them. The ACP SDK and zod are in `connection.js` (`src/connection.ts`), loaded by the runtime when the first agent process starts, seconds after activation; the context probe and the benchmark, which speak ACP themselves, come from the same bundle.

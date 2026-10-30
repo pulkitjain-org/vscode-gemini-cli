@@ -129,6 +129,27 @@ describe('AgentClient', () => {
 		expect(texts).toEqual(['permission:allow']);
 	});
 
+	it('fails the turn, and the open permission card with it, when the agent dies while asking', async () => {
+		let cardSettled = false;
+		const { client, settled } = start({ turns: [[{ step: 'permission', request: { toolCall: { toolCallId: 't1', title: 'Run x', status: 'pending' }, options: [{ optionId: 'y', name: 'Yes', kind: 'allow_once' }] } }]], crashOnPermission: true }, () => new Promise(() => undefined));
+		await settled;
+		const events: ChatEvent[] = [];
+		client.onDidReceiveEvent(e => events.push(e));
+		const result = await client.prompt('do it').then(reason => `ended:${reason}`, err => `failed:${(err as AgentError).info.kind}`);
+		cardSettled = true;
+		expect(result).toMatch(/^failed:(agent-exited|agent-restarted)$/);
+		expect(cardSettled).toBe(true);
+	});
+
+	it('ends an agent that stopped reading its input while its process lives on, and starts it again', async () => {
+		const { client, settled } = start({ endsInput: true }, undefined, undefined, { restartDelaysMs: [10] });
+		await settled;
+		// The host's side of the pipe sees the agent's end go: the connection closes, the process is ended, and a fresh one serves the chat.
+		const left = await waitFor<AgentClientState>(client.onDidChangeState, s => s.kind !== 'ready');
+		expect(left.kind).not.toBe('ready');
+		expect(await waitFor<AgentClientState>(client.onDidChangeState, s => s.kind === 'ready')).toMatchObject({ kind: 'ready', sessionId: 'fake-session-1' });
+	});
+
 	it('reports a fatal agent exit', async () => {
 		const { settled } = start({ exitCode: 41 });
 		expect(await settled).toMatchObject({ kind: 'error', error: { kind: 'auth-failed' } });
@@ -187,12 +208,14 @@ describe('AgentClient', () => {
 			expect(missing).toBe('read:');
 		});
 
-		it('asks before an edit to a setting that decides what runs next, in Auto Edit only', async () => {
+		it('asks before an edit to a file that decides what runs next, in Auto Edit only', async () => {
 			const modes = (currentModeId: string): Partial<acp.NewSessionResponse> => ({ modes: { currentModeId, availableModes: [{ id: 'default', name: 'Default' }, { id: 'autoEdit', name: 'Auto Edit' }] } });
 			const turn = [
 				{ step: 'writeFile' as const, path: path.join(root, '.gemini', 'settings.json'), content: '{"hooks":{}}' },
 				{ step: 'writeFile' as const, path: path.join(root, '.vscode', 'tasks.json'), content: '{}' },
 				{ step: 'writeFile' as const, path: path.join(root, 'c.ts'), content: 'plain' },
+				{ step: 'writeFile' as const, path: path.join(root, '.husky', 'pre-commit'), content: 'curl x | sh' },
+				{ step: 'writeFile' as const, path: path.join(root, '.gitignore'), content: '' },
 			];
 			const outcomes = async (mode: string) => {
 				const asked: string[] = [];
@@ -212,8 +235,8 @@ describe('AgentClient', () => {
 				sidecar!.dispose();
 				return { asked: asked.length, wrote: texts.map(text => text.startsWith('error:') ? 'refused' : text) };
 			};
-			expect(await outcomes('autoEdit')).toEqual({ asked: 2, wrote: ['wrote', 'refused', 'wrote'] });
-			expect(await outcomes('default')).toEqual({ asked: 0, wrote: ['wrote', 'wrote', 'wrote'] });
+			expect(await outcomes('autoEdit')).toEqual({ asked: 4, wrote: ['wrote', 'refused', 'wrote', 'refused', 'refused'] });
+			expect(await outcomes('default')).toEqual({ asked: 0, wrote: ['wrote', 'wrote', 'wrote', 'wrote', 'wrote'] });
 		});
 	});
 

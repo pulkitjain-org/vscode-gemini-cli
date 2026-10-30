@@ -1,0 +1,22 @@
+diff --git a/src/vs/platform/windows/electron-main/windowImpl.ts b/src/vs/platform/windows/electron-main/windowImpl.ts
+index 484851fc08e7582bfd38fa04aaf89d8f40504f36..9ffd7c36175b09cc57893b6ddb9b43fab9991ef4 100644
+--- a/src/vs/platform/windows/electron-main/windowImpl.ts
++++ b/src/vs/platform/windows/electron-main/windowImpl.ts
+@@ -4,6 +4,7 @@
+  *--------------------------------------------------------------------------------------------*/
+ 
+ import electron, { BrowserWindowConstructorOptions, Display } from 'electron';
++import { registerGeminiSpellCheckMenu } from './geminiSpellCheck.js'; // GEMINI-FORK
+ import { DeferredPromise, RunOnceScheduler, timeout, Delayer } from '../../../base/common/async.js';
+ import { CancellationToken } from '../../../base/common/cancellation.js';
+ import { toErrorMessage } from '../../../base/common/errorMessage.js';
+@@ -910,6 +911,9 @@ export class CodeWindow extends BaseWindow implements ICodeWindow {
+ 		// (https://github.com/microsoft/vscode/issues/122736)
+ 		this._register(Event.fromNodeEventEmitter<electron.Event>(this._win.webContents, 'will-prevent-unload')(event => event.preventDefault()));
+ 
++		// GEMINI-FORK: spelling suggestions in the chat composers
++		this._register(registerGeminiSpellCheckMenu(this._win.webContents));
++
+ 		// Remember that we loaded
+ 		this._register(Event.fromNodeEventEmitter(this._win.webContents, 'did-finish-load')(() => {
+ 

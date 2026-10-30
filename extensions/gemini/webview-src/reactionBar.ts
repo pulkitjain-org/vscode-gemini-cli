@@ -39,6 +39,14 @@ function loadPicker(): NonNullable<typeof picker> {
 	return picker ??= pickerUrl ? import(/* webpackIgnore: true */ pickerUrl).catch(() => undefined) : Promise.resolve(undefined);
 }
 
+/** Every emoji with a meaning and what it asks for: the four quick ones by their names, unless edited, then the edited and added ones. */
+function meanings(): (readonly [string, string])[] {
+	const plain = (emoji: string) => emoji.replace(/\u{FE0F}/gu, '');
+	const edited = new Map(state.meanings.map(([emoji, meaning]) => [plain(emoji), meaning]));
+	const builtIn = quick.map(([emoji], i) => [emoji, edited.get(plain(emoji)) ?? strings.reactions?.quick[i] ?? ''] as const);
+	return [...builtIn, ...state.meanings.filter(([emoji]) => !quick.some(([q]) => plain(q) === plain(emoji)))];
+}
+
 function react(turnEnd: string, emoji: string, name: string): void {
 	const active = document.activeElement;
 	refocus = active instanceof HTMLElement && (active.classList.contains('reaction-add') || !!bar?.contains(active)) ? turnEnd : undefined;
@@ -100,6 +108,7 @@ function openPicker(anchor: HTMLElement, turnEnd: string): void {
 	void loadPicker().then(module => module?.openPicker({
 		anchor,
 		recents: state.recents,
+		meanings: meanings(),
 		strings: labels,
 		onPick: (emoji, name) => react(turnEnd, emoji, name),
 	}));
@@ -155,10 +164,13 @@ export function replyReactions(item: ItemOf<'turnEnd'>): HTMLElement[] {
 	if (!labels) {
 		return [];
 	}
+	const all = item.reactions?.length ? meanings() : [];
 	const nodes = (item.reactions ?? []).map(emoji => {
 		const chip = el('span', 'reaction-chip', emoji);
 		chip.setAttribute('role', 'img');
-		chip.setAttribute('aria-label', format(labels.chip, emoji));
+		// The tooltip says what the reaction asked for, so a chip read later still explains itself.
+		const meaning = all.find(([known]) => known.replace(/\u{FE0F}/gu, '') === emoji.replace(/\u{FE0F}/gu, ''))?.[1];
+		setLabel(chip, meaning ? format(labels.chipMeaning, emoji, meaning) : format(labels.chip, emoji));
 		return chip;
 	});
 	if (!state.reactions) {

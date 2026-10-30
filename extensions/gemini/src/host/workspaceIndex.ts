@@ -8,13 +8,18 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { DocsSearchResult } from '../acp/docs/docsProtocol';
+import { contextPack, contextPackFiles } from '../acp/contextPack';
+import type { CodeDiagnostic, EditorBackend } from '../acp/editorTools';
+import { isInside, secretPathReason } from '../acp/fileAccess';
 import { appRipgrep } from '../acp/index/ripgrepPath';
 import { IndexClient } from '../acp/index/indexClient';
 import type { IndexerMethod, IndexerParams, IndexerResult, IndexSettings, IndexStatus } from '../acp/index/indexerProtocol';
-import { AttachedDocs, IndexMcpServer } from '../acp/indexMcp';
+import { AttachedDocs, IndexMcpServer, indexHint } from '../acp/indexMcp';
 import { hasIndex } from '../acp/index/indexPaths';
-import { configSection } from './configuration';
+import { configSection, indexBuildOn } from './configuration';
 import { IndexWatchers } from './indexWatchers';
+import { extensionChunk } from './lazyFeature';
+import { isIgnoredByGitCached } from './workspaceFileSystem';
 
 /** Where the documentation attached to folders comes from (docsSources.ts). */
 export interface DocsProvider {
@@ -23,14 +28,12 @@ export interface DocsProvider {
 }
 
 /** When an index is first built. */
-export type BuildOn = 'agentStart' | 'workspaceOpen' | 'manual';
 
 /**
  * Sent with an agent's first prompt in a folder whose index is built. On a
  * large repository it took the median answer from 60 s to 36 s with Flash
  * (FINDINGS.md): without it the model goes to grep_search first.
  */
-export const indexHint = 'This workspace has a code index: use the geminicode-index tools (code_search, find_symbol, related_files, repo_map) before grep_search, glob or reading whole files. Their results are complete: read only the lines they point to, and don\'t search again for what they found.';
 
 /** An outline older than this is fetched again when the next session starts. */
 const orientationMaxAgeMs = 10 * 60 * 1000;
@@ -54,6 +57,10 @@ export class WorkspaceIndex implements vscode.Disposable {
 
 	private client: IndexClient | undefined;
 	private server: IndexMcpServer | undefined;
+	/** Researches a question in a folder with read-only workers (research.ts), for agents' research tool; set once the agent process is. */
+	research: ((folder: string, question: string) => Promise<string>) | undefined;
+	/** The language servers' adapter for agents' index tools, loaded the first time an agent needs it. */
+	private editor: EditorBackend | undefined;
 	/** Folders asked for in this window, so a restarted process picks them up again. */
 	private readonly folders = new Map<string, { readonly seedFrom?: string }>();
 	private readonly statuses = new Map<string, IndexStatus>();
@@ -218,6 +225,41 @@ export class WorkspaceIndex implements vscode.Disposable {
 		return this.client?.request('skipped', { root: folder }) ?? Promise.resolve([]);
 	}
 
+	/**
+	 * What the index knows around `files` of `folder` (their tests, users and
+	 * usual companions), for the prompt of an agent that can't call the index
+	 * tools, such as a merge request's reviewer; undefined without a built index.
+	 */
+	async contextPack(folder: string, files: readonly string[]): Promise<string | undefined> {
+		const client = this.client;
+		if (!client || this.statuses.get(folder)?.state.kind !== 'ready') {
+			return undefined;
+		}
+		const shown = files.slice(0, contextPackFiles);
+		const related = await Promise.all(shown.map(file => client.request('related', { root: folder, path: file }).then(answer => answer.result, () => undefined)));
+		return contextPack(shown.map((file, i) => ({ file, ...related[i] ? { related: related[i] } : {} })), files.length);
+	}
+
+	/** Errors and warnings in `folder`'s uncommitted files from the language servers, when agents use them; undefined when they are off. */
+	async diagnostics(folder: string): Promise<{ readonly checked: number; readonly diagnostics: readonly CodeDiagnostic[] } | undefined> {
+		return this.server && languageServersOn() ? this.editorBackend().diagnostics(folder, undefined) : undefined;
+	}
+
+	/** The language servers' adapter, loaded the first time it is needed (dist/onDemand.js); agents read only files in their folder that are neither secret nor git-ignored. */
+	private editorBackend(): EditorBackend {
+		return this.editor ??= new (extensionChunk<typeof import('../onDemand')>('onDemand')().EditorToolsHost)(
+			async (folder, file) => isInside(folder, file) && !secretPathReason(file) && !await isIgnoredByGitCached(file));
+	}
+
+	/** The outline of `folder` that sessions start with, fetched now if it isn't cached; undefined without a built index. */
+	async outlineOf(folder: string): Promise<string | undefined> {
+		if (this.statuses.get(folder)?.state.kind !== 'ready') {
+			return undefined;
+		}
+		await this.refreshOrientation(folder);
+		return this.orientations.get(folder)?.text;
+	}
+
 	/** Every indexed file of `folder`, once its index is built; for @-mentions outside the window. */
 	files(folder: string): Promise<string[] | undefined> {
 		if (!this.client || !this.folders.has(folder)) {
@@ -279,7 +321,7 @@ export class WorkspaceIndex implements vscode.Disposable {
 
 	/** The note for an agent's prompt in `folder` while its index is built and agents get the tools. */
 	hint(folder: string): string | undefined {
-		return this.available && this.statuses.get(folder)?.state.kind === 'ready' ? indexHint : undefined;
+		return this.available && this.statuses.get(folder)?.state.kind === 'ready' ? indexHint({ languageServers: languageServersOn(), research: !!this.research }) : undefined;
 	}
 
 	/** Folders whose indexes this window keeps current. */
@@ -358,6 +400,11 @@ export class WorkspaceIndex implements vscode.Disposable {
 			docs: folder => this.attachedDocs(folder),
 			searchDocs: (_folder, ids, query) => this.docs?.search(ids, query) ?? Promise.resolve({ hits: [], total: 0, terms: [] }),
 			orientation: folder => this.orientations.get(folder)?.text,
+			languageServers: languageServersOn,
+			researchOn: () => !!this.research,
+			research: (folder, question) => this.research ? this.research(folder, question) : Promise.resolve('Research is off.'),
+			// The language servers' adapter loads the first time an agent needs one (dist/onDemand.js).
+			editor: async () => languageServersOn() ? this.editorBackend() : undefined,
 		}, this.options.version);
 		server.start().catch(err => this.options.log.error(`The index server failed to start: ${err instanceof Error ? err.message : String(err)}`));
 		if (indexBuildOn() === 'workspaceOpen') {
@@ -396,15 +443,15 @@ export class WorkspaceIndex implements vscode.Disposable {
 	}
 }
 
+/** Agents' index tools also ask the editor's language servers where one covers the file; the index answers alone elsewhere. */
+function languageServersOn(): boolean {
+	return true;
+}
+
 export function indexEnabled(): boolean {
 	return vscode.workspace.getConfiguration(configSection).get<boolean>('index.enabled', true);
 }
 
-/** When an index is built (`gemini.index.buildOn`); an unknown value counts as the default. */
-export function indexBuildOn(): BuildOn {
-	const value = vscode.workspace.getConfiguration(configSection).get<string>('index.buildOn', 'agentStart');
-	return value === 'workspaceOpen' || value === 'manual' ? value : 'agentStart';
-}
 
 /** The index settings for `folder`: `exclude` and `include` can differ per workspace folder. */
 export function indexSettings(folder: string): IndexSettings {

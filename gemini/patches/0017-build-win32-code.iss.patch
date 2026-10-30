@@ -1,0 +1,20 @@
+diff --git a/build/win32/code.iss b/build/win32/code.iss
+index f93cb9dc5d72b2e6dea91a4dd6e722087d741378..3411e0e317a6e11ebcd669a1c3a44c80642b4289 100644
+--- a/build/win32/code.iss
++++ b/build/win32/code.iss
+@@ -8,10 +8,11 @@
+ AppId={#AppId}
+ AppName={#NameLong}
+ AppVerName={#NameVersion}
+-AppPublisher=Microsoft Corporation
+-AppPublisherURL=https://code.visualstudio.com/
+-AppSupportURL=https://code.visualstudio.com/
+-AppUpdatesURL=https://code.visualstudio.com/
++; GEMINI-FORK: publisher and links
++AppPublisher=pulkitjain-org
++AppPublisherURL=https://github.com/pulkitjain-org/vscode-gemini-cli
++AppSupportURL=https://github.com/pulkitjain-org/vscode-gemini-cli/issues
++AppUpdatesURL=https://github.com/pulkitjain-org/vscode-gemini-cli/releases
+ DefaultGroupName={#NameLong}
+ AllowNoIcons=yes
+ OutputDir={#OutputDir}

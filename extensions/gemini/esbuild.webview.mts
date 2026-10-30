@@ -34,6 +34,8 @@ run({
 		'emojiPicker': path.join(srcDir, 'emojiPicker.ts'),
 		'figmaDesign': path.join(srcDir, 'figmaDesign.ts'),
 		'threadCard': path.join(srcDir, 'threadCard.ts'),
+		'projectSettings': path.join(srcDir, 'projectSettings.ts'),
+		'sideChat': path.join(srcDir, 'sideChat.ts'),
 		'katex-style': path.join(import.meta.dirname, 'node_modules', 'katex', 'dist', 'katex.min.css'),
 		'codicon': path.join(import.meta.dirname, 'node_modules', '@vscode', 'codicons', 'dist', 'codicon.css'),
 	},

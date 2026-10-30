@@ -12,7 +12,7 @@ import { basename } from '../src/acp/attachments';
 import { addAttachments } from './attachmentChips';
 import type { SlashCommand } from '../src/acp/slashCommands';
 import type { ViewMention } from '../src/host/chatProtocol';
-import { folderOf, format, matchCommands, mentionAt, mentionGroup, mentionInsertion, slashQuery, symbolIcon, withoutMention, wrapIndex } from './chatLogic';
+import { folderOf, format, groupCommands, matchCommands, mentionAt, mentionGroup, mentionInsertion, slashQuery, symbolIcon, withoutMention, wrapIndex } from './chatLogic';
 import { el, icon, setTip } from './dom';
 import { autoGrow, updateSendState } from './inputBox';
 import { strings, ui, vscode } from './view';
@@ -54,7 +54,7 @@ export function updatePicker(): void {
 		} else if (pickerState.query === slash) {
 			return;
 		}
-		pickerState = { kind: 'commands', query: slash, commands: matchCommands(knownCommands, slash), active: 0 };
+		pickerState = { kind: 'commands', query: slash, commands: slash ? matchCommands(knownCommands, slash) : groupCommands(knownCommands), active: 0 };
 		renderPicker();
 		return;
 	}
@@ -77,7 +77,7 @@ export function showCommands(commands: readonly SlashCommand[]): void {
 	knownCommands = commands;
 	if (pickerState?.kind === 'commands') {
 		const active = pickerState.commands[pickerState.active]?.name;
-		pickerState.commands = matchCommands(commands, pickerState.query);
+		pickerState.commands = pickerState.query ? matchCommands(commands, pickerState.query) : groupCommands(commands);
 		pickerState.active = Math.max(0, pickerState.commands.findIndex(c => c.name === active));
 		renderPicker();
 	}
@@ -172,7 +172,7 @@ function renderPicker(): void {
 	};
 	picker.replaceChildren(...(state.kind === 'files'
 		? mentionRows(state.files, row)
-		: state.commands.map((command, index) => {
+		: commandRows(state.commands, !state.query, (command, index) => {
 			const r = row(index);
 			r.classList.add('picker-command');
 			r.append(
@@ -180,11 +180,30 @@ function renderPicker(): void {
 				el('span', 'picker-name', `/${command.name}`),
 				el('span', 'picker-folder', command.description),
 			);
-			setTip(r, `${command.source === 'team' ? strings.commandFromTeam : command.source === 'skill' ? strings.commandFromSkill : command.source === 'app' ? strings.commandFromApp : strings.commandFromCli}: /${command.name}`);
+			setTip(r, `${sourceName(command.source)}: /${command.name}`);
 			return r;
 		})));
 	input.setAttribute('aria-activedescendant', `picker-${state.active}`);
 	picker.querySelector('.active')?.scrollIntoView({ block: 'nearest' });
+}
+
+function sourceName(source: SlashCommand['source']): string {
+	return source === 'team' ? strings.commandFromTeam : source === 'skill' ? strings.commandFromSkill : source === 'app' ? strings.commandFromApp : strings.commandFromCli;
+}
+
+/** The "/" menu's rows; before anything is typed, under a heading for each source once there is more than one. */
+function commandRows(commands: readonly SlashCommand[], grouped: boolean, row: (command: SlashCommand, index: number) => HTMLElement): HTMLElement[] {
+	const headings = grouped && new Set(commands.map(command => command.source)).size > 1;
+	const nodes: HTMLElement[] = [];
+	commands.forEach((command, index) => {
+		if (headings && command.source !== commands[index - 1]?.source) {
+			const heading = el('div', 'picker-heading', sourceName(command.source));
+			heading.setAttribute('role', 'presentation');
+			nodes.push(heading);
+		}
+		nodes.push(row(command, index));
+	});
+	return nodes;
 }
 
 /** The @ picker's rows, under a heading for each group once there is more than one. */

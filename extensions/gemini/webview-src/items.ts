@@ -731,6 +731,7 @@ function runNoticeAction(action: NoticeAction, itemId: string | undefined): void
 		case 'retry':
 		case 'continue':
 		case 'newSession':
+		case 'fixErrors':
 			if (itemId) {
 				vscode.postMessage({ type: 'noticeAction', itemId, action });
 			}

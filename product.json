@@ -401,17 +401,6 @@
 				}
 			}
 		},
-		"gemini.pilot.record": {
-			"name": "GeminiPilotRecord",
-			"category": "Extensions",
-			"minimumVersion": "1.141",
-			"localization": {
-				"description": {
-					"key": "gemini.pilot.record.policy",
-					"value": "Whether GeminiCode counts the pilot's measures (launches, waits, permission cards, Undo and Rewind, team tool errors), with times and no text, on the Mac, for Gemini: Export Pilot Data."
-				}
-			}
-		},
 		"gemini.browser.allowedOrigins": {
 			"name": "GeminiBrowserAllowedOrigins",
 			"category": "Extensions",

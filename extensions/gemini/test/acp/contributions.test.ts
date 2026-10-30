@@ -60,14 +60,29 @@ describe('package.json', () => {
 	});
 
 	it('keeps developer tools out of the palette unless gemini.developer.showTools is on', () => {
-		const tools = ['gemini.runBenchmark', 'gemini.pilot.export', 'gemini.recordTrace', 'gemini.showStatusMenu', 'gemini.newSkill', 'gemini.installCli', 'gemini.installCliVersion'];
+		const tools = ['gemini.runBenchmark', 'gemini.recordTrace', 'gemini.showStatusMenu', 'gemini.newSkill', 'gemini.installCli', 'gemini.installCliVersion'];
 		expect(tools.filter(command => !contributes.menus.commandPalette.find(entry => entry.command === command)?.when?.includes('config.gemini.developer.showTools'))).toEqual([]);
 		expect(contributes.configuration.some(section => Object.hasOwn(section.properties, 'gemini.developer.showTools'))).toBe(true);
 	});
 
-	it('puts the pilot and reaction settings under Advanced', () => {
-		const advanced = contributes.configuration.find(section => strings[section.title.slice(1, -1)] === 'Advanced');
-		expect(Object.keys(advanced?.properties ?? {}).sort()).toEqual(['gemini.chat.reactions.agentReactions', 'gemini.chat.reactions.enabled', 'gemini.chat.reactions.meanings', 'gemini.developer.showTools', 'gemini.pilot.record']);
+	it('orders the settings in eight sections, with the removed ones read for a release under a deprecation message', () => {
+		const sections = contributes.configuration.map(section => ({ title: strings[section.title.slice(1, -1)], order: (section as { readonly order?: number }).order, settings: Object.keys(section.properties).length }));
+		const deprecated = contributes.configuration.flatMap(section => Object.entries(section.properties).filter(([, p]) => Object.hasOwn(p as object, 'deprecationMessage')).map(([key]) => key));
+		const enums = contributes.configuration.flatMap(section => Object.entries(section.properties).filter(([, p]) => Array.isArray((p as { enum?: unknown }).enum) && !Array.isArray((p as { enumItemLabels?: unknown }).enumItemLabels)).map(([key]) => key));
+		expect({ sections, deprecated, enums }).toEqual({
+			sections: [
+				{ title: 'Gemini: Account and CLI', order: 1, settings: 8 },
+				{ title: 'Gemini: Agents', order: 2, settings: 12 },
+				{ title: 'Gemini: Chat', order: 3, settings: 8 },
+				{ title: 'Gemini: Browser', order: 4, settings: 3 },
+				{ title: 'Gemini: Workspace Index and Docs', order: 5, settings: 5 },
+				{ title: 'Gemini: Team Tools', order: 6, settings: 3 },
+				{ title: 'Gemini: Administration', order: 7, settings: 10 },
+				{ title: 'Gemini: Developer', order: 8, settings: 2 },
+			],
+			deprecated: ['gemini.agent.startEarly', 'gemini.notifications.enabled', 'gemini.agents.mergeBack', 'gemini.storage.keepLogsDays'],
+			enums: [],
+		});
 	});
 
 	it('has a string for every command title and setting description', () => {

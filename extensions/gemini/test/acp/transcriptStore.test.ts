@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { chmod, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -124,6 +124,27 @@ describe('TranscriptStore', () => {
 		expect((await s.load('a1')).changes).toHaveLength(1);
 		await s.delete('a1');
 		expect(await s.load('a1')).toEqual({ items: [], changes: [] });
+	});
+
+	it('keeps the changed files\' texts in a file of their own, written only when they change, so the chat file stays small', async () => {
+		const { dir, store: s } = await store();
+		const changes = Array.from({ length: 300 }, (_, i) => ({ path: `/w/f${i}.ts`, created: false, original: 'x'.repeat(30_000), agentText: 'y'.repeat(30_000), added: 1, removed: 1, editedAt: 5 }));
+		await s.save('a1', { items: [{ id: 'item-0', kind: 'agent', text: 'hi' }], changes });
+		const chat = path.join(dir, 'agents', 'a1.json');
+		const texts = path.join(dir, 'agents', 'a1.changes.json');
+		const writtenAt = (await stat(texts)).mtimeMs;
+		expect((await stat(chat)).size).toBeLessThan(1024 * 1024);
+		expect((await stat(texts)).size).toBeGreaterThan(300 * 60_000);
+		expect((await s.load('a1')).changes).toEqual(changes);
+		// The same texts again: the chat file is written, the texts are not.
+		await new Promise(resolve => setTimeout(resolve, 20));
+		await s.save('a1', { items: [{ id: 'item-0', kind: 'agent', text: 'hi again' }], changes });
+		expect((await stat(texts)).mtimeMs).toBe(writtenAt);
+		expect((await s.load('a1')).items[0]).toMatchObject({ text: 'hi again' });
+		// A chat from before the texts' file still carries them itself.
+		await rm(texts);
+		expect((await s.load('a1')).changes.map(file => file.path)).toEqual(changes.map(file => file.path));
+		expect((await s.load('a1')).changes[0].original).toBeUndefined();
 	});
 });
 

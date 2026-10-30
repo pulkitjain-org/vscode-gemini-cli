@@ -15,7 +15,7 @@ import { isQuarantined, oldDayFiles, removeOldDayFiles } from './fsUtil';
 import { debugLogPid, isRunning } from './mcpDiagnostics';
 import { folderSize, type AgentWorktree, type WorktreeStatus } from './worktrees';
 
-export type StorageAreaId = 'chats' | 'checkpoints' | 'agentList' | 'reviews' | 'flows' | 'auditLog' | 'pilotLog' | 'traces' | 'cliLogs' | 'managedCli' | 'index' | 'worktrees' | 'reviewCheckouts' | 'threads' | 'projects';
+export type StorageAreaId = 'chats' | 'checkpoints' | 'agentList' | 'reviews' | 'flows' | 'auditLog' | 'traces' | 'cliLogs' | 'managedCli' | 'index' | 'worktrees' | 'reviewCheckouts' | 'threads' | 'projects';
 
 export interface StorageArea {
 	readonly id: StorageAreaId;
@@ -37,7 +37,6 @@ export function storageAreas(globalStorage: string, home: string = os.homedir())
 		own('reviews', 'reviews'),
 		own('flows', 'flows'),
 		own('auditLog', 'audit'),
-		own('pilotLog', 'pilot'),
 		own('traces', 'traces'),
 		own('cliLogs', 'cli-logs'),
 		own('managedCli', 'gemini-cli'),
@@ -60,7 +59,7 @@ export type CleanupReason =
 	| 'orphaned'
 	/** Checkpoints of a thread merged back. */
 	| 'merged'
-	/** An audit or pilot log day older than `gemini.storage.keepLogsDays`. */
+	/** An audit log day older than `gemini.audit.keepDays`. */
 	| 'oldLog'
 	/** A performance trace and its summary. */
 	| 'trace'
@@ -108,7 +107,7 @@ export interface CleanupInput {
 	readonly agents: ReadonlySet<string>;
 	/** The threads merged back (`mergedThreads`). */
 	readonly merged: ReadonlySet<string>;
-	/** `gemini.storage.keepLogsDays`; 0 keeps every day. */
+	/** `gemini.audit.keepDays`; 0 keeps every day. */
 	readonly keepLogsDays: number;
 	readonly now: Date;
 	/** Merged threads' worktrees; only those whose work is all committed and merged are offered. */
@@ -157,10 +156,8 @@ export async function cleanupPlan(input: CleanupInput): Promise<CleanupItem[]> {
 			}
 		}
 	}
-	for (const [area, name] of [['auditLog', 'audit'], ['pilotLog', 'pilot']] as const) {
-		for (const file of await oldDayFiles(own(name), input.keepLogsDays, input.now)) {
-			await add({ area, path: file, reason: 'oldLog' });
-		}
+	for (const file of await oldDayFiles(own('audit'), input.keepLogsDays, input.now)) {
+		await add({ area: 'auditLog', path: file, reason: 'oldLog' });
 	}
 	for (const { file } of await filesIn(own('traces'))) {
 		await add({ area: 'traces', path: file, reason: 'trace' });
@@ -212,7 +209,7 @@ const groupOf: Readonly<Record<StorageAreaId, StorageGroup>> = {
 	managedCli: 'cli',
 	checkpoints: 'checkpoints',
 	chats: 'chats', agentList: 'chats', reviews: 'chats', flows: 'chats',
-	auditLog: 'logs', pilotLog: 'logs', traces: 'logs', cliLogs: 'logs',
+	auditLog: 'logs', traces: 'logs', cliLogs: 'logs',
 };
 
 /** The bytes each row of the Storage section holds, in the section's order. */
@@ -232,13 +229,12 @@ export async function entriesIn(folder: string, suffix = ''): Promise<number> {
 	return (await fs.readdir(folder).catch(() => [] as string[])).filter(name => name.endsWith(suffix) && !isQuarantined(name)).length;
 }
 
-/** The days of the audit and pilot logs past `keepDays` go; run in the background after startup. Returns how many files went. */
-export async function applyLogRetention(globalStorage: string, keepDays: number, now: Date = new Date()): Promise<number> {
-	const counts = await Promise.all(['audit', 'pilot'].map(name => removeOldDayFiles(path.join(globalStorage, name), keepDays, now)));
-	return counts.reduce((sum, count) => sum + count, 0);
+/** The days of the audit log past `keepDays` go; run in the background after startup. Returns how many files went. */
+export function applyLogRetention(globalStorage: string, keepDays: number, now: Date = new Date()): Promise<number> {
+	return removeOldDayFiles(path.join(globalStorage, 'audit'), keepDays, now);
 }
 
-/** `gemini.storage.keepLogsDays` as used: 0 keeps every day; otherwise at least 7, which Home's Unfinished list reads. */
+/** `gemini.audit.keepDays` as used: 0 keeps every day; otherwise at least 7, which Home's Unfinished list reads. */
 export function keepLogsDays(setting: unknown): number {
 	const days = typeof setting === 'number' && Number.isFinite(setting) ? Math.floor(setting) : 90;
 	return days <= 0 ? 0 : Math.max(7, days);

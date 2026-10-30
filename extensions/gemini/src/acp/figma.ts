@@ -17,6 +17,7 @@
 // are kept for a while, and a connection Figma forgot (after it restarted)
 // is opened again.
 
+import { parseVariableDefs } from './designSystem';
 import { Fetch } from './teamHttp';
 
 export const figmaDesktopUrl = 'http://127.0.0.1:3845/mcp';
@@ -78,6 +79,10 @@ export interface FigmaClient {
 	status(): Promise<FigmaStatus>;
 	designContext(link: string, options?: FigmaReadOptions): Promise<FigmaContent[]>;
 	screenshot(link: string): Promise<FigmaContent[]>;
+	/** The outline of node `nodeId` in the open file (`0:0` is the document, listing its pages), for Sync Design System. */
+	outline?(nodeId: string): Promise<string>;
+	/** The design variables node `nodeId` uses, name to value, for Sync Design System. */
+	variables?(nodeId: string): Promise<Record<string, string>>;
 }
 
 export type FigmaContent = { readonly type: 'text'; readonly text: string } | { readonly type: 'image'; readonly data: string; readonly mimeType: string };
@@ -195,6 +200,16 @@ export class FigmaDesktop implements FigmaClient {
 	async screenshot(link: string): Promise<FigmaContent[]> {
 		const nodeId = parseFigmaLink(link)?.nodeId;
 		return this.call('get_screenshot', { ...nodeId ? { nodeId } : {} });
+	}
+
+	async outline(nodeId: string): Promise<string> {
+		const content = await this.call('get_metadata', { nodeId }, figmaReadTimeoutMs);
+		return withoutAdvice(content).map(c => c.type === 'text' ? c.text : '').join('\n');
+	}
+
+	async variables(nodeId: string): Promise<Record<string, string>> {
+		const content = await this.call('get_variable_defs', { nodeId }, figmaReadTimeoutMs);
+		return Object.assign({}, ...withoutAdvice(content).map(c => c.type === 'text' ? parseVariableDefs(c.text) ?? {} : {}));
 	}
 
 	/** The design, as `designContext` describes it, read by `deadline`; `complete` when nothing Figma was asked for failed or ran out of time. */

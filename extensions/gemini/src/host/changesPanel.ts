@@ -10,10 +10,10 @@ import { reviewBase } from '../acp/agentChanges';
 import { errorMessage } from '../acp/errors';
 import { diffLines, hunkLines, splitLines } from '../acp/lineDiff';
 import { ChangesSource } from './changesView';
-import { configSection } from './configuration';
 import { undoForeignMessage } from './reviewController';
 import { createNonce, escapeAttribute } from './webviewHtml';
-import { ChangedFileView, ChangesPanelStrings, ChangesPanelView, FromChangesPanel, ToChangesPanel } from './panelProtocol';
+import { ChangedFileView, ChangesPanelView, FromChangesPanel, ToChangesPanel } from './panelProtocol';
+import { ChangesPanelStrings } from './panelStrings';
 import { deleteFile, replaceFileText } from './workspaceFileSystem';
 import type { MrPanel } from './mrPanel';
 import type { FromChangesTeam } from './teamFlowProtocol';
@@ -43,16 +43,28 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 	private generation = 0;
 	/** Each file's last diff, so typing in one file re-diffs only that file. */
 	private readonly diffs = new Map<string, { readonly original: string; readonly agentText?: string; readonly current: string; readonly hunks: NonNullable<ChangedFileView['hunks']> }>();
+	/** Files whose text must be read again for the next refresh; every file when the agent's changes or the source changed. */
+	private stale: Set<string> | 'all' = 'all';
 	/** The last view posted, to skip posting the same one again. */
 	private lastView: string | undefined;
 	private readonly disposables: vscode.Disposable[] = [];
 	/** The team tools' part: Open Merge Request, Run Checks and the agent's merge request; set by activate. */
 	private mrPanel: MrPanel | undefined;
+	/** Agents whose current turn opened the panel already: a turn opens it at most once. */
+	private readonly openedThisTurn = new Set<string>();
 
 	constructor(private readonly extensionUri: vscode.Uri) {
 		this.disposables.push(
 			vscode.window.registerWebviewViewProvider(changesPanelId, this),
-			vscode.workspace.onDidChangeTextDocument(e => this.source?.changes.file(e.document.uri.fsPath) && this.schedule()),
+			vscode.workspace.onDidChangeTextDocument(e => {
+				if (this.source?.changes.file(e.document.uri.fsPath)) {
+					// Only this document is read again; the others' diffs still hold.
+					if (this.stale !== 'all') {
+						this.stale.add(e.document.uri.fsPath);
+					}
+					this.schedule();
+				}
+			}),
 		);
 	}
 
@@ -70,8 +82,31 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 			this.diffs.clear();
 		}
 		this.source = source;
-		this.sourceListener = source?.changes.onDidChange(() => this.schedule());
+		this.stale = 'all';
+		this.sourceListener = source?.changes.onDidChange(() => {
+			this.openForChanges(source!);
+			this.stale = 'all';
+			this.schedule();
+		});
 		this.schedule(0);
+	}
+
+	/** Agent `agentId` started or ended a turn: its next turn may open the panel again. */
+	turnChanged(agentId: string): void {
+		this.openedThisTurn.delete(agentId);
+	}
+
+	/**
+	 * Opens the panel, closed when a window opens, the first time a turn of
+	 * the agent in front changes something: closed during a turn, it stays
+	 * closed until the next turn changes something.
+	 */
+	private openForChanges(source: ChangesSource): void {
+		if (source.busy() && !this.openedThisTurn.has(source.agentId) && !this.view?.visible) {
+			this.openedThisTurn.add(source.agentId);
+			// The workbench opens it without taking focus from the chat, and only in Agents mode.
+			void vscode.commands.executeCommand('_gemini.showChanges').then(undefined, () => undefined);
+		}
 	}
 
 	resolveWebviewView(view: vscode.WebviewView): void {
@@ -83,6 +118,7 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 		view.onDidChangeVisibility(() => {
 			if (view.visible) {
 				this.lastView = undefined;
+				this.stale = 'all';
 				this.schedule(0);
 			}
 		});
@@ -110,7 +146,9 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 			return;
 		}
 		const generation = ++this.generation;
-		const panelView = await this.build(this.source);
+		const stale = this.stale;
+		this.stale = new Set();
+		const panelView = await this.build(this.source, stale);
 		const json = JSON.stringify(panelView);
 		// Not when a later refresh started, the view closed meanwhile (it throws once disposed), or nothing changed.
 		if (generation === this.generation && this.view === view && json !== this.lastView) {
@@ -121,7 +159,7 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 		}
 	}
 
-	private async build(source: ChangesSource | undefined): Promise<ChangesPanelView> {
+	private async build(source: ChangesSource | undefined, stale: Set<string> | 'all'): Promise<ChangesPanelView> {
 		if (!source) {
 			return { totals: { files: 0, added: 0, removed: 0 }, files: [] };
 		}
@@ -131,11 +169,15 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 			if (file.original === undefined || i >= maxDiffedFiles) {
 				return base;
 			}
+			const cached = this.diffs.get(file.path);
+			if (cached && stale !== 'all' && !stale.has(file.path) && cached.original === file.original && cached.agentText === file.agentText) {
+				// Nothing of this file changed since its last diff: a keystroke elsewhere reads only its own document.
+				return { ...base, hunks: cached.hunks };
+			}
 			const current = await currentText(file.path);
 			if (current === undefined) {
 				return base;
 			}
-			const cached = this.diffs.get(file.path);
 			if (cached?.original === file.original && cached.agentText === file.agentText && cached.current === current) {
 				return { ...base, hunks: cached.hunks };
 			}
@@ -154,7 +196,7 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 		const busy = source.busy();
 		const team = this.mrPanel?.view(source);
 		return {
-			agent: { title: source.title, busy, ...(source.branch ? { branch: source.branch } : {}), ...(source.trying ? { trying: true } : {}), canCommit: !!source.commit && !busy && files.length > 0 },
+			agent: { title: source.title, busy, ...(source.branch ? { branch: source.branch } : {}), ...(source.trying ? { trying: true } : {}), ...(source.tryChoice?.() && source.tryChoice() !== 'try' ? { tryChoice: source.tryChoice() as 'merge' | 'mr' } : {}), canCommit: !!source.commit && !busy && files.length > 0 },
 			totals: source.changes.totals,
 			files,
 			...team ? { team } : {},
@@ -166,6 +208,7 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 		switch (message.type) {
 			case 'ready':
 				this.lastView = undefined;
+				this.stale = 'all';
 				this.schedule(0);
 				return;
 			case 'team':
@@ -203,6 +246,8 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 				return source?.commit?.();
 			case 'mergeBack':
 				return source?.mergeBack?.();
+			case 'tryMenu':
+				return source?.tryMenu?.();
 			case 'keepTried':
 				return source?.keep?.();
 			case 'takeBack':
@@ -257,7 +302,6 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 
 	private html(webview: vscode.Webview, media: vscode.Uri): string {
 		const nonce = createNonce();
-		const mergeCommits = vscode.workspace.getConfiguration(configSection).get<string>('agents.mergeBack') === 'commit';
 		const strings: ChangesPanelStrings = {
 			empty: vscode.l10n.t("No changes yet. Files the agent changes show here as it works."),
 			noAgent: vscode.l10n.t("Open an agent to see what it changed."),
@@ -270,13 +314,14 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 			openFile: vscode.l10n.t("Open the file"),
 			openAll: vscode.l10n.t("Open all changes in the editor"),
 			commit: vscode.l10n.t("Commit"),
-			...mergeCommits ? {
-				mergeBack: vscode.l10n.t("Merge Back"),
-				mergeBackTip: vscode.l10n.t("Commit the agent's work on its branch and merge the branch into yours."),
-			} : {
-				mergeBack: vscode.l10n.t("Try in Workspace"),
-				mergeBackTip: vscode.l10n.t("Copy the agent's changes into your workspace as unstaged files, so your local server and tests use them. They update each time the agent finishes a turn. Take Back removes them."),
-			},
+			tryIn: vscode.l10n.t("Try in Workspace"),
+			tryInTip: vscode.l10n.t("Copy the agent's changes into your workspace as unstaged files, so your local server and tests use them. They update each time the agent finishes a turn. Take Back removes them."),
+			mergeBack: vscode.l10n.t("Merge Back"),
+			mergeBackTip: vscode.l10n.t("Commit the agent's work on its branch and merge the branch into yours."),
+			openMr: vscode.l10n.t("Open Merge Request"),
+			openMrTip: vscode.l10n.t("Push the branch and open a merge request with a title and description Gemini drafts."),
+			tryMenu: vscode.l10n.t("Other ways to take the work"),
+			tryMenuTip: vscode.l10n.t("Try in Workspace, Merge Back or Open Merge Request; your pick is remembered for this repository."),
 			keepChanges: vscode.l10n.t("Keep Changes"),
 			keepChangesTip: vscode.l10n.t("Make these changes yours. Nothing is staged or committed; commit them when you're ready."),
 			takeBack: vscode.l10n.t("Take Back"),

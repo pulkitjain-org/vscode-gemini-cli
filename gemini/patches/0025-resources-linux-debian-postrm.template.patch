@@ -1,0 +1,14 @@
+diff --git a/resources/linux/debian/postrm.template b/resources/linux/debian/postrm.template
+index d375e23cc70dc11d17f018bb73d3678302fe7ef8..98cbe77623ced8c628781b41b54a380aad09f882 100755
+--- a/resources/linux/debian/postrm.template
++++ b/resources/linux/debian/postrm.template
+@@ -32,7 +32,8 @@ if [ -e '/usr/share/debconf/confmodule' ]; then
+ 	. /usr/share/debconf/confmodule
+ 	db_get @@NAME@@/add-microsoft-repo || true
+ fi
+-if [ "$RET" = "true" ]; then
++# GEMINI-FORK: leave Microsoft's apt repository alone; it belongs to a VS Code install, if any.
++if [ "$RET" = "true" ] && [ "@@NAME@@" != "geminicode" ]; then
+ 	eval $(apt-config shell APT_SOURCE_PARTS Dir::Etc::sourceparts/d)
+ 	CODE_SOURCE_PART=${APT_SOURCE_PARTS}vscode.sources
+ 	rm -f $CODE_SOURCE_PART

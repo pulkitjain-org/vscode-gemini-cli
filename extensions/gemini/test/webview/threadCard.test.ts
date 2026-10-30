@@ -11,7 +11,8 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { HTMLButtonElement, HTMLElement } from 'happy-dom';
 import type { ThreadCard } from '../../src/acp/chatTranscript';
-import type { FromWebview, ProjectChatStrings } from '../../src/host/chatProtocol';
+import type { FromWebview } from '../../src/host/chatProtocol';
+import type { ProjectChatStrings } from '../../src/host/chatStrings';
 import { hostExport, page, startScript } from './pages';
 
 const { document } = page;
@@ -102,7 +103,7 @@ describe('thread card', () => {
 		const updated = draw({ ...base, tried: { state: 'trying', files: 8, updates: 1, edits: ['src/header.tsx'] } });
 		const kept = draw({ ...base, tried: { state: 'kept', files: 8 } });
 		expect([done, trying, working, updated, kept].map(({ step, line, buttons, primary }) => ({ step, line, buttons, primary }))).toEqual([
-			{ step: 'In the thread', line: 'Done · 7 files changed in its own folder', buttons: ['Try in Workspace', 'Review Changes', 'More'], primary: 'Try in Workspace' },
+			{ step: 'In the thread', line: 'Done · 7 files changed in its own folder', buttons: ['Try in Workspace', 'Other Ways to Take the Work', 'Review Changes', 'More'], primary: 'Try in Workspace' },
 			{ step: 'Trying in your workspace', line: 'In your workspace: 7 files, unstaged.', buttons: ['Keep Changes', 'Take Back', 'Ask for Changes', 'More'], primary: 'Keep Changes' },
 			{ step: 'Trying in your workspace', line: 'Working on your request. Your workspace updates when it finishes.', buttons: ['Open', 'Stop', 'Take Back'], primary: undefined },
 			{ step: 'Trying in your workspace', line: 'In your workspace: 8 files, unstaged. Updated after each turn: 1 so far. You changed header.tsx yourself.', buttons: ['Keep Changes', 'Take Back', 'Ask for Changes', 'Send My Edits to the Thread', 'More'], primary: 'Keep Changes' },
@@ -150,7 +151,7 @@ describe('thread card', () => {
 		const one = draw({ ...base, changes: { files: 1, added: 2, removed: 0 } });
 		const unmerged = draw({ ...base, tried: { state: 'trying', files: 7, unmerged: ['assets/logo.png'] } });
 		expect([one, unmerged].map(({ card, line, buttons }) => ({ paused: card.classList.contains('paused'), line, buttons }))).toEqual([
-			{ paused: false, line: 'Done · 1 file changed in its own folder', buttons: ['Try in Workspace', 'Review Changes', 'More'] },
+			{ paused: false, line: 'Done · 1 file changed in its own folder', buttons: ['Try in Workspace', 'Other Ways to Take the Work', 'Review Changes', 'More'] },
 			{ paused: false, line: 'In your workspace: 7 files, unstaged. Couldn\'t merge logo.png with your edits (a binary file, a link, or deleted on one side), so it\'s as you had it.', buttons: ['Keep Changes', 'Take Back', 'Ask for Changes', 'More'] },
 		]);
 	});
@@ -167,7 +168,8 @@ describe('thread card', () => {
 		expect(draw({ ...base, changes: undefined }).buttons).toEqual(['Open', 'More']);
 	});
 
-	it('offers the merge commit instead when Merge Back makes one', () => {
-		expect(draw({ ...base, mergeCommits: true }).buttons).toEqual(['Merge Back', 'Review Changes', 'Remove Thread…']);
+	it('offers the merge commit instead when the repository\'s remembered choice is Merge Back, and says Open Merge Request when it is one', () => {
+		expect(draw({ ...base, tryChoice: 'mr' }).primary).toBe('Open Merge Request');
+		expect(draw({ ...base, tryChoice: 'merge' }).buttons).toEqual(['Merge Back', 'Other Ways to Take the Work', 'Review Changes', 'Remove Thread…']);
 	});
 });

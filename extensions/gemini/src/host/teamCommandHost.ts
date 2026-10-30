@@ -10,6 +10,7 @@
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import { withoutSecrets } from '../acp/env';
 import { checkFileAccess } from '../acp/fileAccess';
 import { ExpansionHost, runShellCommand } from '../acp/teamCommandExpansion';
 import { getApprovalPolicy } from './configuration';
@@ -60,6 +61,7 @@ export function teamCommandHost(name: string, cwd: string): ExpansionHost {
 				run);
 			return choice === run;
 		},
-		runShell: command => runShellCommand(command, cwd, process.env),
+		// The same environment an agent gets: nothing that looks like another program's credential.
+		runShell: command => runShellCommand(command, cwd, withoutSecrets(process.env)),
 	};
 }

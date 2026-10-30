@@ -6,8 +6,8 @@
 // The extension host's bundles of features loaded on first use (src/pages.ts
 // and src/onDemand.ts, see src/host/lazyFeature.ts). Each is built on its own,
 // so it has its own copy of every module it imports, and a copy of a module's
-// state is not the extension bundle's: a pilot event recorded there, or a CLI
-// folder read there, would go nowhere. These checks build the bundles as
+// state is not the extension bundle's: a trace recording started there, or a
+// CLI folder read there, would go nowhere. These checks build the bundles as
 // esbuild.mts does and fail when a chunk carries state of its own, when the
 // extension bundle still carries a feature that moved out, or when a chunk
 // takes a library along.
@@ -21,9 +21,10 @@ const root = path.join(__dirname, '..', '..');
 
 /** The modules each chunk exists to keep out of the extension bundle. */
 const moved: Readonly<Record<string, readonly string[]>> = {
-	'src/pages.ts': ['src/host/settingsPage.ts', 'src/host/connectionsPage.ts', 'src/host/siteConnections.ts', 'src/host/planReviewPage.ts', 'src/acp/planReview.ts', 'src/acp/planReviewStore.ts', 'src/host/teamFlowPanel.ts', 'src/host/agentFilesPage.ts', 'src/acp/agentFiles.ts'],
+	'src/pages.ts': ['src/host/indexPage.ts', 'src/host/settingsPage.ts', 'src/host/connectionsPage.ts', 'src/host/siteConnections.ts', 'src/host/planReviewPage.ts', 'src/acp/planReview.ts', 'src/acp/planReviewStore.ts', 'src/host/teamFlowPanel.ts', 'src/host/agentFilesPage.ts', 'src/acp/agentFiles.ts'],
 	'src/confluence.ts': ['src/host/confluenceFeature.ts', 'src/host/confluenceReviewPage.ts', 'src/acp/confluence.ts', 'src/acp/confluenceDrafts.ts', 'src/acp/blockMerge.ts', 'src/acp/draftReview.ts'],
-	'src/onDemand.ts': ['src/host/auditPage.ts', 'src/host/benchmarkCommand.ts', 'src/host/pilot.ts', 'src/host/traceRecorder.ts', 'src/host/reviewClone.ts', 'src/acp/cloneSearch.ts', 'src/host/agents/agentMerge.ts', 'src/host/agents/agentTries.ts', 'src/acp/worktreeApply.ts', 'src/acp/tryState.ts', 'src/host/chat/projectStrings.ts', 'src/host/assigneePicker.ts', 'src/host/checkAgent.ts', 'src/acp/cli/contract.ts', 'src/acp/sessionReplay.ts'],
+	'src/connection.ts': ['src/acp/agentConnection.ts'],
+	'src/onDemand.ts': ['src/host/auditPage.ts', 'src/host/benchmarkCommand.ts', 'src/host/designSystemSync.ts', 'src/host/editorToolsHost.ts', 'src/host/traceRecorder.ts', 'src/host/reviewClone.ts', 'src/acp/cloneSearch.ts', 'src/host/agents/agentMerge.ts', 'src/host/agents/agentTries.ts', 'src/acp/worktreeApply.ts', 'src/acp/tryState.ts', 'src/host/chat/projectStrings.ts', 'src/host/assigneePicker.ts', 'src/host/checkAgent.ts', 'src/acp/cli/contract.ts', 'src/acp/sessionReplay.ts'],
 };
 
 interface Built {
@@ -87,12 +88,16 @@ describe('bundles loaded on first use', () => {
 		}
 	});
 
-	it('take no library along: the ACP SDK and zod stay in the extension bundle', () => {
+	it('take no library along, except the connection bundle, which alone carries the ACP SDK and zod', () => {
 		// jsonc-parser (about 17 KB, no state) edits the CLI's settings files, which the Project Helpers page writes too.
 		const small = ['node_modules/jsonc-parser/'];
+		const sdk = ['node_modules/@agentclientprotocol/', 'node_modules/zod/'];
 		for (const entry of Object.keys(moved)) {
-			expect(built.get(entry)!.inputs.filter(file => file.includes('node_modules/') && !small.some(lib => file.includes(lib)))).toEqual([]);
+			const allowed = entry === 'src/connection.ts' ? [...small, ...sdk] : small;
+			expect(built.get(entry)!.inputs.filter(file => file.includes('node_modules/') && !allowed.some(lib => file.includes(lib)))).toEqual([]);
 		}
+		// The extension bundle, which every window loads at once, has neither: the agent starts seconds later.
+		expect(built.get('src/extension.ts')!.inputs.filter(file => sdk.some(lib => file.includes(lib)))).toEqual([]);
 	});
 
 	it('keep no copy of the extension bundle\'s module state: what they need of it comes through their constructors', () => {
@@ -122,7 +127,7 @@ describe('bundles loaded on first use', () => {
 
 	it('finds module state as the check above reads it', () => {
 		expect(stateOf([
-			'let sink: ((record: PilotRecord) => void) | undefined;',
+			'let sink: ((record: TraceRecord) => void) | undefined;',
 			'export let shared = 1;',
 			'export const productInfo: { -readonly [K in keyof Info]: Info[K] } = {};',
 			'const parsedFiles = new Map<string, CachedFile>();',

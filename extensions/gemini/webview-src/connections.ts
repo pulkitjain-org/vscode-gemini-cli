@@ -8,22 +8,15 @@
 
 import type { TeamToolId } from '../src/acp/teamHttp';
 import type { ConnectionRowView, ConnectionsStrings, ConnectionsView, FromConnections, JiraSiteRowView, ToConnections } from '../src/host/connectionsProtocol';
-import { button, el, format, icon, pageStrings } from './panelDom';
+import { button, el, format, icon } from './panelDom';
+import { bootPage } from './panelBoot';
 import { toolLogo } from './toolLogos';
 
-declare function acquireVsCodeApi(): { postMessage(message: FromConnections): void };
-
-const vscode = acquireVsCodeApi();
-const strings = pageStrings<ConnectionsStrings>();
-const page = document.getElementById('page')!;
+const { strings, post, main: page, start } = bootPage<ToConnections, FromConnections, ConnectionsStrings>();
 
 let view: ConnectionsView | undefined;
 /** The open Connect dialog, if any. */
 let dialog: { readonly tool: TeamToolId; readonly node: HTMLElement; readonly result: HTMLElement; readonly submit: HTMLButtonElement; readonly returnFocus: HTMLElement | null } | undefined;
-
-function post(message: FromConnections): void {
-	vscode.postMessage(message);
-}
 
 /** A Jira site after the first, for the dialog: its id, or none to add one. */
 type SiteTarget = Partial<Pick<JiraSiteRowView, 'id' | 'name' | 'url' | 'email'>>;
@@ -86,6 +79,9 @@ function toolRow(row: ConnectionRowView): HTMLElement {
 			actions.append(button('', strings.openFigma, () => post({ type: 'openFigma' })));
 		} else if (row.kind !== 'connected' && row.kind !== 'checking') {
 			actions.append(button('', strings.tryAgain, () => post({ type: 'refresh', tool: row.tool })));
+		}
+		if (row.designSystem && row.kind === 'connected') {
+			actions.append(button('', strings.syncDesignSystem, () => post({ type: 'syncDesignSystem' }), undefined, row.designSystem));
 		}
 		if (row.needsToken) {
 			actions.append(button('quiet', strings.replaceToken, () => openDialog(row)));
@@ -466,8 +462,7 @@ function showRowError(tool: TeamToolId, text: string): void {
 	row.querySelectorAll<HTMLButtonElement>('.row-actions button').forEach(b => b.disabled = false);
 }
 
-window.addEventListener('message', (event: MessageEvent<ToConnections>) => {
-	const message = event.data;
+start(message => {
 	switch (message.type) {
 		case 'view':
 			view = message.view;
@@ -491,5 +486,3 @@ window.addEventListener('message', (event: MessageEvent<ToConnections>) => {
 			return;
 	}
 });
-
-post({ type: 'ready' });

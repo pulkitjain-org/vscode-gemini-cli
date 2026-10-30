@@ -30,7 +30,16 @@ export function samePath(a: string, b: string): boolean {
 export interface AtomicWriteOptions {
 	/** The file's mode when it is created, such as 0o600 for a file only its owner reads. */
 	readonly mode?: number;
+	/** The mode of the folders created for the file, such as 0o700 for folders only their owner enters. */
+	readonly dirMode?: number;
 }
+
+/**
+ * The modes for what GeminiCode keeps about the user's work (transcripts,
+ * checkpoints with file contents, records, the audit log): the user's alone,
+ * as `~/.ssh` is, whatever the umask. Existing files keep their mode.
+ */
+export const privateWrite = { mode: 0o600, dirMode: 0o700 } as const satisfies AtomicWriteOptions;
 
 /**
  * Writes `text` to a temporary file beside `file`, named for this process
@@ -39,15 +48,16 @@ export interface AtomicWriteOptions {
  * windows never rename each other's half-written file into place.
  */
 export async function writeFileAtomic(file: string, text: string | Iterable<string>, options: AtomicWriteOptions = {}): Promise<void> {
-	await fs.mkdir(path.dirname(file), { recursive: true });
+	await fs.mkdir(path.dirname(file), { recursive: true, mode: options.dirMode });
 	const temp = `${file}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`;
 	try {
-		if (typeof text === 'string') {
-			await fs.writeFile(temp, text, { encoding: 'utf8', mode: options.mode });
-		} else {
-			// Written in pieces of about 64 KB, so no one string holds it all and other work runs in between.
-			const handle = await fs.open(temp, 'w', options.mode);
-			try {
+		// Flushed to disk before the rename, so a power cut cannot leave the new name on an empty file.
+		const handle = await fs.open(temp, 'w', options.mode);
+		try {
+			if (typeof text === 'string') {
+				await handle.writeFile(text, 'utf8');
+			} else {
+				// Written in pieces of about 64 KB, so no one string holds it all and other work runs in between.
 				let buffered: string[] = [];
 				let size = 0;
 				for (const piece of text) {
@@ -62,9 +72,10 @@ export async function writeFileAtomic(file: string, text: string | Iterable<stri
 				if (buffered.length) {
 					await handle.write(buffered.join(''), null, 'utf8');
 				}
-			} finally {
-				await handle.close();
 			}
+			await handle.sync();
+		} finally {
+			await handle.close();
 		}
 		await fs.rename(temp, file);
 	} catch (err) {
@@ -81,6 +92,42 @@ export function writeJsonAtomic(file: string, value: unknown, options: AtomicWri
 /** Whether a temporary file is one `writeFileAtomic` left behind for `file`. */
 export function isTempFileOf(name: string, file: string): boolean {
 	return name.startsWith(`${path.basename(file)}.`) && name.endsWith('.tmp');
+}
+
+/** A temporary file as `writeFileAtomic` names it: `<file>.<pid>.<8 hex>.tmp`. */
+const tempFile = /\.\d+\.[0-9a-f]{8}\.tmp$/;
+
+/**
+ * Removes the temporary files `writeFileAtomic` left under `dir` (two levels
+ * deep, the depth of the stores) that are older than `olderThanMs`: a write
+ * a crash interrupted. Returns how many went. A file still being written is
+ * minutes old at most, so a day is a safe age.
+ */
+export async function removeStaleTempFiles(dir: string, olderThanMs: number, now: number = Date.now()): Promise<number> {
+	let removed = 0;
+	const sweep = async (folder: string, depth: number) => {
+		let entries: import('node:fs').Dirent[];
+		try {
+			entries = await fs.readdir(folder, { withFileTypes: true });
+		} catch {
+			return;
+		}
+		for (const entry of entries) {
+			const full = path.join(folder, entry.name);
+			if (entry.isDirectory()) {
+				if (depth > 0) {
+					await sweep(full, depth - 1);
+				}
+			} else if (entry.isFile() && tempFile.test(entry.name)) {
+				const stat = await fs.stat(full).catch(() => undefined);
+				if (stat && now - stat.mtimeMs > olderThanMs) {
+					await fs.rm(full, { force: true }).then(() => removed++, () => undefined);
+				}
+			}
+		}
+	};
+	await sweep(dir, 2);
+	return removed;
 }
 
 /**

@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { describe, expect, it } from 'vitest';
-import { isBuildFile, isGitHookFile, isProtectedSetting, isReadOnlyGitRead, parseCommand, SessionApprovals } from '../../src/acp/sessionApprovals';
+import { decidesWhatRuns, isBuildFile, isGitHookFile, isIgnoreFile, isProtectedSetting, isReadOnlyGitRead, parseCommand, SessionApprovals } from '../../src/acp/sessionApprovals';
 
 describe('parseCommand', () => {
 	it('finds each prefix of a pipeline or list, outside quotes', () => {
@@ -75,7 +75,7 @@ describe('parseCommand and programs that run other code', () => {
 		'git grep -O\'sh -c "touch pwned"\' -e x', 'git grep -nO./x.sh TODO', 'git grep --open-files-in-pager=./x.sh TODO',
 		'git fetch --upload-pack=\'sh -c "touch pwned"\' .', 'git pull --upload-pack ./x.sh', 'git ls-remote -u ./x.sh .', 'git ls-remote --upload-pack=./x.sh .',
 		'git push --receive-pack=./x.sh .', 'git push --exec=./x.sh .', 'git clone -u ./x.sh . copy', 'git clone --template=./t . copy', 'git clone --config core.hooksPath=h . c',
-		'git archive --exec=./x.sh --remote=. HEAD', 'git --git-dir=evil status', 'git diff --output=notes.txt', 'git credential fill', 'git init --template=./t',
+		'git archive --exec=./x.sh --remote=. HEAD', 'git --git-dir=evil status', 'git diff --output=notes.txt', 'git diff --no-index /etc/passwd x', 'git log --ext-diff', 'git credential fill', 'git init --template=./t',
 		'npm exec -- touch pwned', 'npm x cowsay', 'npm --prefix /tmp exec x', 'pnpm exec vitest', 'pnpm dlx create-x', 'yarn dlx x', 'yarn exec x', 'npm init vite', 'npm create vite',
 		'npm test --script-shell=./x.sh', 'npm config set script-shell ./x.sh', 'bundle exec rake', 'poetry run x', 'uv run x', 'kubectl exec pod -- sh',
 		'make -f evil.mk', 'make -E \'$(shell touch pwned)\'', 'make --eval=x', 'make test SHELL=./x.sh', 'make CC=./x build', 'make -nf evil.mk',
@@ -210,20 +210,14 @@ describe('SessionApprovals', () => {
 		expect(['/w/src/hooks/useCart.ts', '/w/docs/config.md'].map(isGitHookFile)).toEqual([false, false]);
 	});
 
-	it('takes permanent rules from outside, which lapse for the session like its own', () => {
-		const approvals = new SessionApprovals();
-		approvals.setPermanent(['npm test', 'git status']);
-		expect(approvals.covers('npm test -- --watch=false').kind).toBe('covered');
-		expect(approvals.noteWrite('/w/package.json')).toEqual(['npm test']);
-		expect({ npm: approvals.covers('npm test').kind, rules: approvals.rules }).toEqual({ npm: 'asks', rules: [{ prefix: 'git status', source: 'permanent' }] });
-		approvals.approve('npm test');
-		expect(approvals.rules).toEqual([{ prefix: 'npm test', source: 'session' }, { prefix: 'npm test', source: 'permanent' }, { prefix: 'git status', source: 'permanent' }]);
-		expect(approvals.prefixesOf('git status && grep x a | head')).toEqual(['git status', 'grep', 'head']);
+	it('names the settings an agent\'s write always asks for, the ignore files among them', () => {
+		expect(['/w/.gemini/worktree-setup.sh', '/w/.gemini/settings.json', '/w/.vscode/settings.json', '/w/.vscode/tasks.json', '/w/.gitignore', '/w/sub/.gitignore', '/w/.geminiignore', '/w/.git/info/exclude', '/w/.gemini/GEMINI.md', '/w/.vscode/launch.json', '/w/src/settings.json', '/w/gitignore.md'].map(isProtectedSetting))
+			.toEqual([true, true, true, true, true, true, true, true, false, false, false, false]);
+		expect(['/w/.gitignore', '/w/.geminiignore', '/w/.git/info/exclude', '/w/.gemini/settings.json'].map(isIgnoreFile)).toEqual([true, true, true, false]);
 	});
 
-	it('names the settings an agent\'s write always asks for', () => {
-		expect(['/w/.gemini/worktree-setup.sh', '/w/.gemini/settings.json', '/w/.vscode/settings.json', '/w/.vscode/tasks.json', '/w/.gemini/GEMINI.md', '/w/.vscode/launch.json', '/w/src/settings.json'].map(isProtectedSetting))
-			.toEqual([true, true, true, true, false, false, false]);
+	it('says which writes decide what runs next: hooks and build files as well as the settings', () => {
+		expect(['/w/.husky/pre-commit', '/w/package.json', '/w/.gemini/settings.json', '/w/.gitignore', '/w/src/cart.ts', '/w/README.md'].map(decidesWhatRuns)).toEqual([true, true, true, true, false, false]);
 	});
 });
 

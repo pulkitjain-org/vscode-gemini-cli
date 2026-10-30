@@ -17,7 +17,7 @@ import * as vscode from 'vscode';
 import { fileIcon, sortEntries, withRecent, type TreeEntry } from '../acp/agentFiles';
 import { git } from '../acp/worktrees';
 import type { FileRow, FilesStrings, FromFiles, ToFiles } from './agentFilesProtocol';
-import { createNonce, escapeAttribute } from './webviewHtml';
+import { PagePanel, PageShell } from './pagePanel';
 
 /** What an agent's Files page needs of the agents. */
 export interface AgentFilesHost {
@@ -75,10 +75,9 @@ export class AgentFilesPages implements vscode.Disposable {
 
 class AgentFilesPage implements vscode.Disposable {
 
-	private readonly panel: vscode.WebviewPanel;
+	private readonly page: PagePanel<ToFiles, FromFiles>;
 	private readonly disposables: vscode.Disposable[] = [];
-	private readonly onDidDisposeEmitter = new vscode.EventEmitter<void>();
-	readonly onDidDispose = this.onDidDisposeEmitter.event;
+	readonly onDidDispose: vscode.Event<void>;
 	private readonly recentsKey: string;
 	/** Folders whose entries changed since the page was last told, sent together. */
 	private readonly changed = new Set<string>();
@@ -86,39 +85,30 @@ class AgentFilesPage implements vscode.Disposable {
 
 	constructor(private readonly host: AgentFilesHost, private readonly agentId: string, private readonly folder: string, column: vscode.ViewColumn) {
 		this.recentsKey = `gemini.agentFiles.recents.${agentId}`;
-		const media = vscode.Uri.joinPath(host.extensionUri, 'media');
-		this.panel = vscode.window.createWebviewPanel('gemini.agentFiles', vscode.l10n.t("Files"), { viewColumn: column, preserveFocus: false }, {
-			enableScripts: true,
-			retainContextWhenHidden: true,
-			localResourceRoots: [media],
-		});
-		this.panel.iconPath = new vscode.ThemeIcon('files');
-		this.panel.webview.html = this.html(this.panel.webview, media);
+		this.page = new PagePanel<ToFiles, FromFiles>(host.extensionUri, { viewType: 'gemini.agentFiles', title: vscode.l10n.t("Files"), icon: new vscode.ThemeIcon('files'), column: { viewColumn: column, preserveFocus: false }, retainContextWhenHidden: true }, this.shell(), message => this.onMessage(message));
+		this.onDidDispose = this.page.onDidDispose;
 		const watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(vscode.Uri.file(folder), '**/*'), false, true, false);
 		this.disposables.push(
 			watcher,
 			watcher.onDidCreate(uri => this.folderChanged(uri)),
 			watcher.onDidDelete(uri => this.folderChanged(uri)),
-			this.panel.webview.onDidReceiveMessage((message: FromFiles) => void this.onMessage(message)),
-			this.panel.onDidDispose(() => {
+			this.page.onDidDispose(() => {
 				clearTimeout(this.changedTimer);
 				vscode.Disposable.from(...this.disposables).dispose();
-				this.onDidDisposeEmitter.fire();
-				this.onDidDisposeEmitter.dispose();
 			}),
 		);
 	}
 
 	reveal(): void {
-		this.panel.reveal();
+		this.page.reveal();
 	}
 
 	dispose(): void {
-		this.panel.dispose();
+		this.page.dispose();
 	}
 
 	private post(message: ToFiles): void {
-		void this.panel.webview.postMessage(message);
+		this.page.post(message);
 	}
 
 	private async onMessage(message: FromFiles): Promise<void> {
@@ -224,30 +214,8 @@ class AgentFilesPage implements vscode.Disposable {
 		}, 300);
 	}
 
-	private html(webview: vscode.Webview, media: vscode.Uri): string {
-		const nonce = createNonce();
-		const script = webview.asWebviewUri(vscode.Uri.joinPath(media, 'agentFiles.js'));
-		const style = webview.asWebviewUri(vscode.Uri.joinPath(media, 'panels.css'));
-		const menuStyle = webview.asWebviewUri(vscode.Uri.joinPath(media, 'menu.css'));
-		const pageStyle = webview.asWebviewUri(vscode.Uri.joinPath(media, 'agentFiles.css'));
-		const codicons = webview.asWebviewUri(vscode.Uri.joinPath(media, 'codicon.css'));
-		return `<!DOCTYPE html>
-<html lang="en">
-<head>
-	<meta charset="UTF-8">
-	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; font-src data: ${webview.cspSource}; style-src ${webview.cspSource}; script-src 'nonce-${nonce}' ${webview.cspSource};">
-	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<link href="${codicons}" rel="stylesheet">
-	<link href="${style}" rel="stylesheet">
-	<link href="${menuStyle}" rel="stylesheet">
-	<link href="${pageStyle}" rel="stylesheet">
-	<title>${escapeAttribute(vscode.l10n.t("Files"))}</title>
-</head>
-<body class="files-page">
-	<main id="page"></main>
-	<script nonce="${nonce}" type="module" src="${script}" data-strings="${escapeAttribute(JSON.stringify(filesStrings()))}"></script>
-</body>
-</html>`;
+	private shell(): PageShell {
+		return { script: 'agentFiles.js', styles: ['agentFiles.css'], title: vscode.l10n.t("Files"), bodyClass: 'files-page', strings: filesStrings() };
 	}
 }
 

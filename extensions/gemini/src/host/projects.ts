@@ -18,6 +18,7 @@ import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import { branchDefaults, defaultBranchPrefix } from './branchDefaults';
 import type { EditedFile } from '../acp/agentChanges';
 import { isArchived, warmThreads, type AgentProjectRole, type AgentRecord } from '../acp/agents';
 import type { ForkContext, ThreadCard, TranscriptItem, TriedCard } from '../acp/chatTranscript';
@@ -39,6 +40,9 @@ import type { NewThread, ProjectDefaultsView, ProjectSettingsAction, ProjectSett
 import { configSection } from './configuration';
 import { tildify } from './displayText';
 import { showError } from './errorNotice';
+
+/** How much of each repository's outline a coordinator's wake carries. */
+const outlineChars = 2_500;
 
 /** What a new thread gets from its project besides its request. */
 export interface ThreadSetup {
@@ -69,6 +73,8 @@ export interface ProjectAgents {
 	/** The files a running agent changed. */
 	changedFiles(id: string): readonly EditedFile[] | undefined;
 	rename(id: string, title: string): void;
+	/** The workspace index's outline of `folder`, when it is built. */
+	outline?(folder: string): Promise<string | undefined>;
 	/** Asks the Gemini CLI to trust the folder multi-repository threads work in; false when the user declines. */
 	trustThreads(coordinatorId: string): Promise<boolean>;
 	/**
@@ -93,8 +99,12 @@ export interface ProjectAgents {
 	undoThread(id: string): Promise<boolean>;
 	/** Tries a thread's work in the user's checkout, keeps it, takes it back... (agentTries.ts, loaded on first use); returns whether it did. */
 	tryAction(id: string, action: TryAction): Promise<boolean>;
-	/** Whether Merge Back makes a merge commit (`gemini.agents.mergeBack` set to "commit") rather than trying the work. */
-	mergeCommits(): boolean;
+	/** Whether the thread's Try button merges with a commit (the choice remembered for its repository, `tryChoices.ts`). */
+	mergeCommits(id: string): boolean;
+	/** The thread's Try button's choice. */
+	tryChoice(id: string): 'try' | 'merge' | 'mr';
+	/** The chevron beside the Try button: pick and remember the choice, then run it. */
+	pickTryChoice(id: string): Promise<void>;
 	/** Whether the person has read the first-try guide; setting it shows or hides it on cards. */
 	guideSeen(): boolean;
 	setGuideSeen(seen: boolean): Promise<void>;
@@ -265,11 +275,11 @@ export class Projects implements vscode.Disposable {
 	mergeThread(thread: string): Promise<void> {
 		const record = this.agents.record(thread);
 		const role = record?.project;
-		if (!this.agents.mergeCommits() && record?.tried?.state === 'trying') {
+		if (!this.agents.mergeCommits(thread) && record?.tried?.state === 'trying') {
 			// Once tried, the fork card's one button offers Keep Changes, Take Back and the rest.
 			return this.agents.mergeBack(thread).then(() => undefined);
 		}
-		const action = this.agents.mergeCommits() ? 'merge' : 'try';
+		const action = this.agents.mergeCommits(thread) ? 'merge' : 'try';
 		return role?.role === 'thread' ? this.threadAction(role.coordinator, thread, action) : Promise.resolve();
 	}
 
@@ -456,6 +466,13 @@ export class Projects implements vscode.Disposable {
 			// The memory is read first in each wake, so the repositories are known by the time they are asked for.
 			memory: async () => projectMemory(home, await project.loading, 'coordinator'),
 			repos: () => repoKeys(project.config),
+			outline: async () => {
+				const repos = (await project.loading).repos;
+				const outlines = await Promise.all(repos.map(async repo => [repo.key, await this.agents.outline?.(repo.folder)] as const));
+				const known = outlines.filter((entry): entry is readonly [string, string] => !!entry[1]);
+				// Each repository's outline trimmed, so several fit in one wake.
+				return known.length ? known.map(([key, text]) => repos.length > 1 ? `[${key}]\n${text.slice(0, outlineChars)}` : text.slice(0, outlineChars)).join('\n\n') : undefined;
+			},
 			conductor: () => conductor.read(),
 			trackBrief: track => conductor.trackBrief(track),
 			maxRunning: () => maxRunningThreads(),
@@ -537,7 +554,7 @@ export class Projects implements vscode.Disposable {
 			if (!config.instructions.trim() && !await fs.access(path.join(home, configFile)).then(() => true, () => false)) {
 				await this.draft(project);
 			}
-		});
+		}).catch(err => this.agents.log(`${home}: the project's settings could not be read: ${errorMessage(err)}`));
 		// The most recently used open threads start with it, so the ones a developer goes back to
 		// are live; however many threads the project has, opening it costs the same. Any other
 		// thread starts when it is needed: the pointer on its card or row, opening it, or a note
@@ -551,7 +568,7 @@ export class Projects implements vscode.Disposable {
 					return;
 				}
 				// A thread with a brief still to send gets it, after its setup runs again (AgentProjects.resumeThread).
-				await this.agents.resume(thread).catch(() => undefined);
+				await this.agents.resume(thread).catch(err => project.hub.updateThread(thread, { state: 'error', detail: `Couldn't start: ${errorMessage(err)}` }));
 				if (pending.includes(thread)) {
 					this.sendHeldNotes(project, thread);
 				}
@@ -690,16 +707,20 @@ export class Projects implements vscode.Disposable {
 		const config = await project.loading;
 		const repos = config.repos.length > 1 ? config.repos.filter(repo => request.repos?.includes(repo.key)) : [];
 		const memory = await projectMemory(project.home, config, 'threads');
-		const model = request.model ?? config.defaults.threadModel;
+		// The project's own defaults, else the workspace's branch defaults (`gemini.agents.branchDefaults`).
+		const workspace = branchDefaults(this.agents.workspaceFolder(project.id));
+		const model = request.model ?? config.defaults.threadModel ?? workspace.model;
+		const planFirst = config.defaults.planFirst ?? workspace.planFirst;
+		const branchPrefix = config.defaults.branchPrefix ?? (workspace.prefix === defaultBranchPrefix ? undefined : workspace.prefix);
 		return this.agents.startThread(project.id, {
 			...request,
 			// The dialog shows the default already; the coordinator plans first when the user asked, or by default.
-			planFirst: request.planFirst || (request.byCoordinator && !!config.defaults.planFirst),
+			planFirst: request.planFirst || (request.byCoordinator && !!planFirst),
 			...(model ? { model } : {}),
 		}, {
 			...(repos.length ? { repos } : {}),
 			...(memory ? { memory } : {}),
-			...(config.defaults.branchPrefix !== undefined ? { branchPrefix: config.defaults.branchPrefix } : {}),
+			...(branchPrefix !== undefined ? { branchPrefix } : {}),
 		});
 	}
 
@@ -708,6 +729,11 @@ export class Projects implements vscode.Disposable {
 		const config = await readProjectConfig(project.home, repository);
 		project.config = config;
 		project.coordinator.refreshGit();
+		if (config.broken) {
+			// The project opens with its repository alone, and the user is told what was lost and where its file is.
+			this.agents.log(`${project.home}: project.json could not be read; moved to ${config.broken}`);
+			void vscode.window.showWarningMessage(vscode.l10n.t("The settings of project \"{0}\" could not be read, so it opened with its repository alone. The file was moved to {1}.", this.agents.record(project.id)?.title ?? project.id, config.broken));
+		}
 		return config;
 	}
 
@@ -982,7 +1008,8 @@ export class Projects implements vscode.Disposable {
 		const role = record.project?.role === 'thread' ? record.project : undefined;
 		// Discarded work later turns replaced is offered from the card's ⋯ menu (tryState.ts, discardOffer).
 		const offer = !record.discarded?.length ? undefined : record.discarded.some(repo => repo.superseded) ? 'menu' : 'restore';
-		const workspace = offer === 'restore' ? 'discarded' : record.tried?.state;
+		// A try still being written shows as trying; it is one in a moment, or taken back on the next start.
+		const workspace = offer === 'restore' ? 'discarded' : record.tried?.state === 'applying' ? 'trying' : record.tried?.state;
 		if (info.workspace !== workspace) {
 			project.hub.updateThread(thread, { workspace });
 		}
@@ -1004,7 +1031,7 @@ export class Projects implements vscode.Disposable {
 			discarded: offer === 'restore' ? true : undefined,
 			restorable: offer === 'menu' ? true : undefined,
 			guide: record.tried?.state === 'trying' && !this.agents.guideSeen() ? true : undefined,
-			mergeCommits: this.agents.mergeCommits() ? true : undefined,
+			tryChoice: this.agents.tryChoice(thread) === 'try' ? undefined : this.agents.tryChoice(thread) as 'merge' | 'mr',
 		});
 		this.schedulePanel(project);
 	}
@@ -1113,6 +1140,8 @@ export class Projects implements vscode.Disposable {
 				// threadRemoved updates the card and the hub.
 				await this.agents.undoThread(thread);
 				return;
+			case 'tryMenu':
+				return this.agents.pickTryChoice(thread);
 			case 'try':
 			case 'keep':
 			case 'takeBack':
@@ -1204,7 +1233,7 @@ function triedCard(record: AgentRecord, edits: readonly string[] | undefined): T
 	const conflicts = tried.repos.flatMap(repo => repo.conflicts ?? []);
 	const unmerged = tried.state === 'trying' ? tried.repos.flatMap(repo => repo.unmerged ?? []) : [];
 	return {
-		state: tried.state,
+		state: tried.state === 'applying' ? 'trying' : tried.state,
 		files: tried.repos.reduce((sum, repo) => sum + repo.files.length, 0),
 		...tried.updates ? { updates: tried.updates } : {},
 		...conflicts.length ? { conflicts } : {},

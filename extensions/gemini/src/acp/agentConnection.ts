@@ -5,8 +5,6 @@
 
 import { Readable, Writable } from 'node:stream';
 import * as acp from '@agentclientprotocol/sdk';
-import { AgentError } from './errors';
-import { FileAccessDeniedError } from './fileAccess';
 import { CLIENT_INFO, SUPPORTED_PROTOCOL_VERSION, UnsupportedProtocolVersionError } from './protocol';
 
 /**
@@ -27,6 +25,8 @@ export interface SetupTimeouts {
 	readonly newSession: number;
 	readonly loadSession: number;
 	readonly authenticate: number;
+	/** `session/set_mode`, `session/set_model` and `session/close`: settings of an open session, which the CLI answers at once. */
+	readonly sessionCall: number;
 }
 
 /**
@@ -41,6 +41,7 @@ export const defaultSetupTimeouts: SetupTimeouts = {
 	newSession: 120_000,
 	loadSession: 120_000,
 	authenticate: 330_000,
+	sessionCall: 15_000,
 };
 
 /**
@@ -128,12 +129,12 @@ export class AgentConnection {
 	}
 
 	setMode(sessionId: string, modeId: string): Promise<acp.SetSessionModeResponse> {
-		return this.connection.agent.request('session/set_mode', { sessionId, modeId });
+		return withTimeout(this.connection.agent.request('session/set_mode', { sessionId, modeId }), 'session/set_mode', this.timeouts.sessionCall);
 	}
 
 	/** The unstable `session/set_model` that gemini-cli implements; not in the SDK's stable method list. */
 	setModel(sessionId: string, modelId: string): Promise<unknown> {
-		return this.connection.agent.request('session/set_model', { sessionId, modelId });
+		return withTimeout(this.connection.agent.request('session/set_model', { sessionId, modelId }), 'session/set_model', this.timeouts.sessionCall);
 	}
 
 	cancel(sessionId: string): Promise<void> {
@@ -142,7 +143,7 @@ export class AgentConnection {
 
 	/** Frees a session the agent keeps in memory; only when it advertises `sessionCapabilities.close`. */
 	close(sessionId: string): Promise<unknown> {
-		return this.connection.agent.request('session/close', { sessionId });
+		return withTimeout(this.connection.agent.request('session/close', { sessionId }), 'session/close', this.timeouts.sessionCall);
 	}
 
 	dispose(): void {
@@ -151,25 +152,45 @@ export class AgentConnection {
 }
 
 /**
- * `request`, or a `timeout` AgentError once `ms` pass without an answer. The
- * request is not cancelled: gemini-cli 0.64 implements no `$/cancel_request`,
+ * A request the agent did not answer in time. Not an `AgentError`: this
+ * module is bundled apart from the extension (src/connection.ts), where
+ * `instanceof` would not hold, so it carries the same `info` and
+ * `classifyAgentError` reads that.
+ */
+export class ConnectionTimeoutError extends Error {
+	readonly info: { readonly kind: 'timeout'; readonly message: string };
+	constructor(method: string, ms: number) {
+		super(`The agent did not answer ${method} within ${Math.round(ms / 1000)} s.`);
+		this.name = 'ConnectionTimeoutError';
+		this.info = { kind: 'timeout', message: this.message };
+	}
+}
+
+/**
+ * `request`, or a `timeout` error once `ms` pass without an answer. The
+ * request is not cancelled: gemini-cli 0.66 implements no `$/cancel_request`,
  * and an answer that comes later is dropped.
  */
 function withTimeout<T>(request: Promise<T>, method: string, ms: number): Promise<T> {
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	const timeout = new Promise<never>((_, reject) => {
-		timer = setTimeout(() => reject(new AgentError({ kind: 'timeout', message: `The agent did not answer ${method} within ${Math.round(ms / 1000)} s.` })), ms);
+		timer = setTimeout(() => reject(new ConnectionTimeoutError(method, ms)), ms);
 	});
 	return Promise.race([request, timeout]).finally(() => clearTimeout(timer));
 }
 
-/** Runs a file handler; a refused access goes back to the agent as the JSON-RPC error its code names. */
+/**
+ * Runs a file handler; a refused access (`FileAccessDeniedError`, known by
+ * its name and code since the class is the extension bundle's) goes back to
+ * the agent as the JSON-RPC error its code names.
+ */
 async function asRequestError<T>(run: () => Promise<T>): Promise<T> {
 	try {
 		return await run();
 	} catch (err) {
-		if (err instanceof FileAccessDeniedError) {
-			throw new acp.RequestError(err.code, err.message);
+		const code = (err as { code?: unknown } | undefined)?.code;
+		if (err instanceof Error && err.name === 'FileAccessDeniedError' && typeof code === 'number') {
+			throw new acp.RequestError(code, err.message);
 		}
 		throw err;
 	}

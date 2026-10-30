@@ -1,0 +1,29 @@
+diff --git a/build/lib/nodeCompileCache.ts b/build/lib/nodeCompileCache.ts
+index 66dfaf4c1b507ec9fb86a6f6415a5cb663cdfb11..39621d15e2a44a0b22619c23ceabc9ff1a6a825b 100644
+--- a/build/lib/nodeCompileCache.ts
++++ b/build/lib/nodeCompileCache.ts
+@@ -9,8 +9,10 @@ import * as os from 'os';
+ import * as path from 'path';
+ 
+ const nodeCompileCacheKinds = ['main', 'extension-host', 'shared-process', 'pty-host', 'agent-host'] as const;
+-const nodeCompileCacheTagPattern = /^v\d+\.\d+\.\d+-(arm64|x64)-[0-9a-f]{8}$/;
++// GEMINI-FORK: Node on macOS and Linux ends the tag with the user's id (`v24.22.0-arm64-60e4fe36-501`), which upstream's pattern rejected
++const nodeCompileCacheTagPattern = /^v\d+\.\d+\.\d+-(arm64|x64)-[0-9a-f]{8}(?:-\d+)?$/;
+ const nodeCompileCacheEntryPattern = /^[0-9a-f]{8}$/;
++const nodeCompileCacheInterruptedEntryPattern = /^[0-9a-f]{8}\.[0-9A-Za-z]{6}$/; // GEMINI-FORK
+ 
+ export interface INodeCompileCacheProduct {
+ 	readonly applicationName: string;
+@@ -103,7 +105,11 @@ export async function validateNodeCompileCache(rootDirectory: string, architectu
+ 		}
+ 
+ 		const cacheDirectory = path.join(kindDirectory, tagDirectories[0].name);
+-		const cacheEntries = await fs.promises.readdir(cacheDirectory, { withFileTypes: true });
++		// GEMINI-FORK: a process the app's quit stops mid-write leaves Node's temporary file (`71f3f0c1.3EEf8I`); drop it, which only leaves that entry uncached
++		const allCacheEntries = await fs.promises.readdir(cacheDirectory, { withFileTypes: true });
++		const interruptedCacheEntries = allCacheEntries.filter(entry => entry.isFile() && nodeCompileCacheInterruptedEntryPattern.test(entry.name));
++		await Promise.all(interruptedCacheEntries.map(entry => fs.promises.rm(path.join(cacheDirectory, entry.name))));
++		const cacheEntries = allCacheEntries.filter(entry => !interruptedCacheEntries.includes(entry));
+ 		const validCacheEntries = cacheEntries.filter(entry => entry.isFile() && nodeCompileCacheEntryPattern.test(entry.name));
+ 		const cacheEntryCount = validCacheEntries.length;
+ 		if (cacheEntryCount === 0) {

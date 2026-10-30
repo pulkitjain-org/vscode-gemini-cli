@@ -10,7 +10,8 @@ import type { Attachment } from '../src/acp/attachments';
 import type { PendingPromptView } from '../src/acp/promptQueue';
 import type { TranscriptItem } from '../src/acp/chatTranscript';
 import type { SessionSettings } from '../src/acp/sessionSettings';
-import type { ChatStrings, FromWebview, SharedPageView } from '../src/host/chatProtocol';
+import type { FromWebview, SharedPageView } from '../src/host/chatProtocol';
+import type { ChatStrings } from '../src/host/chatStrings';
 
 declare function acquireVsCodeApi(): { postMessage(message: FromWebview): void };
 
@@ -136,8 +137,12 @@ export const state = {
 	foldWork: document.querySelector<HTMLScriptElement>('script[data-strings]')?.dataset.foldWork !== 'false',
 	/** Whether replies offer reactions (`gemini.chat.reactions.enabled`); never in a project's chat. */
 	reactions: document.querySelector<HTMLScriptElement>('script[data-strings]')?.dataset.reactions === 'true',
+	/** Whether a side question can read the code (read-only workers in the folder): every chat but a project's. */
+	research: document.querySelector<HTMLScriptElement>('script[data-strings]')?.dataset.research === 'true',
 	/** The picker's Recent row, newest first. */
 	recents: [] as readonly string[],
+	/** The meanings people gave emoji in `gemini.chat.reactions.meanings`. */
+	meanings: [] as readonly (readonly [string, string])[],
 	/** `gemini.chat.sendWith` is cmdEnter: ⌘Return (Ctrl+Enter) sends, Return makes a new line. */
 	cmdEnter: false,
 	/** The mode the mode menu tags "Recommended here" for this folder. */

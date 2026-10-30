@@ -84,10 +84,23 @@ export interface FakeAgentScript {
 	readonly promptMeta?: Record<string, unknown>;
 	/** Steps played for each successive `session/prompt`, one array per turn. */
 	readonly turns?: readonly (readonly ScriptedStep[])[];
+	/** Methods it never answers, like a CLI hung in its setup or its model call. */
+	readonly hangOn?: readonly string[];
+	/** Exits with code 1 while a permission request of the first `permission` step is still open. */
+	readonly crashOnPermission?: boolean;
+	/** Writes a line that is not JSON on its output before answering `initialize`, like a CLI that logs to stdout. */
+	readonly garbageStdout?: boolean;
+	/** Stops reading its input once `initialize` was answered, like a CLI whose loop ended while the process lives on. */
+	readonly endsInput?: boolean;
 }
 
 function isError(value: unknown): value is ScriptedError {
 	return typeof value === 'object' && value !== null && 'error' in value;
+}
+
+/** Never resolves when `method` is one the script hangs on. */
+function hang(method: string): Promise<void> {
+	return script.hangOn?.includes(method) ? new Promise(() => undefined) : Promise.resolve();
 }
 
 function answer<T>(defaults: T, scripted: Partial<T> | ScriptedError | undefined): T {
@@ -125,9 +138,16 @@ const stream = acp.ndJsonStream(
 
 acp.agent({ name: 'fake-agent' })
 	.onRequest('initialize', async ctx => {
+		await hang('initialize');
 		clientCapabilities = ctx.params.clientCapabilities;
+		if (script.garbageStdout) {
+			process.stdout.write('fake-agent: a log line on stdout\n');
+		}
 		if (script.initializeDelayMs) {
 			await new Promise(resolve => setTimeout(resolve, script.initializeDelayMs));
+		}
+		if (script.endsInput) {
+			setTimeout(() => process.stdin.destroy(), 50);
 		}
 		return answer<acp.InitializeResponse>({
 			protocolVersion: acp.PROTOCOL_VERSION,
@@ -142,6 +162,7 @@ acp.agent({ name: 'fake-agent' })
 		return {};
 	})
 	.onRequest('session/new', async ctx => {
+		await hang('session/new');
 		if (script.requireAuth && !authenticated) {
 			throw new acp.RequestError(-32000, 'Gemini API key is missing or not configured.');
 		}
@@ -164,6 +185,7 @@ acp.agent({ name: 'fake-agent' })
 		return response;
 	})
 	.onRequest('session/load', async ctx => {
+		await hang('session/load');
 		const { sessionId, cwd } = ctx.params;
 		if (!script.storedSessions || (!script.storedSessions.includes(sessionId) && !sessionCwds.has(sessionId))) {
 			throw new acp.RequestError(-32603, `Session not found: ${sessionId}`);
@@ -183,6 +205,7 @@ acp.agent({ name: 'fake-agent' })
 		return {};
 	})
 	.onRequest('session/prompt', async ctx => {
+		await hang('session/prompt');
 		const { sessionId } = ctx.params;
 		const abort = new AbortController();
 		pendingTurns.set(sessionId, abort);
@@ -197,6 +220,11 @@ acp.agent({ name: 'fake-agent' })
 						await new Promise(resolve => setTimeout(resolve, step.ms));
 						break;
 					case 'permission': {
+						if (script.crashOnPermission) {
+							void ctx.client.request('session/request_permission', { ...step.request, sessionId }).catch(() => undefined);
+							setTimeout(() => process.exit(1), 50);
+							await new Promise(() => undefined);
+						}
 						const response = await ctx.client.request('session/request_permission', { ...step.request, sessionId });
 						const outcome = response.outcome.outcome === 'selected' ? response.outcome.optionId : 'cancelled';
 						await ctx.client.notify('session/update', { sessionId, update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: `permission:${outcome}` } } });
@@ -237,6 +265,7 @@ acp.agent({ name: 'fake-agent' })
 		}
 	})
 	.onRequest('session/set_mode', async ctx => {
+		await hang('session/set_mode');
 		// Echo the change the way gemini-cli does when its approval mode changes.
 		await ctx.client.notify('session/update', { sessionId: ctx.params.sessionId, update: { sessionUpdate: 'current_mode_update', currentModeId: ctx.params.modeId } });
 		if (script.modeUpdateText) {
@@ -253,7 +282,8 @@ acp.agent({ name: 'fake-agent' })
 		sessionCwds.delete(ctx.params.sessionId);
 		return {};
 	})
-	.onRequest('session/set_model', (params: unknown) => params as { sessionId: string; modelId: string }, ctx => {
+	.onRequest('session/set_model', (params: unknown) => params as { sessionId: string; modelId: string }, async ctx => {
+		await hang('session/set_model');
 		if (!script.supportsSetModel) {
 			throw acp.RequestError.methodNotFound('session/set_model');
 		}

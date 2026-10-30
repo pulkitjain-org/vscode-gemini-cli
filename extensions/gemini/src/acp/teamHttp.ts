@@ -17,7 +17,6 @@
 
 import { createHash } from 'node:crypto';
 import { Emitter } from './events';
-import { recordPilot } from './pilotLog';
 
 /** The tools GeminiCode connects to. */
 export type TeamToolId = 'jira' | 'confluence' | 'gitlab' | 'sonar' | 'snyk' | 'figma';
@@ -108,7 +107,6 @@ export async function teamRequestPage<T>(tool: TeamToolId, url: string, request:
 			} else if (err.kind === 'unreachable' && !err.detail.unsure) {
 				teamReachability.failed(tool, url);
 			}
-			recordPilot({ kind: 'teamToolError', tool, error: err.kind, ...err.status ? { status: err.status } : {} });
 		}
 		throw err;
 	}

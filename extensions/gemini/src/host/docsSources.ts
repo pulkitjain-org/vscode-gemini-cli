@@ -5,19 +5,18 @@
 
 import * as path from 'node:path';
 import * as vscode from 'vscode';
-import { crawl, CrawlError, domainAllowed } from '../acp/docs/crawler';
-import type { DocsRefresh, DocsScope, DocsSearchResult, DocsSourceStatus } from '../acp/docs/docsProtocol';
+import { domainAllowed, type DocsRefresh, type DocsScope, type DocsSearchResult, type DocsSourceStatus } from '../acp/docs/docsProtocol';
 import { DocsRegistry, DocsSource, isDue, normalizedUrl, provisionalTitle, retryDue, sourceId } from '../acp/docs/docsRegistry';
 import { IndexLock } from '../acp/index/indexLock';
 import type { AttachedDocs } from '../acp/indexMcp';
 import { configSection } from './configuration';
+import { extensionChunk } from './lazyFeature';
 import type { DocsProvider, WorkspaceIndex } from './workspaceIndex';
 
 /** How often due sources are looked for, while the window is open. */
 const checkEveryMs = 30 * 60 * 1000;
 /** The first look, after the window has settled. */
 const firstCheckMs = 2 * 60 * 1000;
-export const defaultMaxPages = 500;
 
 export interface NewSource {
 	readonly url: string;
@@ -172,7 +171,8 @@ export class DocsSources implements DocsProvider, vscode.Disposable {
 		let status: DocsSourceStatus | undefined;
 		try {
 			const validators = await this.index.request('docsValidators', { id }) ?? {};
-			const result = await crawl({
+			// The crawler loads with the first fetch (dist/onDemand.js): most windows never fetch docs.
+			const result = await extensionChunk<typeof import('../onDemand')>('onDemand')().crawl({
 				url: source.url,
 				scope: source.scope,
 				maxPages: source.maxPages,
@@ -191,7 +191,7 @@ export class DocsSources implements DocsProvider, vscode.Disposable {
 			}
 			this.log.info(`Docs ${source.url}: ${result.mode}, ${result.fetched} fetched, ${result.unchanged} unchanged, ${result.failed} failed, ${result.blockedByRobots} blocked by robots.txt${error ? `; ${error}` : ''}`);
 		} catch (err) {
-			error = err instanceof CrawlError || err instanceof Error ? err.message : String(err);
+			error = err instanceof Error ? err.message : String(err);
 			this.log.warn(`Docs ${source.url} failed: ${error}`);
 		} finally {
 			await lock.release();
@@ -245,7 +245,7 @@ function allowedDomains(): string[] {
 	return Array.isArray(value) ? value.filter((d): d is string => typeof d === 'string') : [];
 }
 
+/** A source that sets no refresh of its own (the Index & Docs tab sets each) is fetched again daily. */
 function refreshSetting(): DocsRefresh {
-	const value = vscode.workspace.getConfiguration(configSection).get<string>('docs.refresh', 'daily');
-	return value === 'weekly' || value === 'manual' ? value : 'daily';
+	return 'daily';
 }

@@ -43,6 +43,23 @@ describe('AgentSidecar', () => {
 		expect(kinds).toEqual(['starting', 'running', 'restarting', 'starting', 'running', 'restarting', 'starting', 'running', 'failed']);
 	});
 
+	it('gets its restart budget back once it served a prompt, not from uptime', async () => {
+		sidecar = new AgentSidecar({ command: () => fakeAgentCommand({ exitCode: 3 }), cwd: undefined, restartDelaysMs: [10] });
+		const kinds = record(sidecar);
+		sidecar.start();
+		await waitFor(sidecar.onDidChangeState, s => s.kind === 'restarting');
+		sidecar.markHealthy();
+		await waitFor(sidecar.onDidChangeState, s => s.kind === 'failed');
+		// One restart from the budget, then the mark gave a second one, then it gave up.
+		expect(kinds.filter(kind => kind === 'restarting')).toHaveLength(2);
+	});
+
+	it('reports a command that cannot be worked out, or spawned, as not started', async () => {
+		sidecar = new AgentSidecar({ command: () => Promise.reject(new Error('no CLI picked')), cwd: undefined, restartDelaysMs: [10] });
+		sidecar.start();
+		expect(await waitFor(sidecar.onDidChangeState, s => s.kind === 'failed')).toMatchObject({ kind: 'failed', reason: 'not-started', message: 'Error: no CLI picked' });
+	});
+
 	it('starts the agent again at once when the CLI asks to be relaunched', async () => {
 		sidecar = new AgentSidecar({ command: () => fakeAgentCommand({ exitCode: 199 }), cwd: undefined, restartDelaysMs: [10] });
 		const kinds = record(sidecar);

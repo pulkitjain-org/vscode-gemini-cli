@@ -79,7 +79,11 @@ export class AgentIndicators {
 			if (!live.panel) {
 				continue;
 			}
-			const state = agentState(live);
+			const record = this.model.agent(id);
+			if (!record) {
+				continue;
+			}
+			const state = agentState(record, live);
 			const icon = state.kind === 'idle' || state.kind === 'stopped' ? this.restingTabIcon(id) : `tabs/${state.kind}.svg`;
 			if (icon !== live.tabIcon) {
 				live.tabIcon = icon;

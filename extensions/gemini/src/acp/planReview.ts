@@ -136,7 +136,7 @@ export interface ReviewWords {
 	/** `{0}` is a section's heading, `{1}` the text quoted; for a section without a heading, `{1}` only. */
 	readonly onSection: string;
 	readonly onText: string;
-	/** `{0}` is the plan file's name: what Build This Plan sends after a review. */
+	/** `{0}` is the plan file's name: what Approve Plan sends after a review. */
 	readonly build: string;
 }
 

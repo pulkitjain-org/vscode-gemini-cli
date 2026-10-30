@@ -89,6 +89,23 @@ export function resolveMeanings(setting: unknown): ReadonlyMap<string, string | 
 	return meanings;
 }
 
+/**
+ * The meanings people gave in `gemini.chat.reactions.meanings`, valid ones
+ * only, for the chat to show: the built-in four are named by the chat's own
+ * strings unless the setting edits them.
+ */
+export function editedMeanings(setting: unknown): [string, string][] {
+	const meanings = resolveMeanings(setting);
+	const keys = typeof setting === 'object' && setting !== null && !Array.isArray(setting) ? new Set(Object.keys(setting).map(emoji => emojiKey(emoji.trim()))) : new Set<string>();
+	return [...meanings].filter((entry): entry is [string, string] => keys.has(entry[0]) && entry[1] !== undefined);
+}
+
+/** The reaction a message that is only `+` and one emoji (a plus sign, then thumbs up) asks for, as Slack does; undefined for any other message. */
+export function reactionShortcut(text: string): string | undefined {
+	const match = /^\+\s*(\S+)$/u.exec(text.trim());
+	return match && isSingleEmoji(match[1]) ? match[1] : undefined;
+}
+
 /** Whether `emoji` only marks the reply: it has a meaning entry, and that entry is empty. */
 function marksOnly(emoji: string, meanings: ReadonlyMap<string, string | undefined>): boolean {
 	const key = emojiKey(emoji);

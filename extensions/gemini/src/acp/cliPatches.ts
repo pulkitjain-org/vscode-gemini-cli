@@ -9,7 +9,7 @@
 // (`tools.truncateToolOutputThreshold`, 40,000 characters) is skipped. One
 // `git diff` of a few megabytes then takes an agent past the model's
 // 1,048,576-token limit, and every later turn fails on the same history.
-// Checked up to 0.65.0-preview.0.
+// Checked up to 0.66.0.
 //
 // The patch puts that cap on the ACP path: past the threshold, the output is
 // saved where the CLI saves it (`<project temp>/tool-outputs/`) and the model

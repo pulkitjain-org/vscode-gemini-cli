@@ -29,6 +29,11 @@ export function contextCommand(): SlashCommand {
 	return { name: 'context', description: vscode.l10n.t("Show what each turn's context carries"), source: 'app' };
 }
 
+/** `/stats`, the CLI's name for the same popover. */
+export function statsCommand(): SlashCommand {
+	return { name: 'stats', description: vscode.l10n.t("The same as /context: tokens and quota, as the CLI's /stats shows them"), source: 'app' };
+}
+
 export class ChatUsage implements vscode.Disposable {
 
 	/** Show Usage and Quota ran before the view was ready; the popover opens once it is. */

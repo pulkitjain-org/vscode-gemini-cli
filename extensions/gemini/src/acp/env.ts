@@ -17,6 +17,29 @@ export const proxyVariables = ['HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http
 /** GeminiCode's own MCP servers listen on this machine; a proxy GeminiCode sets never handles them. */
 const loopback = ['localhost', '127.0.0.1'];
 
+/** Names that look like a credential: a token, a secret, a password or a key. */
+const secretName = /TOKEN|SECRET|PASSWORD|PASSWD|_KEY$|_KEY_|CREDENTIAL/i;
+
+/** The CLI's own variables, which it needs however their names look (its API key, its Google settings). */
+const cliOwn = /^(GEMINI|GOOGLE)_/;
+
+/**
+ * `base` without the variables whose names look like credentials, except the
+ * Gemini CLI's own. The agent's shell inherits its process environment, and a
+ * tool it runs could print it, so a token meant for another program never
+ * reaches the agent. A program the agent needs a token for gets it from the
+ * user, as the environment denial's message says (adminPolicy.ts).
+ */
+export function withoutSecrets(base: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+	const env: NodeJS.ProcessEnv = {};
+	for (const [name, value] of Object.entries(base)) {
+		if (!secretName.test(name) || cliOwn.test(name)) {
+			env[name] = value;
+		}
+	}
+	return env;
+}
+
 /**
  * The environment for the agent process. Proxy and CA settings
  * (HTTPS_PROXY, NO_PROXY, NODE_EXTRA_CA_CERTS, ...) pass through from the
@@ -29,7 +52,7 @@ const loopback = ['localhost', '127.0.0.1'];
  * networks that inspect TLS. Whatever the environment already sets wins.
  */
 export function buildAgentEnv(base: NodeJS.ProcessEnv, projectId: string | undefined, network: AgentNetwork = {}): NodeJS.ProcessEnv {
-	const env: NodeJS.ProcessEnv = { ...base };
+	const env = withoutSecrets(base);
 	// The CLI prefers GOOGLE_CLOUD_PROJECT but also reads GOOGLE_CLOUD_PROJECT_ID;
 	// set one, clear the other so they cannot disagree.
 	delete env.GOOGLE_CLOUD_PROJECT_ID;

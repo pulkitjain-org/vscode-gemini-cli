@@ -8,7 +8,7 @@ import type { TranscriptItem } from '../../src/acp/chatTranscript';
 import {
 	subagentName,
 	acceptsEnhanceReply, coalesceUpdates, HeldUpdates, attachmentIcon, carriesFiles, codeLanguage, composerHeightLimit, currentActivity, currentPrompt, promptStep, replyPreview, formatClock, turnStart, draggedHeight, emptyFence, enhanceButtonPlacement, enhanceOriginal, type EnhancePhase, enhancePhaseAfterInput, enhanceShortcutLabel, enhanceText, fileReference, fileUris, folderOf, format, formatDuration, formatSentAt, isEnhanceShortcut, isQueueShortcut,
-	imageName, indexOfItem, isNearBottom, matchCommands, mentionAt, mentionInsertion, permissionChoices, planIcon, cardKey, waitingPermission, replyBefore, restoredHeight,
+	groupCommands, imageName, indexOfItem, isNearBottom, matchCommands, mentionAt, mentionInsertion, permissionChoices, planIcon, cardKey, waitingPermission, replyBefore, restoredHeight,
 	formatTokens, resetsIn, sameAttachment, slashQuery, thoughtSeconds, toolKindIcon, withAppended, withoutMention, wrapIndex,
 	contextParts, enterAction, mentionGroup, symbolIcon,
 } from '../../webview-src/chatLogic';
@@ -305,6 +305,13 @@ describe('slashQuery', () => {
 		expect(slashQuery('/init ', 6, 6)).toBeUndefined();
 		expect(slashQuery('fix /init', 9, 9)).toBeUndefined();
 		expect(slashQuery('/init', 0, 5)).toBeUndefined();
+	});
+});
+
+describe('groupCommands', () => {
+	it('puts GeminiCode\'s commands first, then the team\'s, the skills and the Gemini CLI\'s, each in its order', () => {
+		const commands = [{ name: 'about', source: 'cli' }, { name: 'btw', source: 'app' }, { name: 'release', source: 'skill' }, { name: 'ticket', source: 'team' }, { name: 'research', source: 'app' }] as const;
+		expect(groupCommands(commands).map(c => c.name)).toEqual(['btw', 'research', 'ticket', 'release', 'about']);
 	});
 });
 

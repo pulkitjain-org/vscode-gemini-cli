@@ -25,6 +25,8 @@ export interface AuditRowView {
 	readonly error?: string;
 }
 
+import type { StorageMessage, StorageStrings, StorageView } from './panelProtocol';
+
 export interface AuditPageView {
 	/** The day shown, as YYYY-MM-DD. */
 	readonly day: string;
@@ -35,11 +37,14 @@ export interface AuditPageView {
 	/** The day's writes, newest first. */
 	readonly rows: readonly AuditRowView[];
 	/** Intents with no result over the last week. */
-	readonly unfinished: number;
+	readonly unfinished: number;	/** The Storage section above the log, when the page has the storage host. */
+	readonly storage?: StorageView;
 }
 
-export interface AuditStrings {
+export interface AuditStrings extends StorageStrings {
 	readonly title: string;
+	/** The log's heading under the Storage section. */
+	readonly auditTitle: string;
 	/** `{0}` is the folder. */
 	readonly subtitle: string;
 	readonly day: string;
@@ -66,4 +71,5 @@ export type FromAudit =
 	| { readonly type: 'day'; readonly day: string }
 	| { readonly type: 'settle'; readonly id: string }
 	| { readonly type: 'export'; readonly day: string }
-	| { readonly type: 'openFolder' };
+	| { readonly type: 'openFolder' }
+	| StorageMessage;

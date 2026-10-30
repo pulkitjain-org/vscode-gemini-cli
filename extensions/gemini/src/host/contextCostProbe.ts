@@ -5,7 +5,7 @@
 
 import type * as acp from '@agentclientprotocol/sdk';
 import { promises as fs } from 'node:fs';
-import { AgentConnection } from '../acp/agentConnection';
+import type { AgentConnection } from '../acp/agentConnection';
 import { spawnAgent } from '../acp/agentProcess';
 import { allowedServersFor, ContextCost, measureContextCost, ProbeVariant } from '../acp/contextCost';
 import { readTurnUsage } from '../acp/turnUsage';
@@ -24,6 +24,8 @@ export interface ContextCostOptions {
 	readonly geminicodeServers: () => readonly acp.McpServer[];
 	/** An empty folder the CLI doesn't trust, so it loads nothing there: the CLI's own prompt alone. */
 	readonly emptyFolder: string;
+	/** The connection class, from the bundle that carries the ACP SDK (src/connection.ts). */
+	readonly connection: () => Promise<typeof AgentConnection>;
 	readonly log: (message: string) => void;
 }
 
@@ -49,7 +51,7 @@ async function probeOnce(options: ContextCostOptions, variant: ProbeVariant): Pr
 	const command = await getAgentCommand({ ownFolderOnly: true, allowedMcpServers: [...allowedServersFor(variant), ...own ? ownServers : []] });
 	const child = spawnAgent(command, cwd);
 	child.stderr.resume();
-	const connection = new AgentConnection(child.stdin, child.stdout, {
+	const connection = new (await options.connection())(child.stdin, child.stdout, {
 		sessionUpdate: () => undefined,
 		requestPermission: async () => ({ outcome: { outcome: 'cancelled' } }),
 	});

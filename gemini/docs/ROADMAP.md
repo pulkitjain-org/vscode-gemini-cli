@@ -1,14 +1,14 @@
 # Roadmap
 
-This page lists the work that is still open, before and after the pilot, and the known risks. What is built is described in [ARCHITECTURE.md](ARCHITECTURE.md).
+This page lists the work that is still open, now and later, and the known risks. What is built is described in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 GeminiCode ships as a Mac app for Apple silicon with the Gemini CLI bundled. Builds come from GitHub Releases and the download page, and the app shows a notice when a newer release is out ([RELEASING.md](RELEASING.md)).
 
-## Before the pilot
+## Open now
 
 ### Google Cloud prerequisites
 
-Confirm with the admin of the pilot project:
+Confirm with the admin of the Google Cloud project:
 
 - Gemini Code Assist seats are assigned and `cloudaicompanion.googleapis.com` is enabled.
 - Users have IAM access on the project.
@@ -36,7 +36,7 @@ Projects are on by default (`gemini.projects.enabled`). Check in a signed-in ses
 
 Record a Chromium profile, an extension-host profile and a CLI telemetry file (**Gemini: Record or Stop Performance Trace**) from real working sessions. They time the fork's own steps on a real account: Enter to send, rendering, the extension host's share of tool calls, and a cold start after a reboot. [FINDINGS.md](FINDINGS.md) has the timings for the agent and the model.
 
-### Pilot build clean-up
+### Build clean-up
 
 - Regenerate the policy templates (`policyData.jsonc`) so the templates admins deploy include the Gemini settings. This needs a built app.
 - Release builds leave out upstream's `extensions/copilot`. Leave it out of dev builds too.
@@ -45,7 +45,7 @@ Record a Chromium profile, an extension-host profile and a CLI telemetry file (*
 
 ### Organisation default project
 
-The app reads `geminiDefaultProjectId` from `product.json`, but no build sets it. If the pilot organisation wants a default, add it to the release workflow, for example from a repository variable.
+The app reads `geminiDefaultProjectId` from `product.json`, but no build sets it. If an organisation wants a default, add it to the release workflow, for example from a repository variable.
 
 ### Repository settings
 
@@ -55,19 +55,23 @@ The app reads `geminiDefaultProjectId` from `product.json`, but no build sets it
 - The `GEMINI_UPSTREAM_TOKEN` secret. Without it the upstream job cannot push an upstream move ([README](../README.md#upstream-releases)).
 - The `SNYK_TOKEN` secret, which turns the Snyk job into a gate.
 
-### The pilot
-
-Three developers for two weeks, with the pilot's admin profile ([pilot/README.md](../pilot/README.md)) and `gemini.pilot.record` on. At the end, run **Gemini: Export Pilot Data** on each Mac.
-
 ## Known gaps
 
 ### Workspaces opened through a symbolic link
 
-The CLI keys a folder's chats by the path it is given, and the terminal always gives the real path. In a workspace opened through a link, chats started with `gemini` in the terminal are saved under another key, so a new agent's list of saved CLI sessions (and `/resume`) does not show them ([FINDINGS.md](FINDINGS.md#reopening-a-session-sessionload)). Running every session on the folder's real path would fix this, but chats saved under the linked path would then need a migration.
+Closed in 1.7: GeminiCode opens every session on the folder's real path, as a terminal's CLI does (`realFolder` in `agentRuntime.ts`), so the two share one key; it still reads the linked path's key for chats saved before, which can go a release later ([FINDINGS.md](FINDINGS.md#reopening-a-session-sessionload)).
+
+### Fork cards, and the bar back to what started a chat
+
+Thread cards and Home's cards draw their buttons from the one action set (`branchAgentActions` in `agentRow.ts`); a fork's card in its parent's chat still offers only Open and Try. The bar at the top of a thread's chat back to its project is not yet the one "Started from" bar a fork would get too, and the project's Clean Up Folders is not yet Agent Setup's one Clean Up for every merged agent.
+
+### Pinning a page's remote reads
+
+An agent's browser page can fetch from any site its policy allows; the platform's fetch gives no way to pin a request to the address the policy checked, so a site that redirects elsewhere is checked by its first address only.
 
 ### Sessions are never closed
 
-gemini-cli 0.64.0 offers no `session/close`, so a long-lived agent process keeps every session it opened, a few MB each. That includes Enhance prompt's fallback sessions and hidden command sessions. GeminiCode closes sessions as soon as a CLI advertises `sessionCapabilities.close`. Until a CLI does, restart idle processes to free them, and show in the pane when an agent's process was stopped.
+gemini-cli 0.66.0 offers no `session/close`, so a long-lived agent process keeps every session it opened, a few MB each. That includes Enhance prompt's fallback sessions and hidden command sessions. GeminiCode closes sessions as soon as a CLI advertises `sessionCapabilities.close`. Until a CLI does, restart idle processes to free them, and show in the pane when an agent's process was stopped.
 
 ### Build files changed through the shell
 
@@ -77,7 +81,7 @@ gemini-cli 0.64.0 offers no `session/close`, so a long-lived agent process keeps
 
 The confirm-class policy rules name the team's own servers `jira` and `gitlab`. A team that names them otherwise needs its own rules.
 
-## After the pilot
+## Later
 
 ### Semantic search for the index
 
@@ -93,7 +97,7 @@ Check that the release's signing step signs the `rg` binaries added to the bundl
 
 ### More platforms
 
-Windows first: one more runner in the release workflow and a code-signing certificate. Then Intel Macs and Linux if pilot users ask. Bring this forward if the pilot includes Windows users.
+Windows first: one more runner in the release workflow and a code-signing certificate. Then Intel Macs and Linux if users ask. Bring this forward when Windows users join.
 
 ### Auto-update
 
@@ -119,16 +123,16 @@ Reword the rest of upstream's welcome text. Only the product name in its setup w
 
 At each upstream move, check whether `src/vs/sessions` has gained an extension API for agent providers. If it has, move the Agents pane onto it.
 
-## Ideas from upstream 1.142
+## Ideas from upstream 1.144
 
-Upstream's 1.142 release has these for Copilot's agents. Each could be built on what GeminiCode has:
+Upstream's 1.142 to 1.144 releases have these for Copilot's agents. Each could be built on what GeminiCode has:
 
 - Move a chat to a new worktree: start a branch and worktree from a running chat and carry the conversation over, as an agent's own branch does at start, using the conversation hand-over a new session already gets.
 - Stop a background shell command: a control on a long-running command's row that cancels it without ending the turn.
-- Thinking level and context window in the model picker. This needs the CLI to offer `session/set_config_option`, which 0.64.0 does not.
+- Thinking level and context window in the model picker. This needs the CLI to offer `session/set_config_option`, which 0.66.0 does not.
 - Permission modes as separate policies. Upstream lets an admin allow or remove each permission mode on its own, as GeminiCode's `GeminiAllowAutoEdit` and `GeminiAllowYolo` do. Follow upstream's naming if it settles.
 
-The 1.142 base also brings upstream's Markdown editor (pasting images, renaming links, an outline and breadcrumbs, copying code blocks), `editor.occurrencesHighlightFromAllProviders`, and many leak fixes.
+The 1.142 and 1.144 bases also bring upstream's Markdown editor (pasting images, renaming links, an outline and breadcrumbs, copying code blocks), `editor.occurrencesHighlightFromAllProviders`, and many leak fixes.
 
 ## Risks
 

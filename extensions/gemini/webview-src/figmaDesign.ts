@@ -6,7 +6,7 @@
 // Add Figma Design (the + menu's From Your Tools): one frame link for each
 // screen size, as designers lay a design's sizes out side by side. Pasting
 // several links fills the rows in order; the sizes come from the team's
-// defaults (`figma.viewports`), else Mobile, Tablet and Desktop. The design
+// defaults (`figma.viewports`), else the user's setting, else XS, S, M and L. The design
 // becomes one chip; clicking it opens the dialog again. It looks like the New
 // thread dialog and shares its styles. A chunk of its own (media/figmaDesign.js),
 // loaded the first time it opens (figmaDesignLoader.ts): what it needs of the
@@ -14,15 +14,15 @@
 
 import type { Attachment } from '../src/acp/attachments';
 import { designPrompt, designRefId, designWarnings, defaultDesignSizes, type DesignFrame, figmaLinksIn, nextSizes } from '../src/acp/figmaDesign';
-import type { ChatStrings } from '../src/host/chatProtocol';
+import type { ChatStrings } from '../src/host/chatStrings';
 import { el, icon } from './panelDom';
 import type { SelectMenu, selectMenu } from './selectMenu';
 
-export type FigmaDesignStrings = Pick<ChatStrings, 'figmaDesignTitle' | 'figmaDesignHint' | 'figmaSize' | 'figmaLinkFor' | 'figmaAddSize' | 'figmaAddDesign' | 'figmaUpdateDesign' | 'figmaOtherFile' | 'figmaRepeated' | 'figmaNotLink' | 'figmaDesignChip' | 'cancel' | 'remove'>;
+export type FigmaDesignStrings = Pick<ChatStrings, 'figmaDesignTitle' | 'figmaDesignHint' | 'figmaSetUpDesignSystem' | 'figmaSetUpDesignSystemTip' | 'figmaSize' | 'figmaLinkFor' | 'figmaAddSize' | 'figmaAddDesign' | 'figmaUpdateDesign' | 'figmaOtherFile' | 'figmaRepeated' | 'figmaNotLink' | 'figmaDesignChip' | 'cancel' | 'remove'>;
 
 export interface FigmaDesignOptions {
 	readonly strings: FigmaDesignStrings;
-	/** The team's sizes, from its defaults; Mobile, Tablet and Desktop when empty. */
+	/** The team's sizes, from its defaults, else the user's; XS, S, M and L when empty. */
 	readonly sizes: readonly string[];
 	/** The design to change, from its chip. */
 	readonly current?: readonly DesignFrame[];
@@ -31,6 +31,8 @@ export interface FigmaDesignOptions {
 	setLabel(node: HTMLElement, label: string): void;
 	/** The design's attachment, when the user adds it. */
 	onDone(attachment: Attachment): void;
+	/** Set when the team's defaults name no design system: offers Sync Design System, which says how to set one up. */
+	setUpDesignSystem?(): void;
 }
 
 function format(template: string, ...values: string[]): string {
@@ -59,6 +61,15 @@ export function openFigmaDesign(options: FigmaDesignOptions): void {
 	close.addEventListener('click', () => dialog.close());
 	head.append(heading, close);
 	form.append(head, el('p', 'new-thread-hint', strings.figmaDesignHint));
+	if (options.setUpDesignSystem) {
+		// Built with the design system's tokens and components once there is one: the dialog is where people meet designs.
+		const setUp = el('button', 'link-button figma-design-system');
+		setUp.type = 'button';
+		setUp.textContent = strings.figmaSetUpDesignSystem;
+		options.setLabel(setUp, strings.figmaSetUpDesignSystemTip);
+		setUp.addEventListener('click', () => options.setUpDesignSystem?.());
+		form.append(setUp);
+	}
 
 	const rows = el('div', 'figma-design-rows');
 	const warnings = el('div', 'figma-design-warnings');

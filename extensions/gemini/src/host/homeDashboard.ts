@@ -140,8 +140,7 @@ export function buildDashboard(input: DashboardInput): HomeDashboard {
 		tools,
 		quickActions: [
 			{ label: vscode.l10n.t("New Agent"), icon: 'sparkle', action: command('gemini.agents.newAgent') },
-			...input.projectsOn ? [{ label: vscode.l10n.t("New Project"), icon: 'project', action: command('gemini.projects.new') }] : [],
-			{ label: vscode.l10n.t("Review My Changes"), icon: 'diff', action: command('gemini.reviewChanges') },
+			{ label: vscode.l10n.t("Review"), icon: 'diff', action: command('gemini.review') },
 			...input.connected.has('snyk') || input.connected.has('sonar') ? [{ label: vscode.l10n.t("Run Checks..."), tool: input.connected.has('snyk') ? 'snyk' as const : 'sonar' as const, action: command('gemini.team.runChecksOnBranch') }] : [],
 		],
 		needs: needs(input),
@@ -338,10 +337,10 @@ function startupCard(input: DashboardInput, title: string): HomeCard | undefined
 
 function agentsCard(input: DashboardInput, title: string): ListedCard {
 	const own = input.agents.filter(a => !a.project);
-	const isLive = (a: AgentSummary) => a.state !== 'stopped' && a.state !== 'idle' || !!a.changes?.files;
+	const isLive = (a: AgentSummary) => a.state !== 'stopped' && a.state !== 'idle' && a.state !== 'kept' || !!a.changes?.files && a.state !== 'kept';
 	const live = own.filter(isLive).map((agent): HomeRow => {
 		const tone: HomeTone = agent.state === 'working' ? 'info' : agent.state === 'waiting' ? 'warn' : agent.state === 'error' ? 'error' : 'ok';
-		const label = agent.state === 'working' ? vscode.l10n.t("working") : agent.state === 'waiting' ? vscode.l10n.t("waiting") : agent.state === 'error' ? vscode.l10n.t("stopped with an error") : agent.changes?.files ? vscode.l10n.t("ready to review") : vscode.l10n.t("done");
+		const label = agent.state === 'working' ? vscode.l10n.t("working") : agent.state === 'waiting' ? vscode.l10n.t("needs you") : agent.state === 'error' ? vscode.l10n.t("stopped with an error") : agent.changes?.files ? vscode.l10n.t("ready to review") : vscode.l10n.t("done");
 		return {
 			icon: 'circle-filled',
 			title: agent.title,

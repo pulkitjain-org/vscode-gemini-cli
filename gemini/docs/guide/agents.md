@@ -8,7 +8,7 @@ Run several Gemini agents side by side, each with its own chat, files, changes a
 
 GeminiCode has two layouts. Switch between them with the **Agents | Editor** switch at the top of the window, or <kbd>⌥⌘M</kbd>.
 
-- **Agents layout**, the default, is for working with agents: your agents on the left, the chat in the middle, and the agent's changes on the right. Opening Explorer, Search or any other view switches to the Editor layout with that view open.
+- **Agents layout**, the default, is for working with agents: your agents on the left and the chat in the middle. The agent's changes open on the right when the agent in front starts changing files; the window opens with them closed, and if you close them during a turn they stay closed until the next turn changes something. Opening Explorer, Search or any other view switches to the Editor layout with that view open.
 - **Editor layout** is the classic VS Code layout, with Explorer, Search and Source Control, for hands-on coding. The agent's changes sit below the Agents pane.
 
 In the Agents layout the top of the window is a single row: the Home button, the layout switch, your open tabs (agents, Home, files and browser pages) in one capsule, then a globe for the browser, a magnifier for Quick Open, and the layout buttons. Each layout remembers which panels you had open.
@@ -17,16 +17,16 @@ In the Agents layout the top of the window is a single row: the Home button, the
 
 **Home** is where you start agents and see what needs you. It opens when no tab is open in the Agents layout, and in front of your restored tabs each time GeminiCode starts.
 
-To start an agent, describe the task in **Start Agent** and press Return. Under the task, choose where it works: **Here**, in this folder on your current branch; **On Its Own Branch**, a new branch and folder (see [Agents on their own branch](#agents-on-their-own-branch)); or **To a Project**, which sends the task to a project's coordinator, which makes it a thread or passes it on (see [Projects](projects.md)). Hold the pointer over a choice to see what it does. A branch and a project need a Git repository, and **To a Project** shows while Projects are on.
+To start an agent, describe the task in **Start Agent** and press Return. Under the task, choose where it works: **Here**, in this folder on your current branch, or **On a Branch**, a new branch and folder (see [Agents on their own branch](#agents-on-their-own-branch)). Hold the pointer over a choice to see what it does. A branch needs a Git repository; outside one the chooser is gone and the agent works here.
 
-With **To a Project**, a picker beside the chooser lists the projects of the folder's repository first, then those of other repositories, and **New Project in** the folder. The button then reads **Send to Project**, or **Start Project** for a new one.
+While Projects are on, the chevron beside **On a Branch** offers **On its own branch** or a project: the projects of the folder's repository first, then those of other repositories, and **New Project in** the folder. A project's branch is a thread of that project: its coordinator makes it one or passes the task on (see [Projects](projects.md)). The choice then names the project, and the button reads **Send to Project**, or **Start Project** for a new one.
 
-The bar under the composer shows the folder, with a drum for its index (full when indexed, half while indexing, empty when not yet), the approval mode and the model the agent starts with, and **From Your Tools…** lists your tickets and merge requests to start from one. The folder picker marks each folder **Trusted**, **Trusted by parent** or **Needs trust**, and **Open Folder...** adds a folder for agents without adding it to the window. **On Its Own Branch** and **To a Project** need a trusted folder: in one that isn't, Home says so in place, with **Trust...**. See [Folder trust](review.md#folder-trust).
+The bar under the composer shows the folder, with a drum for its index (full when indexed, half while indexing, empty when not yet), the approval mode and the model the agent starts with, and **From Your Tools…** lists your tickets and merge requests to start from one. The folder picker marks each folder **Trusted**, **Trusted by parent** or **Needs trust**, and **Open Folder...** adds a folder for agents without adding it to the window. **On a Branch**, alone or in a project, needs a trusted folder: in one that isn't, Home says so in place, with **Trust...**. See [Folder trust](review.md#folder-trust).
 
 Below the composer:
 
 - **Agent Setup**, on the right, opens the MCP servers, skills, rules and hooks your agents load. See [Agent Setup](helpers.md).
-- **Index**, beside it, opens the workspace index. A drum icon beside the workspace shows its state. See [Workspace index and docs](#workspace-index-and-docs).
+- The drum icon beside the workspace shows its index's state and opens Agent Setup's **Index & Docs** tab. See [Workspace index and docs](#workspace-index-and-docs).
 - **Needs you** lists what is waiting on you, most pressing first, such as an agent asking for permission or an agent's work ready to try. See [Team tools](team-tools.md#home) for the rest.
 - Cards follow for your agents and, once you connect your team's tools, your tickets, the merge requests waiting on you and your own, quality checks, and Gemini's usage. See [Team tools](team-tools.md#home).
 
@@ -80,7 +80,7 @@ Opening a file shows it in the agent's group and moves the page into a narrow co
 
 ## Follow the agent
 
-To watch an agent work, turn on **Follow the agent** in the composer's **+** menu, or run **Gemini: Follow the Agent**. Each file the agent reads opens at the line it is on, and each file it edits opens once the edit is written. Focus stays in the chat.
+To watch an agent work, turn on **Follow the agent** in the composer's **+** menu. Each file the agent reads opens at the line it is on, and each file it edits opens once the edit is written. Focus stays in the chat.
 
 The file opened last is named under the composer. Click the name to show it, or **×** to close it.
 
@@ -101,11 +101,11 @@ While you try it, the Changes panel offers **Keep Changes** and **Take Back**:
 
 Edits you make to the tried files stay through every update. To hand them to the agent, tick **Include your edits to** the files above its message box: they are copied into its folder before your message, so it builds on them. When you and the agent changed the same lines, the file gets conflict markers, and updating waits until you resolve them. A file with unsaved edits updates when you save it. One agent's work is tried in a workspace at a time. Removing an agent whose work you are trying asks first: **Keep Changes and Remove** or **Take Back and Remove**.
 
-To merge instead, set `gemini.agents.mergeBack` to `commit`. **Merge Back** then takes the place of Try in Workspace: it commits anything the agent left uncommitted, with a message written from its diff, and merges its branch into the branch your folder has checked out. If the merge conflicts, it stops so you can finish it in Source Control. After a clean merge, it offers to remove the agent with its branch and folder.
+The chevron beside **Try in Workspace** offers the other ways to take the work, and remembers your pick for the repository, so the button then does that: **Merge Back** commits anything the agent left uncommitted, with a message written from its diff, and merges its branch into the branch your folder has checked out (if the merge conflicts, it stops so you can finish it in Source Control; after a clean merge, it offers to remove the agent with its branch and folder); **Open Merge Request**, with GitLab connected, pushes the branch and opens a merge request. The agent's row in the Agents pane lists Try in Workspace and Merge Back in its menu too.
 
 A new copy has no `node_modules` or build output. To get it ready before the agent starts, set **Gemini › Agents: Worktree Setup** in your user settings to a command such as `npm ci` (a repository's own settings can't set it), or commit a `.gemini/worktree-setup.sh` to the repository. Before a repository's script runs the first time, GeminiCode shows it and asks: **Don't Run**, **Run Once** or **Run and Remember**. It asks again whenever the script changes, and runs none in a workspace you haven't trusted. The command can use `GEMINI_SOURCE_REPOSITORY`, the repository the copy came from, to copy files Git doesn't carry, such as `.env`. If setup fails, the agent starts anyway, and the output is in the **Gemini Worktree Setup** output channel.
 
-To start every new agent on its own branch, turn on `gemini.agents.ownBranch`: Home's chooser then starts on **On Its Own Branch**.
+To start every new agent on its own branch, turn on `gemini.agents.ownBranch`: Home's chooser then starts on **On a Branch**.
 
 ## Fork an agent
 
@@ -123,7 +123,7 @@ The Fork dialog asks three things.
 **What the fork takes with it.** Each choice shows about how many tokens it sends with every request.
 
 - **Whole session** is an exact copy of the agent's session, tool output included.
-- **Compacted** has Gemini summarise the older work first and keeps the latest messages as they were. It is much smaller, and waits for the agent to finish its turn. Large sessions start on this choice.
+- **Compressed** has Gemini summarise the older work first and keeps the latest messages as they were. It is much smaller, and waits for the agent to finish its turn. Large sessions start on this choice.
 - **Conversation only** has your messages and the agent's replies, without tool output.
 
 **Where it works.**
@@ -133,7 +133,7 @@ The Fork dialog asks three things.
 
 **A name, a model and a first message.** The model is the agent's own unless you pick another, and the first message is optional.
 
-A fork is listed under the agent it came from, and the agent's chat gets a card for it with **Open** and **Try in Workspace**, which tries the fork's work in your checkout as for any agent on its own branch. With `gemini.agents.mergeBack` set to `commit`, the card offers **Merge Back**, and when the agent itself works on its own branch, it asks whether to merge the fork into the agent's branch or into the branch your folder has checked out. Removing an agent that has forks asks whether to remove them too; forks you keep stay as agents of their own.
+A fork is listed under the agent it came from, and the agent's chat gets a card for it with **Open** and **Try in Workspace**, which tries the fork's work in your checkout as for any agent on its own branch. With **Merge Back** remembered for the repository, the card offers it, and when the agent itself works on its own branch, it asks whether to merge the fork into the agent's branch or into the branch your folder has checked out. Removing an agent that has forks asks whether to remove them too; forks you keep stay as agents of their own.
 
 ![A fork listed under its agent in the Agents pane, and the fork's card in the agent's chat with Open and Try in Workspace](../../site/media/fork-list-dark.webp)
 
@@ -143,7 +143,7 @@ GeminiCode keeps an index of the code in each workspace, and of any documentatio
 
 ![The Index page with two indexed workspaces and attached documentation](../../site/media/index-page-dark.webp)
 
-Open the **Index** page from **Index** on Home, beside Agent Setup, or with **Gemini: Manage Index**. On Home, a drum icon beside the workspace shows its state: full when it is indexed, half full while it is indexing, and empty when it has no index yet. Click it to open the Index page.
+The index is Agent Setup's **Index & Docs** tab: open it with **Gemini: Manage Index**, from the **Gemini** status bar item's menu, or from Home, where a drum icon beside the workspace shows its state: full when it is indexed, half full while it is indexing, and empty when it has no index yet. Click it to open the tab.
 
 ### Index tools for agents
 
@@ -156,6 +156,11 @@ Every agent's session gets the `geminicode-index` tools for the folder it works 
 | `related_files` | A file's imports, the files that import it, its tests, and the files most often changed in the same commits. |
 | `repo_map` | An outline of the folder or a subfolder: what the project says it is, its languages, its folders and the public definitions in each. |
 | `docs_search` | The documentation attached to the workspace, when there is some. |
+| `code_type` | A function's, variable's or class's type and documentation, from the editor's language server: what hovering shows. |
+| `code_diagnostics` | Errors and warnings in the files the agent changed, or the files it names, from the language servers: a check after an edit without running a build. |
+| `code_calls` | What calls a function, or what it calls, as the language server resolves them. |
+
+GeminiCode is an editor, so its language servers are running already: agents ask them through the same tools. `find_symbol` with references lists the exact uses of a symbol, through imports and aliases, where a language server covers the file, instead of every line that shares its name. Where none answers (a language with no extension, a server still loading, or an agent's own branch outside the workspace), the index answers alone and the result says so. When a turn changes files and the language servers report errors in the folder's changed files, a notice under the turn lists them, with **Fix**, which asks the agent to fix them and check again. Agents only reach files in their own folder that are neither secret nor ignored by git.
 
 Each session also starts with a short outline of the folder, so the agent knows its way around before its first search. Once the index is built, the session's first prompt asks the agent to use these tools before searching file by file. Results rank the code above its tests, unless you ask about tests, and say when they are complete, so the agent reads only what they point to. In the chat, the calls read as "Search code for …", "Look up …" and so on.
 
@@ -175,7 +180,7 @@ After that, the index keeps itself up to date:
 - a checkout or a pull, when the branch moves
 - an agent's edits in its own worktree, as it makes them
 
-The status bar shows **Indexing N%** while a large build runs. Small updates don't show.
+The **Gemini** status bar item shows **Indexing N%** while a large build runs; hover it for each folder's progress. Small updates don't show.
 
 For each workspace, the Index page shows its state and size, with:
 
@@ -209,7 +214,7 @@ Attach a library's documentation, and agents search it with `docs_search` instea
 
 Pages are fetched from your Mac, through its network settings, and stored once however many workspaces use them. Fetching follows the site's `robots.txt`. Pages behind a sign-in can't be indexed: a page that asks you to sign in is reported rather than stored. Agents treat fetched pages as reference material, never as instructions.
 
-Each source is refreshed daily by default, set with `gemini.docs.refresh` or per source. A page that hasn't changed costs one small request. The switch on a source detaches it from the workspace without deleting it.
+Each source is refreshed daily unless its own row says otherwise. A page that hasn't changed costs one small request. The switch on a source detaches it from the workspace without deleting it.
 
 **Suggested from your dependencies** offers the documentation of the libraries your `package.json`, `requirements.txt`, `pyproject.toml`, `go.mod`, `Cargo.toml`, `pom.xml` or `build.gradle` names, for the versions you use. The list ships with GeminiCode, so nothing is looked up to make it.
 
@@ -217,26 +222,25 @@ Each source is refreshed daily by default, set with `gemini.docs.refresh` or per
 
 | Setting | Default | What it does |
 | --- | --- | --- |
-| `gemini.index.enabled` | on | Keep indexes and give agents the index tools. |
+| `gemini.index.enabled` | on | Keep indexes and give agents the index tools, which ask the editor's language servers too. |
 | `gemini.index.buildOn` | `agentStart` | When a workspace's index is first built. |
 | `gemini.index.exclude` | empty | Extra files and folders to leave out, in `.gitignore` syntax. |
 | `gemini.index.include` | empty | Files to index even though they would be left out, in `.gitignore` syntax. |
 | `gemini.index.maxFileSizeKb` | 1024 | Larger files are left out. |
 | `gemini.docs.enabled` | on | Allow attaching documentation from the web. |
 | `gemini.docs.allowedDomains` | empty | The only sites docs may come from, such as `react.dev` or `*.example.com`. Empty allows any site. |
-| `gemini.docs.refresh` | `daily` | How often attached docs are fetched again. |
 
 An administrator can lock `gemini.index.enabled`, `gemini.docs.enabled` and `gemini.docs.allowedDomains` as policies. See [Settings](settings.md#settings-your-administrator-can-lock).
 
 ## Pick up a Gemini CLI session
 
-A new, empty agent lists the three sessions the Gemini CLI saved most recently for its folder, including ones you started with `gemini` in a terminal, with a link to show them all. Pick one to continue it: its conversation appears in the chat, and the agent takes the session's title. Type `/resume` in the composer to open the same list at any time.
+A new, empty agent lists the three sessions the Gemini CLI saved most recently for its folder, including ones you started with `gemini` in a terminal, with a link to show them all. Pick one to continue it: its conversation appears in the chat, and the agent takes the session's title. Type `/resume` (or `/chat`, as the CLI also calls it) in the composer to open the session browser at any time: each session's first prompt, how many prompts it has and when it was last used, newest first; type to search them, and the trash icon on a row deletes the session's files, as the CLI's `--delete-session` does. GeminiCode opens sessions on the folder's real path, as a terminal does, so the two share one list.
 
 The CLI deletes saved sessions after 30 days. The list says when each one goes, and **Keep saved chats for** in [Agent Setup](helpers.md#gemini-cli-settings) changes how long they are kept.
 
 ## Notifications and keeping awake
 
-When an agent finishes, or needs your permission, while GeminiCode is in the background, a notification appears and the Dock icon bounces. Click the notification to open the agent. The Dock icon and the Agents pane show how many agents are waiting for you. Turn both off with `gemini.notifications.enabled`.
+When an agent finishes, or needs your permission, while GeminiCode is in the background, a notification appears and the Dock icon bounces. Click the notification to open the agent. The Dock icon and the Agents pane show how many agents are waiting for you. `gemini.notifications` keeps the notifications to the agents that need you, or turns them off; the Dock icon counts either way.
 
 While any agent works, GeminiCode keeps the Mac from going to sleep, so a long task carries on when you step away. The display can still sleep. Turn this off with `gemini.keepAwake`.
 

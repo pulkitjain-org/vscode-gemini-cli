@@ -101,6 +101,8 @@ const defaultHedgeAfterMs = 4_000;
 const directModel = 'a direct request';
 /** What `Promise.race` resolves with once the direct request has run for {@link defaultHedgeAfterMs}. */
 const hedged = Symbol('hedged');
+/** How long a side question's direct request may take: it carries the conversation, and its answer is longer than a rewrite. */
+const askTimeoutMs = 90_000;
 /** After a direct request fails, how long rewrites skip it. */
 const directRetryAfterMs = 5 * 60_000;
 /** How many of the chat's latest messages a rewrite sees, so "the same" or "it" can be resolved. */
@@ -180,18 +182,35 @@ export class PromptEnhancer {
 	async enhance(input: EnhancePromptInput, signal?: AbortSignal, onText?: (text: string) => void): Promise<string> {
 		const started = Date.now();
 		const { system, prompt } = enhancePromptPrompt(input);
+		const answer = await this.answer(system, prompt, signal, onText, {});
+		this.options.onDidEnhance?.({ ms: Date.now() - started, model: answer.model });
+		return cleanEnhancedPrompt(answer.text, input.draft);
+	}
+
+	/**
+	 * A quick question answered the way a rewrite is (a direct request, else a
+	 * Plan-mode session of its own on the CLI), for side questions about a
+	 * conversation. A side question carries the whole conversation, so the
+	 * direct request has longer to answer and the CLI never starts alongside
+	 * it, which would pay for the conversation twice.
+	 */
+	async ask(system: string, prompt: string, signal?: AbortSignal, onText?: (text: string) => void): Promise<string> {
+		return (await this.answer(system, prompt, signal, onText, { directTimeoutMs: askTimeoutMs, hedge: false })).text.trim();
+	}
+
+	private async answer(system: string, prompt: string, signal: AbortSignal | undefined, onText: ((text: string) => void) | undefined, how: { readonly directTimeoutMs?: number; readonly hedge?: boolean }): Promise<Answer> {
 		const view = new StreamView(onText);
-		const finish = (answer: Answer) => {
-			this.options.onDidEnhance?.({ ms: Date.now() - started, model: answer.model });
-			return cleanEnhancedPrompt(answer.text, input.draft);
-		};
 		if (!this.directAllowed()) {
-			return finish(await this.viaCli(system, prompt, signal, view.sink('cli')));
+			return await this.viaCli(system, prompt, signal, view.sink('cli'));
 		}
 		const stopDirect = new AbortController();
-		const direct = this.tryDirect(system, prompt, signal, stopDirect.signal, view.sink('direct'));
+		const direct = this.tryDirect(system, prompt, signal, stopDirect.signal, view.sink('direct'), how.directTimeoutMs);
 		let hedgeTimer: ReturnType<typeof setTimeout> | undefined;
-		const hedge = new Promise<typeof hedged>(resolve => hedgeTimer = setTimeout(() => resolve(hedged), this.options.hedgeAfterMs ?? defaultHedgeAfterMs));
+		const hedge = new Promise<typeof hedged>(resolve => {
+			if (how.hedge !== false) {
+				hedgeTimer = setTimeout(() => resolve(hedged), this.options.hedgeAfterMs ?? defaultHedgeAfterMs);
+			}
+		});
 		let first: string | undefined | typeof hedged;
 		try {
 			first = await Promise.race([direct, hedge]);
@@ -200,10 +219,10 @@ export class PromptEnhancer {
 		}
 		if (first !== hedged) {
 			if (first !== undefined) {
-				return finish({ text: first, model: directModel });
+				return { text: first, model: directModel };
 			}
 			view.drop('direct');
-			return finish(await this.viaCli(system, prompt, signal, view.sink('cli')));
+			return await this.viaCli(system, prompt, signal, view.sink('cli'));
 		}
 		// The direct request is slow: the CLI starts the rewrite too, and the first answer wins.
 		const stopCli = new AbortController();
@@ -233,7 +252,7 @@ export class PromptEnhancer {
 			view.drop('direct');
 			stopDirect.abort();
 		}
-		return finish(answer);
+		return answer;
 	}
 
 	dispose(): void {
@@ -257,7 +276,7 @@ export class PromptEnhancer {
 	 * The direct request's reply, or undefined when the CLI should make the
 	 * rewrite. `stop` ends it when the CLI answered first; that is not a failure.
 	 */
-	private async tryDirect(system: string, prompt: string, signal: AbortSignal | undefined, stop: AbortSignal, onText: ((text: string) => void) | undefined): Promise<string | undefined> {
+	private async tryDirect(system: string, prompt: string, signal: AbortSignal | undefined, stop: AbortSignal, onText: ((text: string) => void) | undefined, timeoutMs = this.options.directTimeoutMs ?? defaultDirectTimeoutMs): Promise<string | undefined> {
 		const direct = this.options.direct;
 		if (!direct) {
 			return undefined;
@@ -266,7 +285,7 @@ export class PromptEnhancer {
 		const onAbort = () => abort.abort();
 		signal?.addEventListener('abort', onAbort, { once: true });
 		stop.addEventListener('abort', onAbort, { once: true });
-		const timer = setTimeout(() => abort.abort(), this.options.directTimeoutMs ?? defaultDirectTimeoutMs);
+		const timer = setTimeout(() => abort.abort(), timeoutMs);
 		try {
 			const reply = await abortable(direct({ system, prompt, temperature: 0.3, signal: abort.signal, ...(onText ? { onText } : {}) }), signal);
 			if (reply === undefined) {

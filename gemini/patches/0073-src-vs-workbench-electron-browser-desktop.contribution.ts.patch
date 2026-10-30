@@ -1,0 +1,14 @@
+diff --git a/src/vs/workbench/electron-browser/desktop.contribution.ts b/src/vs/workbench/electron-browser/desktop.contribution.ts
+index 0580fa6a273f57b6d61841669fd4d002757086e5..a377d347822850a949d8e89e8421551ed5258e3b 100644
+--- a/src/vs/workbench/electron-browser/desktop.contribution.ts
++++ b/src/vs/workbench/electron-browser/desktop.contribution.ts
+@@ -290,7 +290,8 @@ import product from '../../platform/product/common/product.js';
+ 			'window.dialogStyle': {
+ 				'type': 'string',
+ 				'enum': ['native', 'custom'],
+-				'default': 'native',
++				// GEMINI-FORK: dialogs follow the GeminiCode theme, never the native OS look.
++				'default': 'custom',
+ 				'scope': ConfigurationScope.APPLICATION,
+ 				'description': localize('dialogStyle', "Adjust the appearance of dialogs to be native by the OS or custom."),
+ 				agentsWindow: { default: 'custom' },

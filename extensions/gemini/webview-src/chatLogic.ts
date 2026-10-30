@@ -141,6 +141,12 @@ export function matchCommands<T extends { readonly name: string }>(commands: rea
 	return [...prefix, ...inside].slice(0, limit);
 }
 
+/** The "/" menu before anything is typed: GeminiCode's commands, then the team's, the skills and the Gemini CLI's, each in its own order. */
+export function groupCommands<T extends { readonly source: 'cli' | 'team' | 'skill' | 'app' }>(commands: readonly T[]): T[] {
+	const order = ['app', 'team', 'skill', 'cli'];
+	return commands.map((command, index) => ({ command, index })).sort((a, b) => order.indexOf(a.command.source) - order.indexOf(b.command.source) || a.index - b.index).map(each => each.command);
+}
+
 /** What to insert to start a mention after `before`: "@", with a space first when it would join a word. */
 export function mentionInsertion(before: string): string {
 	return before && !/\s$/.test(before) ? ' @' : '@';

@@ -29,7 +29,7 @@ export type Attachment =
 		 * A Jira ticket, GitLab merge request or issue, or Figma frame (toolLinks.ts):
 		 * the chip shows the tool's logo, and `ref` (toolRefId) names the item.
 		 */
-		readonly tool?: 'jira' | 'gitlab' | 'figma'; readonly ref?: string;
+		readonly tool?: 'jira' | 'gitlab' | 'figma' | 'confluence'; readonly ref?: string;
 		/** A Figma design with a frame for each screen size, from Add Figma Design: the chip shows the sizes, and opens them again. */
 		readonly design?: readonly DesignFrame[];
 	};

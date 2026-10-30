@@ -22,6 +22,16 @@ describe('SessionUpdateAdapter', () => {
 		});
 	});
 
+	it('shows why GeminiCode refused a file request where the CLI wrote [object Object]', () => {
+		const failure = (text: string) => ({ sessionUpdate: 'tool_call_update' as const, toolCallId: 't1', status: 'failed' as const, content: [{ type: 'content' as const, content: { type: 'text' as const, text } }] });
+		const text = (event: ReturnType<SessionUpdateAdapter['adapt']>) => event.kind === 'toolCall' && event.call.content[0]?.type === 'content' && event.call.content[0].content.type === 'text' ? event.call.content[0].content.text : undefined;
+		expect([
+			text(new SessionUpdateAdapter(() => 'Access to /w/.env was denied: .env may contain secrets.').adapt(failure('Error: [object Object]'))),
+			text(new SessionUpdateAdapter(() => undefined).adapt(failure('[object Object]'))),
+			text(new SessionUpdateAdapter(() => 'unused').adapt(failure('File not found.'))),
+		]).toEqual(['Error: Access to /w/.env was denied: .env may contain secrets.', 'the Gemini CLI did not say why', 'File not found.']);
+	});
+
 	it('passes unknown update kinds through generically', () => {
 		const update = { sessionUpdate: 'something_new', value: 1 } as never;
 		expect(new SessionUpdateAdapter().adapt(update)).toEqual({ kind: 'other', type: 'something_new', update });

@@ -17,7 +17,7 @@ export interface DesignFrame {
 }
 
 /** The sizes offered when the team's defaults name none. */
-export const defaultDesignSizes: readonly string[] = ['Mobile', 'Tablet', 'Desktop'];
+export const defaultDesignSizes: readonly string[] = ['XS', 'S', 'M', 'L'];
 
 /** The Figma frame links in `text`, in order, once each. */
 export function figmaLinksIn(text: string): string[] {

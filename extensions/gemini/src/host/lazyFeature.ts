@@ -5,8 +5,8 @@
 
 // Features the extension does not construct, or even load, when it activates,
 // because nobody waits on them at startup: pages opened on request (Project
-// Helpers, Connections) and tools used rarely (Run Benchmark, the pilot's
-// export, the trace recorder, the audit log). Only their commands are
+// Helpers, Connections) and tools used rarely (Run Benchmark, the trace
+// recorder, the audit log). Only their commands are
 // registered, and the first run of one loads the feature's bundle and
 // constructs it. Their code is in bundles of their own beside extension.js
 // (`src/pages.ts` and `src/onDemand.ts`, built to dist/pages.js and

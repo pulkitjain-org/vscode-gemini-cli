@@ -34,7 +34,7 @@ export interface PromptAttachmentLabel {
 	readonly path?: string;
 	readonly line?: number;
 	/** For a Jira ticket, GitLab item or Figma frame: its tool and its `toolRefId`, so the view can open it there. */
-	readonly tool?: 'jira' | 'gitlab' | 'figma';
+	readonly tool?: 'jira' | 'gitlab' | 'figma' | 'confluence';
 	readonly ref?: string;
 }
 
@@ -44,7 +44,7 @@ export interface PromptAttachmentLabel {
  * open the Gemini log, or stop a stalled turn.
  */
 /** `newSession`: the chat moves to a new session given the conversation so far, for a session Gemini keeps refusing. */
-export type NoticeAction = 'retry' | 'switchModel' | 'signIn' | 'continue' | 'showLog' | 'stop' | 'newSession';
+export type NoticeAction = 'retry' | 'switchModel' | 'signIn' | 'continue' | 'showLog' | 'stop' | 'newSession' | 'fixErrors';
 
 /** Another live agent in the same folder with changes still to review in a file this one edits. */
 export interface OtherAgentChanges {
@@ -127,7 +127,7 @@ export type TranscriptItem =
 		readonly retry?: boolean;
 		/** The latest turn ended in Plan mode: it offers to leave Plan mode and carry out the plan. */
 		readonly buildPlan?: boolean;
-		/** How Build This Plan builds: in `mode`, the mode before Plan; its chevron offers `other`; `models` when the build's model differs from the plan's. */
+		/** How Approve Plan builds: in `mode`, the mode before Plan; its chevron offers `other`; `models` when the build's model differs from the plan's. */
 		readonly build?: { readonly mode: string; readonly other?: string; readonly models?: { readonly plan: string; readonly build: string } };
 		/** Tokens the turn used per model, when the agent reported them. */
 		readonly usage?: readonly ModelTokens[];
@@ -182,8 +182,8 @@ export interface ThreadCard {
 	readonly restorable?: boolean;
 	/** Shows the first-try guide under the card. */
 	readonly guide?: boolean;
-	/** Merge Back makes a merge commit (`gemini.agents.mergeBack` set to "commit"): the card offers it instead of Try in Workspace. */
-	readonly mergeCommits?: boolean;
+	/** What the card's Try button does when not Try in Workspace: the choice remembered for the repository (`tryChoices.ts`). */
+	readonly tryChoice?: 'merge' | 'mr';
 }
 
 /** A thread card's try: how many files, what the last update did, and what the user changed. */
@@ -694,7 +694,9 @@ export class ChatTranscript {
 	}
 
 	private upsert(item: TranscriptItem): void {
-		const index = this._items.findIndex(existing => existing.id === item.id);
+		// A streamed delta updates the last item, so the search from the front is for the rare edit of an older one.
+		const last = this._items.length - 1;
+		const index = last >= 0 && this._items[last].id === item.id ? last : this._items.findIndex(existing => existing.id === item.id);
 		if (index === -1) {
 			this.push(item);
 		} else {
@@ -739,13 +741,20 @@ function trimDetail(itemId: string, part: number, detail: ToolCallDetail, trim: 
 	return trimmed.hiddenLines ? { type: 'text', text: trimmed.head, tail: trimmed.tail, hiddenLines: trimmed.hiddenLines } : detail;
 }
 
+/** Each diff's line counts, by the content object the model keeps: an update without new content keeps the old objects, so the diff is counted once. */
+const diffCounts = new WeakMap<object, { readonly added: number; readonly removed: number }>();
+
 function toToolCallDetail(content: acp.ToolCallContent): ToolCallDetail {
 	switch (content.type) {
 		case 'content':
 			return { type: 'text', text: contentBlockToText(content.content) };
 		case 'diff': {
-			const { added, removed } = countChangedLines(content.oldText ?? '', content.newText);
-			return { type: 'diff', path: content.path, added, removed };
+			let counts = diffCounts.get(content);
+			if (!counts) {
+				counts = countChangedLines(content.oldText ?? '', content.newText);
+				diffCounts.set(content, counts);
+			}
+			return { type: 'diff', path: content.path, added: counts.added, removed: counts.removed };
 		}
 		case 'terminal':
 			return { type: 'terminal', terminalId: content.terminalId };

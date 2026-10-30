@@ -8,8 +8,8 @@
 // commands runs (`LazyFeature`, src/host/lazyFeature.ts).
 //
 // This bundle has its own copy of every module it imports. A module that
-// keeps state (configuration.ts, modelPreference.ts, pilotLog.ts' sink,
-// traceCommand.ts' recording) must be the extension bundle's, so what these
+// keeps state (configuration.ts, modelPreference.ts, traceCommand.ts'
+// recording) must be the extension bundle's, so what these
 // tools need of it comes in through their constructors, never an import;
 // test/perf/chunks.test.ts checks that. Trying an agent's changes in the
 // workspace and Merge Back are here too: most windows never use them. So is
@@ -21,7 +21,12 @@ export { AgentTries } from './host/agents/agentTries';
 export { AuditPage } from './host/auditPage';
 export { BenchmarkCommand } from './host/benchmarkCommand';
 export { checkAgent } from './host/checkAgent';
-export { Pilot } from './host/pilot';
+export { DesignSystemSync } from './host/designSystemSync';
+export { EditorToolsHost } from './host/editorToolsHost';
+export { ResearchRun } from './acp/research';
+export { crawl } from './acp/docs/crawler';
+export { designSystemNoteFor } from './acp/designSystem';
+export { figmaDesignSystem } from './acp/designTokens';
 export { TraceRecorder } from './host/traceRecorder';
 export { cloneFor } from './host/reviewClone';
 export { FigmaDesktop } from './acp/figma';

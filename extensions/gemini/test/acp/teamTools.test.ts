@@ -3,17 +3,22 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import * as http from 'node:http';
+import { tmpdir } from 'node:os';
+import * as path from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { lastEvent, parseFigmaLink } from '../../src/acp/figma';
+import { designSystemFiles } from '../../src/acp/designSystem';
+import { figmaDesignSystem } from '../../src/acp/designTokens';
+import { type FigmaClient, lastEvent, parseFigmaLink } from '../../src/acp/figma';
 import { describeMr, GitLabClient, GitLabMr, mergeReadiness, parseMrRef, projectPathFromRemote, stripAnsi } from '../../src/acp/gitlab';
 import { adfToText, formatDuration, JiraClient, jiraKeyIn, parseDuration, textToAdf } from '../../src/acp/jira';
 import { locateInLoginShell, parseSnykCode, parseSnykTest, Run, SnykCli } from '../../src/acp/snyk';
 import { isReleaseBranch, releaseBranchForVersion, sortReleaseBranches } from '../../src/acp/teamDefaults';
 import { normalizeBaseUrl, teamReachability, teamRequest, TeamToolError } from '../../src/acp/teamHttp';
 import { describeSonar, SonarClient } from '../../src/acp/sonar';
-import { callTeamTool, external, isConfirmToolCall, teamConfirmTools, teamReadTools, TeamToolContext, teamToolsFor, teamWriteTools } from '../../src/acp/teamTools';
+import { callTeamTool, external, isConfirmToolCall, isTeamWriteToolCall, teamConfirmTools, teamReadTools, TeamToolContext, teamToolsFor, teamWriteTools } from '../../src/acp/teamTools';
 import { TeamToolsMcpServer } from '../../src/acp/teamToolsMcp';
 
 /** A local HTTP server answering with `handler`; records each request. */
@@ -266,6 +271,39 @@ describe('geminicode-tools server', () => {
 	});
 });
 
+describe('figma_design with the repository\'s design system', () => {
+	it('lets the design system decide Code Connect and names the colours that are its tokens', async () => {
+		const root = await mkdtemp(path.join(tmpdir(), 'gemini-ds-tools-'));
+		try {
+			const skill = path.join('.gemini', 'skills', 'design-system');
+			await mkdir(path.join(root, skill, 'references'), { recursive: true });
+			await writeFile(path.join(root, skill, 'references', 'tokens.md'), designSystemFiles({ fileName: 'DS', tokens: [{ name: 'color/brand/primary', value: '#2F5BD3' }], components: [] }, { skill }, '2026-10-28')[path.join(skill, 'references', 'tokens.md')]);
+			const asked: (boolean | undefined)[] = [];
+			const figma: FigmaClient = {
+				status: async () => ({ running: true }),
+				designContext: async (_link, options) => {
+					asked.push(options?.codeConnect);
+					return [{ type: 'text', text: '<div className="bg-[#2f5bd3]" />' }];
+				},
+				screenshot: async () => [],
+			};
+			const context = (designSystem: boolean): TeamToolContext => ({
+				connected: () => new Set(['figma']), connectors: () => ({ figma }), folder: () => root,
+				defaults: async () => ({}),
+				designSystem: async () => designSystem ? figmaDesignSystem({ file: path.join(root, '.gemini', 'geminicode-tools.json'), figma: { designSystem: { codeConnect: true } } }) : undefined,
+				figmaCodeConnect: () => false,
+			});
+			const link = 'https://www.figma.com/design/AbC/Checkout?node-id=1-2';
+			const withSystem = await callTeamTool(context(true), 'a1', 'figma_design', { link });
+			const without = await callTeamTool(context(false), 'a1', 'figma_design', { link });
+			const text = (result: typeof withSystem) => result.content.map(c => c.type === 'text' ? c.text : '').join('');
+			expect({ asked, withSystem: text(withSystem).includes('#2f5bd3 (color/brand/primary)'), without: text(without).includes('(color/brand/primary)') }).toEqual({ asked: [true, false], withSystem: true, without: false });
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+});
+
 describe('the confirm class and external text', () => {
 	it('names the confirm-class tools, ours and the team servers\' equivalents', () => {
 		expect(isConfirmToolCall({ toolCall: { title: 'jira_transition(key=ACME-1, to=Done)' } })).toBe(true);
@@ -273,6 +311,9 @@ describe('the confirm class and external text', () => {
 		expect(isConfirmToolCall({ toolCall: { title: 'merge_merge_request(project_id=1, merge_request_iid=3)' } })).toBe(true);
 		expect(isConfirmToolCall({ toolCall: { title: 'jira_get_issue(key=ACME-1)' } })).toBe(false);
 		expect(isConfirmToolCall({ toolCall: { title: 'jira_comment(key=ACME-1)' } })).toBe(false);
+		// Every write asks in YOLO, not only the confirm class.
+		expect(['jira_comment(key=ACME-1)', 'gitlab_reply(iid=3)', 'jira_assign', 'jira_transition(key=ACME-1, to=Done)', 'merge_merge_request(project_id=1)', 'jira_get_issue(key=ACME-1)', 'jira_commentary'].map(title => isTeamWriteToolCall({ toolCall: { title } })))
+			.toEqual([true, true, true, true, true, false, false]);
 		expect(teamWriteTools.map(t => t.name)).toContain('jira_assign');
 	});
 

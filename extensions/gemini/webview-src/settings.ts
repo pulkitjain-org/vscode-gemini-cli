@@ -5,20 +5,13 @@
 
 // The Project Helpers page (src/host/settingsPage.ts).
 
-import type { CliReport, ContextCostView, ExtensionView, FromSettingsPage, HookView, McpServerView, MemoryFileView, PreferencesView, RulesFileView, SettingsPageStrings, SettingsPageView, SkillView, ToSettingsPage, TrustRowView, TrustView } from '../src/host/panelProtocol';
-import { button, el, format, icon, pageStrings } from './panelDom';
+import type { CliReport, ContextCostView, ExtensionView, FromSettingsPage, HookView, McpServerView, MemoryFileView, PreferencesView, RulesFileView, SettingsPageView, SkillView, ToSettingsPage, TrustRowView, TrustView } from '../src/host/panelProtocol';
+import type { SettingsPageStrings } from '../src/host/panelStrings';
+import { button, el, format, icon } from './panelDom';
+import { bootPage } from './panelBoot';
 import { selectMenu, type SelectMenu } from './selectMenu';
-import { storageSection } from './settingsStorage';
 
-declare function acquireVsCodeApi(): { postMessage(message: FromSettingsPage): void };
-
-const vscode = acquireVsCodeApi();
-const strings = pageStrings<SettingsPageStrings>();
-const page = document.getElementById('page')!;
-
-function post(message: FromSettingsPage): void {
-	vscode.postMessage(message);
-}
+const { strings, post, main: page, start } = bootPage<ToSettingsPage, FromSettingsPage, SettingsPageStrings>();
 
 function section(title: string, hint: string, action?: HTMLElement): HTMLElement {
 	const node = el('section', 'settings-section');
@@ -96,37 +89,46 @@ function preferenceRow(label: string, hint: string, on: boolean, onChange: (on: 
 }
 
 /** The Keep saved chats menu, drawn again with the page. */
-let keepChatsMenu: SelectMenu | undefined;
+/** The preference selects' menus, disposed with the next render. */
+const preferenceMenus: SelectMenu[] = [];
+
+/** A preference with a few values, as a themed select; the menus are disposed with the next render. */
+function selectRow(id: string, label: string, hint: string, choices: readonly { readonly value: string; readonly label: string }[], current: string, onChange: (value: string) => void): HTMLElement {
+	const row = el('div', 'row preference');
+	const main = el('div', 'row-main');
+	const title = el('div', 'row-title');
+	const name = el('label', 'name', label);
+	name.htmlFor = id;
+	title.append(name);
+	main.append(title, el('div', 'row-detail', hint));
+	const select = el('select', 'select');
+	select.id = id;
+	for (const choice of choices) {
+		const option = el('option', undefined, choice.label);
+		option.value = choice.value;
+		option.selected = choice.value === current;
+		select.append(option);
+	}
+	select.addEventListener('change', () => onChange(select.value));
+	const menu = selectMenu(select, label);
+	preferenceMenus.push(menu);
+	row.append(main, menu.element);
+	return row;
+}
 
 function preferencesSection(preferences: PreferencesView): HTMLElement {
+	for (const menu of preferenceMenus.splice(0)) {
+		menu.dispose();
+	}
 	const node = section(strings.preferences, format(strings.preferencesHint, preferences.display));
 	const list = el('div', 'rows');
+	list.append(selectRow('default-approval-mode', strings.defaultApprovalMode, preferences.ownDefaultMode ? `${strings.defaultApprovalModeHint} ${format(strings.ownDefaultModeNote, preferences.ownDefaultMode)}` : strings.defaultApprovalModeHint, preferences.defaultApprovalModeChoices, preferences.defaultApprovalMode, value => post({ type: 'setPreference', key: 'defaultApprovalMode', value })));
 	list.append(
 		preferenceRow(strings.permanentApproval, strings.permanentApprovalHint, preferences.permanentApproval, value => post({ type: 'setPreference', key: 'permanentApproval', value })),
 		preferenceRow(strings.planRouting, strings.planRoutingHint, preferences.planRouting, value => post({ type: 'setPreference', key: 'planRouting', value })),
 		preferenceRow(strings.usageStatistics, strings.usageStatisticsHint, preferences.usageStatistics, value => post({ type: 'setPreference', key: 'usageStatistics', value })),
 	);
-	const row = el('div', 'row preference');
-	const main = el('div', 'row-main');
-	const title = el('div', 'row-title');
-	const id = 'keep-chats';
-	const label = el('label', 'name', strings.keepChats);
-	label.htmlFor = id;
-	title.append(label);
-	main.append(title, el('div', 'row-detail', strings.keepChatsHint));
-	const select = el('select', 'select');
-	select.id = id;
-	for (const choice of preferences.keepChatsChoices) {
-		const option = el('option', undefined, choice.label);
-		option.value = choice.value;
-		option.selected = choice.value === preferences.keepChats;
-		select.append(option);
-	}
-	select.addEventListener('change', () => post({ type: 'setPreference', key: 'keepChats', value: select.value }));
-	keepChatsMenu?.dispose();
-	keepChatsMenu = selectMenu(select, strings.keepChats);
-	row.append(main, keepChatsMenu.element);
-	list.append(row);
+	list.append(selectRow('keep-chats', strings.keepChats, strings.keepChatsHint, preferences.keepChatsChoices, preferences.keepChats, value => post({ type: 'setPreference', key: 'keepChats', value })));
 	node.append(list);
 	return node;
 }
@@ -258,7 +260,7 @@ function trustSection(trust: TrustView): HTMLElement {
 let contextFolderMenu: SelectMenu | undefined;
 
 /** Context per model call: the total, a bar of its parts, each part, and advice for the heavy ones; in a multi-root window, for the folder picked. */
-function contextSection(cost: ContextCostView): HTMLElement {
+function contextSection(cost: ContextCostView, developer: boolean): HTMLElement {
 	const measuring = cost.state === 'measuring';
 	const measure = button('secondary', measuring ? strings.measuring : cost.total === undefined ? strings.measure : strings.measureAgain, () => post({ type: 'measureContext' }), measuring ? 'loading' : 'pulse');
 	measure.disabled = measuring;
@@ -281,7 +283,9 @@ function contextSection(cost: ContextCostView): HTMLElement {
 		contextFolderMenu = selectMenu(select, strings.contextFolder);
 		actions.append(contextFolderMenu.element);
 	}
-	actions.append(measure);
+	if (developer) {
+		actions.append(measure);
+	}
 	const node = section(strings.contextTitle, format(strings.contextHint, cost.folder), actions);
 	// What measuring takes from the quota, before the button is pressed.
 	const note = el('p', 'hint context-note');
@@ -363,16 +367,14 @@ function render(view: SettingsPageView): void {
 
 	// Re-rendering replaces every element; keep keyboard focus on the same control.
 	const focused = document.activeElement instanceof HTMLElement && page.contains(document.activeElement) ? document.activeElement.getAttribute('aria-label') ?? document.activeElement.textContent : undefined;
-	page.replaceChildren(header, contextSection(view.contextCost), servers, skills, hooks, extensions, memory, rules, trustSection(view.trust), preferencesSection(view.preferences), ...view.storage ? [storageSection(view.storage, strings, post)] : []);
+	page.replaceChildren(header, contextSection(view.contextCost, view.developer), servers, skills, hooks, extensions, memory, rules, trustSection(view.trust), preferencesSection(view.preferences));
 	if (focused) {
 		[...page.querySelectorAll<HTMLElement>('button')].find(b => (b.getAttribute('aria-label') ?? b.textContent) === focused)?.focus();
 	}
 }
 
-window.addEventListener('message', (event: MessageEvent<ToSettingsPage>) => {
-	if (event.data.type === 'view') {
-		render(event.data.view);
+start(message => {
+	if (message.type === 'view') {
+		render(message.view);
 	}
 });
-
-post({ type: 'ready' });

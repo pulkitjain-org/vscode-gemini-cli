@@ -1,8 +1,8 @@
 diff --git a/build/lib/i18n.resources.json b/build/lib/i18n.resources.json
-index 8faccae8c295d4cf8adb6cc1febc35ba1cdfc96a..a55311b543a12b03e7d630fe1c97d0461b0743d4 100644
+index 0f9d24289aca63c6761586c72a93188224db9719..ca099dd67e2ff70b2a07e8f0a6c7a3ef3781da1d 100644
 --- a/build/lib/i18n.resources.json
 +++ b/build/lib/i18n.resources.json
-@@ -234,6 +234,10 @@
+@@ -238,6 +238,10 @@
  			"name": "vs/workbench/contrib/format",
  			"project": "vscode-workbench"
  		},

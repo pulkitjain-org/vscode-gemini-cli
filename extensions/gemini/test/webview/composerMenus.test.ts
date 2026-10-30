@@ -53,8 +53,29 @@ describe('the mode menu', () => {
 	});
 });
 
-describe('Build This Plan', () => {
-	it('builds in the mode before Plan, offers the other on its chevron, and names both models when they differ', () => {
+describe('the model menu', () => {
+	it('ends in Set as Default for the CLI, which asks the host to save the session\'s model', () => {
+		const model = { currentId: 'gemini-3.8-flash', available: [{ id: 'auto', name: 'Auto', description: 'routes' }, { id: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash', description: 'fast' }] };
+		sendToPage({ type: 'settings', settings: { ...settings, model } });
+		byId('plus').click();
+		const modelRow = [...byId('plus-menu').querySelectorAll('.menu-row')].find(row => row.querySelector('.menu-name')?.textContent === 'Model') as HTMLElement;
+		modelRow.click();
+		const rows = [...byId('plus-menu').querySelectorAll('.menu-row')] as HTMLElement[];
+		const last = rows[rows.length - 1];
+		last.click();
+		expect({
+			names: rows.map(row => row.querySelector('.menu-name')?.textContent),
+			posted: posted.filter(message => message.type === 'setCliDefaultModel'),
+		}).toEqual({
+			names: ['Back', 'Auto', 'Gemini 3.8 Flash', 'Set as Default for the CLI'],
+			posted: [{ type: 'setCliDefaultModel', id: 'gemini-3.8-flash' }],
+		});
+		sendToPage({ type: 'settings', settings });
+	});
+});
+
+describe('Approve Plan', () => {
+	it('approves in the mode before Plan, offers the CLI\'s choices on its chevron, and names both models when they differ', () => {
 		const items: TranscriptItem[] = [
 			{ id: 'u1', kind: 'user', text: 'Plan the lockout' },
 			{ id: 'a1', kind: 'agent', text: '1. Add a test for the lockout window.' },
@@ -73,7 +94,7 @@ describe('Build This Plan', () => {
 		rows[1].click();
 		expect({ ...shown, posted: posted.filter(message => message.type === 'buildPlan'), closed: menu.hidden }).toEqual({
 			models: 'Builds with gemini-3.8-flash; planned with gemini-3-pro.',
-			rows: [['Build in Auto Edit', 'The mode you were in before planning', 'true'], ['Build, Asking for Each Edit', 'Default mode', 'false']],
+			rows: [['Yes, automatically accept edits', 'Build in Auto Edit', 'true'], ['Yes, manually accept edits', 'Build, Asking for Each Edit', 'false'], ['Not yet', undefined, null]],
 			posted: [{ type: 'buildPlan', itemId: 'e1', mode: 'default' }],
 			closed: true,
 		});

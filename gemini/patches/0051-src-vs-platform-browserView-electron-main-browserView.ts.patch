@@ -1,0 +1,30 @@
+diff --git a/src/vs/platform/browserView/electron-main/browserView.ts b/src/vs/platform/browserView/electron-main/browserView.ts
+index 176a53bf28e45cecf92d921c5120fc69e5a6a578..2f4b121e07a941fef46030cec1686e4c57ec02e2 100644
+--- a/src/vs/platform/browserView/electron-main/browserView.ts
++++ b/src/vs/platform/browserView/electron-main/browserView.ts
+@@ -184,6 +184,7 @@ export class BrowserView extends Disposable {
+ 
+ 		this._view.setVisible(false);
+ 		this._ownerWindow.win?.contentView.addChildView(this._view);
++		this._keepAgentPageAwake();
+ 
+ 		this._view.webContents.setWindowOpenHandler((details) => {
+ 			const { action, consumeUserGesture } = getBrowserViewPopupAction(this.presentation, details.url, this.hasRecentUserGesture());
+@@ -617,9 +618,17 @@ export class BrowserView extends Disposable {
+ 
+ 	setOwner(owner: IBrowserViewOwner): void {
+ 		this._owner = owner;
++		this._keepAgentPageAwake();
+ 		this._onDidChangeOwner.fire(owner);
+ 	}
+ 
++	// GEMINI-FORK: an agent works on its page while the page's tab is behind another tab, or in a
++	// hidden editor group. A hidden page that is throttled runs no animation frames, so Playwright's
++	// stability check never passes and every click or hover times out. Agents' pages stay awake.
++	private _keepAgentPageAwake(): void {
++		this._view.webContents.setBackgroundThrottling(this._owner.type !== 'agent');
++	}
++
+ 	get webContents(): Electron.WebContents {
+ 		return this._view.webContents;
+ 	}

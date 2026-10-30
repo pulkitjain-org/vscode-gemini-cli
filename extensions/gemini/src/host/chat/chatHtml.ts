@@ -7,11 +7,11 @@
 // from the extension host so they are localized.
 
 import * as vscode from 'vscode';
-import type { ChatStrings, ForkStrings, ProjectChatStrings, ReactionStrings } from '../chatProtocol';
+import { developerToolsOn } from '../developerTools';
+import type { ChatStrings, ForkStrings, ProjectChatStrings, ReactionStrings, SideStrings } from '../chatStrings';
 import { reactionsOn } from '../chatReactions';
 import { configSection } from '../configuration';
 import { foldWorkOn } from '../foldWork';
-import { spellCheckOn } from '../spellCheck';
 import { createNonce, escapeAttribute } from '../webviewHtml';
 
 /** A project chat's strings, from dist/onDemand.js (projectStrings.ts); set as the extension activates. */
@@ -38,17 +38,20 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 	const emojiPicker = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'emojiPicker.js'));
 	const figmaDesign = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'figmaDesign.js'));
 	const threadCard = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'threadCard.js'));
+	const projectSettings = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'projectSettings.js'));
+	const sideChat = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'sideChat.js'));
 	const strings: ChatStrings = {
-		placeholder: vscode.l10n.t("Ask Gemini anything about this workspace"),
+		placeholder: vscode.l10n.t("Ask Gemini anything about this workspace · / for commands, @ for files"),
 		fromCoordinator: vscode.l10n.t("From coordinator"),
 		// A project chat's strings load with the code they serve, from dist/onDemand.js: most chats aren't project chats.
 		...(project && projectStringsOf ? { project: projectStringsOf() } : {}),
 		...(fork ? { fork: forkStrings() } : {}),
+		side: sideStrings(),
 		...(project ? {} : { reactions: reactionStrings() }),
-		placeholderFollowUp: vscode.l10n.t("Ask a follow-up"),
-		placeholderWorking: process.platform === 'darwin' ? vscode.l10n.t("↩ to send, ⌘↩ to queue for later") : vscode.l10n.t("Enter to send, Ctrl+Enter to queue for later"),
+		placeholderFollowUp: vscode.l10n.t("Ask a follow-up · /btw asks on the side"),
+		placeholderWorking: process.platform === 'darwin' ? vscode.l10n.t("↩ to steer, Tab or ⌘↩ to queue · ⌥⌘; asks on the side") : vscode.l10n.t("Enter to steer, Ctrl+Enter to queue · Ctrl+Alt+; asks on the side"),
 		send: process.platform === 'darwin' ? vscode.l10n.t("Send (Return)") : vscode.l10n.t("Send (Enter)"),
-		sendNow: process.platform === 'darwin' ? vscode.l10n.t("Send now (Return). ⌘Return queues it for after this turn.") : vscode.l10n.t("Send now (Enter). Ctrl+Enter queues it for after this turn."),
+		sendNow: process.platform === 'darwin' ? vscode.l10n.t("Send now (Return). Tab or ⌘Return queues it for after this turn.") : vscode.l10n.t("Send now (Enter). Ctrl+Enter queues it for after this turn."),
 		stop: vscode.l10n.t("Stop (Esc Esc)"),
 		includeEdits: vscode.l10n.t("Include your edits to {0}"),
 		includeEditsTip: vscode.l10n.t("Copies the edits you made to these tried files into the agent's folder before your message, so it builds on them."),
@@ -104,6 +107,8 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 		},
 		mode: vscode.l10n.t("Mode"),
 		model: vscode.l10n.t("Model"),
+		modelDefaultCli: vscode.l10n.t("Set as Default for the CLI"),
+		modelDefaultCliDetail: vscode.l10n.t("New sessions start on it, in the terminal too"),
 		permissionAnswered: vscode.l10n.t("You chose: {0}"),
 		permissionCancelled: vscode.l10n.t("Not answered; the request was cancelled."),
 		permissionHint: vscode.l10n.t("Esc rejects"),
@@ -125,6 +130,7 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 			showLog: vscode.l10n.t("Show Log"),
 			stop: vscode.l10n.t("Stop"),
 			newSession: vscode.l10n.t("Continue in a New Session"),
+			fixErrors: vscode.l10n.t("Fix"),
 		},
 		outputHidden: vscode.l10n.t("{0} lines hidden"),
 		outputShowAll: vscode.l10n.t("Show All"),
@@ -137,19 +143,19 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 		firstToken: vscode.l10n.t("first token {0}"),
 		compact: {
 			suggested: vscode.l10n.t("This chat's context is {0}% full."),
-			suggestedText: vscode.l10n.t("Compact summarizes the older work and keeps the latest prompts as they were, so each turn sends less. You can undo it."),
-			compact: vscode.l10n.t("Compact"),
+			suggestedText: vscode.l10n.t("Compress summarizes the older work and keeps the latest prompts as they were, so each turn sends less. You can undo it."),
+			compact: vscode.l10n.t("Compress"),
 			notNow: vscode.l10n.t("Not Now"),
-			running: vscode.l10n.t("Compacting: Gemini is summarizing the earlier work..."),
-			done: vscode.l10n.t("Compacted: {0} to {1} tokens"),
+			running: vscode.l10n.t("Compressing: Gemini is summarizing the earlier work..."),
+			done: vscode.l10n.t("Compressed: {0} to {1} tokens"),
 			keptOne: vscode.l10n.t("The older work is summarized; the last prompt is kept as it was."),
 			kept: vscode.l10n.t("The older work is summarized; the last {0} prompts are kept as they were."),
 			keptNone: vscode.l10n.t("The work so far is summarized, with no prompt kept as it was."),
 			undo: vscode.l10n.t("Undo"),
 			viewSummary: vscode.l10n.t("View Summary"),
-			undone: vscode.l10n.t("Compact undone: the chat is back on its full session."),
-			failed: vscode.l10n.t("Couldn't compact: {0}"),
-			popover: vscode.l10n.t("Compact"),
+			undone: vscode.l10n.t("Compress undone: the chat is back on its full session."),
+			failed: vscode.l10n.t("Couldn't compress: {0}"),
+			popover: vscode.l10n.t("Compress"),
 			popoverNote: vscode.l10n.t("Summarize the older work to free up context."),
 		},
 		cutOff: {
@@ -210,12 +216,16 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 		turnUndone: vscode.l10n.t("Changes undone"),
 		retry: vscode.l10n.t("Retry"),
 		retryTooltip: vscode.l10n.t("Send this message again"),
-		buildPlan: vscode.l10n.t("Build This Plan"),
+		buildPlan: vscode.l10n.t("Approve Plan"),
 		buildPlanTooltip: vscode.l10n.t("Leave Plan mode and carry out this plan"),
 		reviewPlan: vscode.l10n.t("Review Plan"),
 		reviewPlanTooltip: vscode.l10n.t("Open the plan to edit it and comment on its sections, then send the comments to Gemini"),
 		planBuild: {
-			more: vscode.l10n.t("Other ways to build"),
+			more: vscode.l10n.t("How to carry out the plan"),
+			autoAccept: vscode.l10n.t("Yes, automatically accept edits"),
+			manualAccept: vscode.l10n.t("Yes, manually accept edits"),
+			editFirst: vscode.l10n.t("Edit or comment the plan first"),
+			notYet: vscode.l10n.t("Not yet"),
 			buildIn: vscode.l10n.t("Build in {0}"),
 			asking: vscode.l10n.t("Build, Asking for Each Edit"),
 			beforePlan: vscode.l10n.t("The mode you were in before planning"),
@@ -300,12 +310,15 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 		fromYourTools: vscode.l10n.t("From your tools"),
 		jiraTicket: vscode.l10n.t("Jira ticket"),
 		gitlabItem: vscode.l10n.t("GitLab merge request or issue"),
+		confluencePage: vscode.l10n.t("Confluence page"),
 		figmaFrame: vscode.l10n.t("Figma frame"),
 		pasteLink: vscode.l10n.t("paste link"),
 		figmaDesign: vscode.l10n.t("Figma Design..."),
 		figmaDesignEnd: vscode.l10n.t("a link for each size"),
 		figmaDesignTitle: vscode.l10n.t("Add Figma Design"),
 		figmaDesignHint: vscode.l10n.t("Paste the frame link for each screen size. Pasting several links at once fills the rows in order."),
+		figmaSetUpDesignSystem: vscode.l10n.t("Set Up Your Design System"),
+		figmaSetUpDesignSystemTip: vscode.l10n.t("Read your design system from Figma once, so agents build every design with its tokens and components"),
 		figmaSize: vscode.l10n.t("Size"),
 		figmaLinkFor: vscode.l10n.t("Frame link for {0}"),
 		figmaAddSize: vscode.l10n.t("Add Size"),
@@ -328,6 +341,11 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 			outline: vscode.l10n.t("Outline {0}"),
 			outlineFolder: vscode.l10n.t("Outline the folder"),
 			searchDocs: vscode.l10n.t("Search docs for {0}"),
+			typeOf: vscode.l10n.t("Type of {0}"),
+			checkErrors: vscode.l10n.t("Check changed files for errors"),
+			checkErrorsIn: vscode.l10n.t("Check {0} for errors"),
+			callersOf: vscode.l10n.t("Callers of {0}"),
+			callsIn: vscode.l10n.t("Calls in {0}"),
 		},
 		teamToolVerbs: {
 			read: vscode.l10n.t("Read {0}"),
@@ -429,9 +447,9 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 			terminalFailed: vscode.l10n.t("{0} \u00b7 failed"),
 		},
 		cmdEnter: {
-			placeholderWorking: process.platform === 'darwin' ? vscode.l10n.t("⌘↩ to send, ⇧⌘↩ to queue for later") : vscode.l10n.t("Ctrl+Enter to send, Shift+Ctrl+Enter to queue for later"),
+			placeholderWorking: process.platform === 'darwin' ? vscode.l10n.t("⌘↩ to steer, Tab or ⇧⌘↩ to queue · ⌥⌘; asks on the side") : vscode.l10n.t("Ctrl+Enter to steer, Shift+Ctrl+Enter to queue · Ctrl+Alt+; asks on the side"),
 			send: process.platform === 'darwin' ? vscode.l10n.t("Send (⌘Return)") : vscode.l10n.t("Send (Ctrl+Enter)"),
-			sendNow: process.platform === 'darwin' ? vscode.l10n.t("Send now (⌘Return). ⇧⌘Return queues it for after this turn.") : vscode.l10n.t("Send now (Ctrl+Enter). Shift+Ctrl+Enter queues it for after this turn."),
+			sendNow: process.platform === 'darwin' ? vscode.l10n.t("Send now (⌘Return). Tab or ⇧⌘Return queues it for after this turn.") : vscode.l10n.t("Send now (Ctrl+Enter). Shift+Ctrl+Enter queues it for after this turn."),
 		},
 		noFiles: vscode.l10n.t("No matching files"),
 		noCommands: vscode.l10n.t("No matching commands"),
@@ -477,7 +495,7 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 	<link href="${glassStyle}" rel="stylesheet">
 	<title>Gemini</title>
 </head>
-<body spellcheck="false">
+<body spellcheck="false" class="${developerToolsOn() ? 'developer' : ''}">
 	<svg class="defs" aria-hidden="true"><linearGradient id="gemini-spark-gradient" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4f8df7"/><stop offset=".55" stop-color="#9b72cb"/><stop offset="1" stop-color="#d96570"/></linearGradient></svg>
 	<main id="transcript" class="transcript"></main>
 	<nav id="outline" class="prompt-outline" hidden></nav>
@@ -499,7 +517,7 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 			<div class="composer-tabs" role="tablist"><button type="button" id="tab-write" class="composer-tab" role="tab" aria-selected="true" aria-controls="input"></button><button type="button" id="tab-preview" class="composer-tab" role="tab" aria-selected="false" aria-controls="preview"></button></div>
 			<div id="preview" class="composer-preview markdown" role="tabpanel" tabindex="0" hidden></div>
 			<div class="input-wrap">
-				<textarea id="input" rows="1" spellcheck="${spellCheckOn()}" aria-label="${escapeAttribute(vscode.l10n.t("Message to Gemini"))}"></textarea>
+				<textarea id="input" rows="1" spellcheck="true" aria-label="${escapeAttribute(vscode.l10n.t("Message to Gemini"))}"></textarea>
 				<div class="input-mirror" aria-hidden="true"></div>
 				<span id="enhance-float" class="enhance-float" hidden><button type="button" id="revert" class="enhance-chip" hidden><i class="codicon codicon-discard" aria-hidden="true"></i><span></span></button><button type="button" id="enhance" class="enhance-chip"><svg class="enhance-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 3.5C6.88 7 9 9.12 12.5 9.5C9 9.88 6.88 12 6.5 15.5C6.12 12 4 9.88 0.5 9.5C4 9.12 6.12 7 6.5 3.5Z"/><path d="M12.75 0.5C12.92 2.1 13.9 3.08 15.5 3.25C13.9 3.42 12.92 4.4 12.75 6C12.58 4.4 11.6 3.42 10 3.25C11.6 3.08 12.58 2.1 12.75 0.5Z"/></svg><i class="codicon codicon-loading codicon-modifier-spin" aria-hidden="true"></i><span></span><span class="enhance-key"></span></button></span>
 			</div>
@@ -531,10 +549,10 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 			<div id="workspace-menu" class="foot-menu" hidden></div>
 			<div id="repos-menu" class="foot-menu" hidden></div>
 			<div id="commit-menu" class="foot-menu" hidden></div>
-			<div id="commit-box" class="usage-popover commit-box" role="dialog" hidden><label class="usage-heading" for="commit-message"></label><textarea id="commit-message" class="commit-message" rows="4" spellcheck="${spellCheckOn()}"></textarea><p class="usage-note commit-note" role="status"></p><div class="permission-actions"><button type="button" class="secondary commit-cancel"></button><button type="button" class="primary commit-confirm"></button></div></div>
+			<div id="commit-box" class="usage-popover commit-box" role="dialog" hidden><label class="usage-heading" for="commit-message"></label><textarea id="commit-message" class="commit-message" rows="4" spellcheck="true"></textarea><p class="usage-note commit-note" role="status"></p><div class="permission-actions"><button type="button" class="secondary commit-cancel"></button><button type="button" class="primary commit-confirm"></button></div></div>
 		</div>
 	</div>
-	<script nonce="${nonce}" type="module" src="${script}" data-highlighter="${highlighter}" data-katex="${katex}" data-katex-style="${katexStyle}" data-fold-work="${foldWorkOn()}" data-emoji-picker="${emojiPicker}" data-figma-design="${figmaDesign}" data-thread-card="${threadCard}" data-reactions="${!project && reactionsOn()}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
+	<script nonce="${nonce}" type="module" src="${script}" data-highlighter="${highlighter}" data-katex="${katex}" data-katex-style="${katexStyle}" data-fold-work="${foldWorkOn()}" data-emoji-picker="${emojiPicker}" data-figma-design="${figmaDesign}" data-thread-card="${threadCard}" data-project-settings="${projectSettings}" data-side-chat="${sideChat}" data-reactions="${!project && reactionsOn()}" data-research="${!project}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
 </body>
 </html>`;
 }
@@ -552,6 +570,9 @@ function reactionStrings(): ReactionStrings {
 		picker: vscode.l10n.t("Emoji"),
 		search: vscode.l10n.t("Search emoji"),
 		recent: vscode.l10n.t("Recent"),
+		withMeaning: vscode.l10n.t("With a meaning"),
+		readsIt: vscode.l10n.t("Gemini says in one line how it reads this, then acts on it"),
+		chipMeaning: vscode.l10n.t("Reaction {0}: {1}"),
 		noResults: vscode.l10n.t("No emoji found"),
 		groups: [
 			vscode.l10n.t("Smileys and emotion"),
@@ -567,6 +588,45 @@ function reactionStrings(): ReactionStrings {
 	};
 }
 
+export function sideStrings(): SideStrings {
+	return {
+		title: vscode.l10n.t("Side question"),
+		note: vscode.l10n.t("The agent keeps working"),
+		placeholder: vscode.l10n.t("Ask about this chat"),
+		ask: vscode.l10n.t("Ask"),
+		close: vscode.l10n.t("Close"),
+		earlier: vscode.l10n.t("Earlier question (⇧←)"),
+		later: vscode.l10n.t("Later question (⇧→)"),
+		empty: vscode.l10n.t("Ask about the conversation so far: what the agent changed, why it chose something, what's left. It answers from the chat alone, without stopping the agent or adding to its history."),
+		answering: vscode.l10n.t("Answering…"),
+		stop: vscode.l10n.t("Stop"),
+		sendToAgent: vscode.l10n.t("Send to Agent"),
+		sendToAgentTip: vscode.l10n.t("Put the question and this answer in the message box, to edit and send to the agent"),
+		fork: vscode.l10n.t("Fork into Agent"),
+		forkTip: vscode.l10n.t("Look into it with tools, in a fork of this agent that starts with this question"),
+		copy: vscode.l10n.t("Copy"),
+		copied: vscode.l10n.t("Copied the answer"),
+		hint: vscode.l10n.t("Esc closes · /btw or ⌥⌘; asks from anywhere in the chat"),
+		readCode: vscode.l10n.t("Read the code too"),
+		readCodeTip: vscode.l10n.t("Read-only workers read the agent's folder in parallel and report with sources. Slower than an answer from the chat, and uses more of your quota."),
+		research: {
+			readOnly: vscode.l10n.t("Read-only"),
+			states: {
+				planning: vscode.l10n.t("Splitting the question"),
+				reading: vscode.l10n.t("Reading"),
+				verifying: vscode.l10n.t("Checking the serious findings"),
+				merging: vscode.l10n.t("Writing the report"),
+				done: vscode.l10n.t("Done"),
+				stopped: vscode.l10n.t("Stopped"),
+				failed: vscode.l10n.t("Failed"),
+			},
+			slice: { queued: vscode.l10n.t("queued"), reading: vscode.l10n.t("reading"), done: vscode.l10n.t("done"), failed: vscode.l10n.t("not finished") },
+			reading: vscode.l10n.t("{0} files read"),
+			findings: vscode.l10n.t("{0} findings"),
+		},
+	};
+}
+
 function forkStrings(): ForkStrings {
 	return {
 		button: vscode.l10n.t("Fork"),
@@ -578,7 +638,7 @@ function forkStrings(): ForkStrings {
 		context: vscode.l10n.t("Context"),
 		whole: vscode.l10n.t("Whole session"),
 		wholeHint: vscode.l10n.t("An exact copy, tool output included."),
-		compact: vscode.l10n.t("Compacted"),
+		compact: vscode.l10n.t("Compressed"),
 		compactHint: vscode.l10n.t("A summary of the older work, plus the latest prompts as they were."),
 		conversation: vscode.l10n.t("Conversation only"),
 		conversationHint: vscode.l10n.t("Prompts and replies, without tool output."),

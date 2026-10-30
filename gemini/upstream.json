@@ -1,5 +1,5 @@
 {
-	"tag": "1.142.0",
-	"mergedOn": "2026-10-18",
+	"tag": "1.144.0",
+	"mergedOn": "2026-10-29",
 	"note": "The upstream VS Code release tag the fork is built on. gemini/scripts/upstream-series.sh keeps gemini/patches/ in step with it, and .github/workflows/gemini-upstream.yml moves it to the next release."
 }

@@ -9,7 +9,15 @@
 import type { Attachment } from './attachments';
 import { git } from './worktrees';
 
-/** Diffs past this many characters are cut; the agent can run git itself for the rest. */
+/**
+ * Diffs past this many characters are cut; the agent can run git itself for
+ * the rest. 100,000 characters is about 25,000 tokens: well inside the
+ * model's limit with the rest of the prompt, and over twice the 40,000
+ * characters the CLI's own tool-output cap allows a single `git diff` the
+ * agent runs (cliPatches.ts), so a review prompt is never the largest
+ * thing in the context, and a diff that is cut here would have been cut
+ * harder by the tool.
+ */
 export const maxReviewDiff = 100_000;
 
 export interface WorkingChanges {

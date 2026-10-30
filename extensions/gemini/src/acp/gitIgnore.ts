@@ -125,6 +125,12 @@ export class GitIgnoreChecker {
 		return checker.check(filePath);
 	}
 
+	/** Forgets what git answered so far: an ignore file changed, and a running `check-ignore` keeps the rules it read. */
+	reset(): void {
+		this.dispose();
+		this.fallbackUntil.clear();
+	}
+
 	dispose(): void {
 		for (const checker of this.checkers.values()) {
 			checker.dispose();

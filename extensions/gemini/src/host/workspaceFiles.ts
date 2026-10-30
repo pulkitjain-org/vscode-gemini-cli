@@ -15,16 +15,21 @@ const maxFiles = 50_000;
 const maxTrackedDeletes = 500;
 /** The least time between background rebuilds, so a burst of new files (an install, a build) costs one. */
 const minRebuildIntervalMs = 5_000;
+/** How long a list read from the workspace index serves searches before it is read again; the index itself is kept current by its watcher. */
+const indexedListMs = 10_000;
 
 type IndexedFile = IndexedPath & { readonly path: string };
 
 /**
- * The file list behind the chat's @-mention picker. It is built once, on
- * the first search, honouring files.exclude and search.exclude. After files
- * are created or deleted it is rebuilt in the background on the next search,
- * which meanwhile uses the list it has (minus deleted files), so the picker
- * never waits on a rebuild. Ranking runs on the cached list, so each
- * keystroke costs no file system work.
+ * The file list behind the chat's @-mention picker. Where every folder of
+ * the window has a built workspace index, the list is the index's, which
+ * its own watcher keeps current, so the host walks nothing and watches
+ * nothing for it. Otherwise it is built once, on the first search, honouring
+ * files.exclude and search.exclude. After files are created or deleted it is
+ * rebuilt in the background on the next search, which meanwhile uses the
+ * list it has (minus deleted files), so the picker never waits on a rebuild.
+ * Ranking runs on the cached list, so each keystroke costs no file system
+ * work.
  */
 export class WorkspaceFileIndex implements vscode.Disposable {
 
@@ -39,9 +44,14 @@ export class WorkspaceFileIndex implements vscode.Disposable {
 	private lastRebuild = 0;
 	/** Made with the first list, so a window whose chat never searches files watches nothing. */
 	private watcher: vscode.FileSystemWatcher | undefined;
+	/** When the list was last read from the workspace index, 0 when it was walked by the host. */
+	private indexedAt = 0;
 	private readonly disposables: vscode.Disposable[] = [];
 
-	constructor() {
+	constructor(
+		/** The indexed files of a folder, relative to it, or undefined when the folder has no built index. */
+		private readonly indexed?: (folder: string) => Promise<string[] | undefined>,
+	) {
 		this.disposables.push(
 			vscode.workspace.onDidChangeWorkspaceFolders(() => this.invalidate()),
 			vscode.workspace.onDidChangeConfiguration(e => {
@@ -129,6 +139,14 @@ export class WorkspaceFileIndex implements vscode.Disposable {
 	}
 
 	private load(): Promise<IndexedFile[]> {
+		if (this.indexedAt && this.files && Date.now() - this.indexedAt >= indexedListMs) {
+			// The index's list is read again now and then; its watcher, not one of this list's own, saw the changes.
+			this.files = undefined;
+		}
+		if (!this.files && this.indexed) {
+			const files = this.files = this.fromIndex();
+			return files;
+		}
 		this.watch();
 		if (this.files && this.stale && !this.rebuilding && Date.now() - this.lastRebuild >= minRebuildIntervalMs) {
 			this.stale = false;
@@ -159,6 +177,35 @@ export class WorkspaceFileIndex implements vscode.Disposable {
 			});
 		}
 		return this.files;
+	}
+
+	/**
+	 * The list from the workspace index, when every folder has one; else
+	 * the host's own walk, with its watcher, as before.
+	 */
+	private async fromIndex(): Promise<IndexedFile[]> {
+		const folders = (vscode.workspace.workspaceFolders ?? []).filter(folder => folder.uri.scheme === 'file');
+		const lists = folders.length ? await Promise.all(folders.map(folder => this.indexed!(folder.uri.fsPath).catch(() => undefined))) : [];
+		if (!lists.length || lists.some(list => !list)) {
+			this.indexedAt = 0;
+			this.deleted.clear();
+			this.stale = false;
+			this.watch();
+			const walked = await findWorkspaceFiles().catch(() => []);
+			if (!walked.length) {
+				// A failed build is retried on the next search.
+				this.files = undefined;
+			}
+			return walked;
+		}
+		this.indexedAt = Date.now();
+		this.deleted.clear();
+		this.stale = false;
+		const several = folders.length > 1;
+		return folders.flatMap((folder, i) => lists[i]!.map(relative => {
+			const uri = vscode.Uri.joinPath(folder.uri, ...relative.split('/'));
+			return { ...indexPath(vscode.workspace.asRelativePath(uri, several)), path: uri.fsPath };
+		}));
 	}
 }
 

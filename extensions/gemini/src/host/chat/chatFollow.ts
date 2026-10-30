@@ -11,6 +11,7 @@ import * as vscode from 'vscode';
 import { followablePath, FollowTarget, FollowTracker } from '../../acp/follow';
 import type { ToolCallModel } from '../../acp/sessionUpdates';
 import type { FromWebview, ToWebview } from '../chatProtocol';
+import { followAgentOn, rememberFollowAgent } from '../modelPreference';
 import type { ChatControllerOptions } from './chatOptions';
 import { isFile } from './chatFiles';
 
@@ -22,7 +23,7 @@ export type FollowMessage = Extract<FromWebview, { readonly type: 'setFollow' | 
 export class ChatFollow implements vscode.Disposable {
 
 	/** Starts as the last chat left it. */
-	private following = vscode.workspace.getConfiguration('gemini').get<boolean>('chat.followAgent', false);
+	private following = followAgentOn();
 	private readonly follow = new FollowTracker();
 	/** The file to show next; files are shown at most every {@link followIntervalMs}, the latest winning. */
 	private target: FollowTarget | undefined;
@@ -98,7 +99,7 @@ export class ChatFollow implements vscode.Disposable {
 			this.target = undefined;
 		}
 		this.post({ type: 'follow', on });
-		void vscode.workspace.getConfiguration('gemini').update('chat.followAgent', on, vscode.ConfigurationTarget.Global);
+		rememberFollowAgent(on);
 	}
 
 	private schedule(target: FollowTarget | undefined): void {

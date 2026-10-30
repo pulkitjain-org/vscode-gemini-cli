@@ -74,6 +74,8 @@ export interface BrowserGate {
 	otherSites(): boolean;
 	/** The user handed the agent a page at `url`: lets it see that page's site, as if it had asked and the user allowed it. */
 	grant(agent: string, url: URL): void;
+	/** Whether the user already let the agent see `url`'s site, by answering or by handing it a page there; never asks. */
+	knows?(agent: string, url: URL): boolean;
 	/** The model the agent's session is on, when known, for what its screenshots can carry. */
 	model?(agent: string): string | undefined;
 	/**
@@ -253,7 +255,8 @@ export function isLocalUrl(url: URL): boolean {
  * content is not the user's.
  */
 export function sharedPageText(title: string, url: string): { readonly title: string; readonly text: string } {
-	const oneLine = title.replace(/\s+/g, ' ').trim() || url;
+	// The title is the website's: one line, short, without quotes or tags that could pass as the note's own.
+	const oneLine = title.replace(/\s+/g, ' ').replace(/["<>]/g, '').trim() || url;
 	const short = oneLine.length > 80 ? `${oneLine.slice(0, 79)}\u2026` : oneLine;
 	return {
 		title: short,
@@ -426,17 +429,30 @@ export class BrowserToolHost {
 	}
 
 	/**
-	 * Whether the agent's page may load `url`, a file it shows in a frame,
-	 * runs or fetches. The workbench asks before every file such a page
-	 * loads: checking only the page's own URL would let a page the agent
-	 * wrote show it a file its policy refuses.
+	 * Whether the agent's page may load `url`: a file it shows in a frame,
+	 * runs or fetches, by the agent's file policy; or, from a page the agent
+	 * could have written (a file, or a site on this machine), another site,
+	 * only when the user already let the agent see that site. The workbench
+	 * asks before every such load, and this never asks the user: checking
+	 * only the page's own URL would let a page the agent wrote show it a
+	 * file its policy refuses, or fetch the user's intranet or signed-in
+	 * sites with the browser's cookies.
 	 */
-	async fileAllowed(agent: string, url: string): Promise<boolean> {
+	async loadAllowed(agent: string, url: string): Promise<boolean> {
 		if (this.gate.enabled && !this.gate.enabled()) {
 			return false;
 		}
 		const parsed = URL.parse(url);
-		return parsed?.protocol === 'file:' && !await this.refusal(agent, parsed);
+		if (!parsed) {
+			return false;
+		}
+		if (parsed.protocol === 'file:') {
+			return !await this.refusal(agent, parsed);
+		}
+		if (!/^https?:$/.test(parsed.protocol)) {
+			return false;
+		}
+		return isLocalUrl(parsed) || (!this.policyRefusal(parsed) && this.gate.otherSites() && (this.gate.knows?.(agent, parsed) ?? false));
 	}
 
 	async call(agent: string, name: string, args: Record<string, unknown>): Promise<McpToolResult> {

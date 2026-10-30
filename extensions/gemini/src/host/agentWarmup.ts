@@ -42,7 +42,7 @@ export class AgentWarmup implements vscode.Disposable {
 	private checked: Promise<boolean> | undefined;
 	private disposed = false;
 
-	/** `isSetUp` says whether a session has opened before (the walkthrough's progress). */
+	/** `isSetUp` says whether a session has opened before (`SetupState`). */
 	constructor(private readonly service: AgentService, private readonly isSetUp: () => boolean, private readonly log: vscode.LogOutputChannel) {
 		this.timer = setTimeout(() => this.startSoon(), startDelayMs);
 	}

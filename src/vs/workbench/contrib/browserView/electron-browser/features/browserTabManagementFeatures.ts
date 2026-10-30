@@ -49,6 +49,7 @@ import { MarkdownString } from '../../../../../base/common/htmlContent.js';
 import { IsSessionsWindowContext, ResourceContextKey } from '../../../../common/contextkeys.js';
 import { Schemas } from '../../../../../base/common/network.js';
 import { BrowserNavigationFeatures } from './browserNavigationFeatures.js';
+import { ViewColumn } from '../../../../../platform/editor/common/editor.js';
 
 const CONTEXT_BROWSER_EDITOR_OPEN = new RawContextKey<boolean>('browserEditorOpen', false, localize('browser.editorOpen', "Whether any browser editor is currently open"));
 
@@ -593,7 +594,7 @@ registerWorkbenchContribution2(BrowserEditorOpenContextKeyContribution.ID, Brows
 /**
  * Opens localhost URLs and all-interfaces URLs in the Integrated Browser when the setting is enabled.
  */
-class LocalhostLinkOpenerContribution extends Disposable implements IWorkbenchContribution, IExternalOpener {
+export class LocalhostLinkOpenerContribution extends Disposable implements IWorkbenchContribution, IExternalOpener {
 	static readonly ID = 'workbench.contrib.localhostLinkOpener';
 
 	constructor(
@@ -608,13 +609,13 @@ class LocalhostLinkOpenerContribution extends Disposable implements IWorkbenchCo
 		this._register(openerService.registerExternalOpener(this));
 	}
 
-	async openExternal(href: string, ctx: { sourceUri: URI; preferredOpenerId?: string }, _token: CancellationToken): Promise<boolean> {
+	async openExternal(href: string, ctx: { sourceUri: URI; preferredOpenerId?: string; viewColumn?: ViewColumn }, _token: CancellationToken): Promise<boolean> {
 		if (!this.configurationService.getValue<boolean>('workbench.browser.openLocalhostLinks')) {
 			return false;
 		}
 
 		// If we are in a remote session, always use the original source URI (and not the href which may be the forwarded address)
-		if (this.browserViewWorkbenchService.willUseRemoteProxy() && ctx.sourceUri) {
+		if (this.browserViewWorkbenchService.resolveNetwork({ type: 'user' }) && ctx.sourceUri) {
 			href = ctx.sourceUri.toString();
 		}
 
@@ -641,7 +642,7 @@ class LocalhostLinkOpenerContribution extends Disposable implements IWorkbenchCo
 		// would open as a tab behind it, since the chat takes the click's focus back.
 		const active = this.editorService.activeEditor;
 		const fromGeminiChat = active instanceof WebviewInput && active.viewType.startsWith('mainThreadWebview-gemini.');
-		await this.editorService.openEditor({ resource: browserUri, options: { pinned: true, viewState: { url: href, isDefaultLinkOpen } } }, await this.browserViewWorkbenchService.getPreferredGroup(fromGeminiChat ? SIDE_GROUP : undefined));
+		await this.editorService.openEditor({ resource: browserUri, options: { pinned: true, viewState: { url: href, isDefaultLinkOpen } } }, await this.browserViewWorkbenchService.getPreferredGroup(fromGeminiChat || ctx.viewColumn === ViewColumn.Beside ? SIDE_GROUP : undefined));
 		return true;
 	}
 }

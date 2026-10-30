@@ -13,7 +13,7 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { ChatTranscript } from '../../acp/chatTranscript';
 import { keepChatsForever, keepChatsPeriod, readCliPreferences } from '../../acp/cliPreferences';
-import { carriedConversationNote, CliSession, ConversationEntry, isPassingFailure, isPrompt, listCliSessions, readCliConversation, reopenFailure } from '../../acp/cliSessions';
+import { carriedConversationNote, CliSession, ConversationEntry, isPassingFailure, isPrompt, deleteCliSession, listCliSessions, readCliConversation, reopenFailure } from '../../acp/cliSessions';
 import { withoutSteeringNote } from '../../acp/promptQueue';
 import { withoutReactionNotes } from '../../acp/reactions';
 import { geminiDir } from '../../acp/directRequest';
@@ -149,17 +149,52 @@ export class ChatSessions implements vscode.Disposable {
 	}
 
 	/** Every saved session for the folder, in a quick pick; the one picked opens here. */
+	/**
+	 * The session browser, as the CLI's /resume shows it: each session's first
+	 * prompt, its message count and when it was last used, newest first; the
+	 * filter searches them as the CLI's `/` does, and a row's Delete removes
+	 * the session's files as `--delete-session` does.
+	 */
 	async pick(): Promise<void> {
 		if (!this.options.savedSessions || this.host.isBusy()) {
 			return;
 		}
-		const now = Date.now();
-		const picks = this.savedSessions().then(sessions => sessions.map(s => ({ label: s.title, description: sessionDetail(s, now), session: s })));
-		const pick = await vscode.window.showQuickPick(picks, {
-			title: vscode.l10n.t("Restore a Gemini CLI Session"),
-			placeHolder: `${vscode.l10n.t("Sessions saved for {0}, newest first.", path.basename(this.service.client.cwd))} ${await retentionNote()}`,
-			matchOnDescription: true,
+		type Item = vscode.QuickPickItem & { readonly session: CliSession };
+		const deleteButton: vscode.QuickInputButton = { iconPath: new vscode.ThemeIcon('trash'), tooltip: vscode.l10n.t("Delete this session, as the CLI's --delete-session does") };
+		const items = async (): Promise<Item[]> => {
+			const now = Date.now();
+			return (await this.savedSessions()).map(session => ({
+				label: session.title,
+				description: sessionDetail(session, now),
+				detail: new Date(session.updatedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }),
+				buttons: [deleteButton],
+				session,
+			}));
+		};
+		const picker = vscode.window.createQuickPick<Item>();
+		picker.title = vscode.l10n.t("Resume a Gemini CLI Session");
+		picker.placeholder = `${vscode.l10n.t("Sessions saved for {0}, newest first; type to search them.", path.basename(this.service.client.cwd))} ${await retentionNote()}`;
+		picker.matchOnDescription = true;
+		picker.matchOnDetail = true;
+		picker.busy = true;
+		const picked = new Promise<Item | undefined>(resolve => {
+			picker.onDidAccept(() => resolve(picker.selectedItems[0]));
+			picker.onDidHide(() => resolve(undefined));
+			picker.onDidTriggerItemButton(async ({ item }) => {
+				const remove = vscode.l10n.t("Delete");
+				const answer = await vscode.window.showWarningMessage(vscode.l10n.t("Delete the saved session \"{0}\"?", item.session.title), { modal: true, detail: vscode.l10n.t("The Gemini CLI's files for it are removed; nothing else refers to them.") }, remove);
+				if (answer !== remove) {
+					return;
+				}
+				await deleteCliSession(this.service.client.cwd, item.session.id).catch(err => void showError(errorMessage(err)));
+				picker.items = await items();
+			});
 		});
+		picker.show();
+		picker.items = await items();
+		picker.busy = false;
+		const pick = await picked;
+		picker.dispose();
 		if (pick) {
 			await this.restore(pick.session.id, pick.session.title);
 		}
@@ -286,7 +321,12 @@ export class ChatSessions implements vscode.Disposable {
 
 /** /resume, in chats that offer saved sessions. */
 export function resumeCommand(): SlashCommand {
-	return { name: 'resume', description: vscode.l10n.t("Restore a saved Gemini CLI session for this folder"), source: 'app' };
+	return { name: 'resume', description: vscode.l10n.t("Browse the Gemini CLI's saved sessions for this folder and restore one"), source: 'app' };
+}
+
+/** /chat, the CLI's other name for its session browser. */
+export function chatCommand(): SlashCommand {
+	return { name: 'chat', description: vscode.l10n.t("The same as /resume"), source: 'app' };
 }
 
 /** How long the CLI keeps saved chats, from the user's own settings (Agent Setup changes it). */

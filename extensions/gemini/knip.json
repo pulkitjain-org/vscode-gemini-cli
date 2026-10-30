@@ -3,11 +3,44 @@
 	"entry": [
 		"src/extension.ts",
 		"src/indexer.ts",
-		"webview-src/{chat,changes,home,connections,auditLog,settings,indexPage,teamFlow,highlight,katex,draftMarkdown,commentBox,emojiPicker}.ts",
+		"src/pages.ts",
+		"src/onDemand.ts",
+		"src/connection.ts",
+		"src/confluence.ts",
+		"webview-src/chat.ts",
+		"webview-src/changes.ts",
+		"webview-src/home.ts",
+		"webview-src/connections.ts",
+		"webview-src/confluenceReview.ts",
+		"webview-src/planReview.ts",
+		"webview-src/agentFiles.ts",
+		"webview-src/auditLog.ts",
+		"webview-src/settings.ts",
+		"webview-src/indexPage.ts",
+		"webview-src/teamFlow.ts",
+		"webview-src/highlight.ts",
+		"webview-src/katex.ts",
+		"webview-src/draftMarkdown.ts",
+		"webview-src/commentBox.ts",
+		"webview-src/homePopups.ts",
+		"webview-src/homeMenus.ts",
+		"webview-src/emojiPicker.ts",
+		"webview-src/figmaDesign.ts",
+		"webview-src/threadCard.ts",
+		"webview-src/projectSettings.ts",
+		"webview-src/sideChat.ts",
 		"scripts/*.mts",
 		"esbuild*.mts",
 		"test/**/*.ts"
 	],
-	"project": ["src/**/*.ts", "webview-src/**/*.ts", "scripts/**/*.mts", "test/**/*.ts"],
-	"ignoreDependencies": ["@vscode/codicons", "katex"]
+	"project": [
+		"src/**/*.ts",
+		"webview-src/**/*.ts",
+		"scripts/**/*.mts",
+		"test/**/*.ts"
+	],
+	"ignoreDependencies": [
+		"@vscode/codicons",
+		"katex"
+	]
 }

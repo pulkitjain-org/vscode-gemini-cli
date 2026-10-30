@@ -48,7 +48,6 @@ describe('storage usage', () => {
 		await put('agents/x.json.broken');
 		await put('audit/2026-01-01.jsonl');
 		await put('audit/2026-04-29.jsonl');
-		await put('pilot/2025-12-31.jsonl');
 		await put('traces/geminicode-trace-1.jsonl');
 		await put(`cli-logs/${debugLogName()}`);
 		await put(`cli-logs/${debugLogName(11)}`);
@@ -78,7 +77,6 @@ describe('storage usage', () => {
 			['checkpoints', 'global/checkpoints/merged.json', 'merged'],
 			['cliLogs', 'global/cli-debug.log', 'oldDebugLog'],
 			['cliLogs', `global/cli-logs/${debugLogName(11)}`, 'oldDebugLog'],
-			['pilotLog', 'global/pilot/2025-12-31.jsonl', 'oldLog'],
 			['traces', 'global/traces/geminicode-trace-1.jsonl', 'trace'],
 			['worktrees', 'clean', 'mergedWorktree'],
 		]);
@@ -93,9 +91,8 @@ describe('storage usage', () => {
 		const { globalStorage, put } = await storage();
 		await put('audit/2026-01-01.jsonl');
 		await put('audit/2026-04-29.jsonl');
-		await put('pilot/2026-01-02.jsonl');
 		expect(await applyLogRetention(globalStorage, 0, new Date('2026-04-30T00:00:00Z'))).toBe(0);
-		expect(await applyLogRetention(globalStorage, 90, new Date('2026-04-30T00:00:00Z'))).toBe(2);
+		expect(await applyLogRetention(globalStorage, 90, new Date('2026-04-30T00:00:00Z'))).toBe(1);
 		expect(await readdir(path.join(globalStorage, 'audit'))).toEqual(['2026-04-29.jsonl']);
 		expect([undefined, 90, 3, 0, -1, 30.5, 'x'].map(keepLogsDays)).toEqual([90, 90, 7, 0, 0, 30, 90]);
 	});

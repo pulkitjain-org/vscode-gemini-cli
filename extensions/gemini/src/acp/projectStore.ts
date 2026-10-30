@@ -14,7 +14,7 @@
 
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
-import { samePath, writeFileAtomic } from './fsUtil';
+import { quarantine, samePath, writeFileAtomic } from './fsUtil';
 
 /** One of a project's repositories: `key` names it to the agents and is its folder's name in a thread's folder. */
 export interface ProjectRepo {
@@ -48,6 +48,8 @@ export interface ProjectConfig {
 	readonly defaults: ProjectDefaults;
 	/** When Gemini drafted the Memory text, until the user saves their own; the popup asks them to review it. */
 	readonly draftedAt?: number;
+	/** Where an unreadable `project.json` was moved aside (`quarantine`), so the project opens with its repository alone and says so. */
+	readonly broken?: string;
 }
 
 export const configFile = 'project.json';
@@ -87,13 +89,21 @@ export function suggestedName(repos: readonly ProjectRepo[]): string {
 	return shared.length ? shared.join('-') : names[0];
 }
 
-/** Reads a project's config; a project without one has just `repository`. */
+/**
+ * Reads a project's config; a project without one has just `repository`. A
+ * `project.json` that is there but cannot be parsed is moved aside, as the
+ * other stores do, and the config says so (`broken`) rather than passing
+ * for a project that was never set up.
+ */
 export async function readProjectConfig(folder: string, repository: string): Promise<ProjectConfig> {
-	const [raw, instructions, onDisk] = await Promise.all([
-		fs.readFile(path.join(folder, configFile), 'utf8').then(text => JSON.parse(text) as unknown, () => undefined),
+	const file = path.join(folder, configFile);
+	const [parsed, instructions, onDisk] = await Promise.all([
+		fs.readFile(file, 'utf8').then(text => JSON.parse(text) as unknown).then(raw => ({ raw, unreadable: false }), (err: NodeJS.ErrnoException) => ({ raw: undefined, unreadable: err.code !== 'ENOENT' })),
 		fs.readFile(path.join(folder, instructionsFile), 'utf8').catch(() => ''),
 		memoryFileNames(folder),
 	]);
+	const broken = parsed.unreadable ? await quarantine(file).catch(() => undefined) : undefined;
+	const raw = parsed.raw;
 	const saved = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
 	const repos: ProjectRepo[] = [];
 	for (const repo of Array.isArray(saved.repos) ? saved.repos : []) {
@@ -121,6 +131,7 @@ export async function readProjectConfig(folder: string, repository: string): Pro
 			...(typeof defaults.branchPrefix === 'string' ? { branchPrefix: defaults.branchPrefix } : {}),
 		},
 		...(typeof saved.draftedAt === 'number' ? { draftedAt: saved.draftedAt } : {}),
+		...(broken ? { broken } : {}),
 	};
 }
 

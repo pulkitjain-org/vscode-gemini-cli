@@ -13,7 +13,7 @@ import { setLabel } from './dom';
 import { selectMenu } from './selectMenu';
 import { toolRefContext } from './toolChips';
 import { setTransientNotice } from './transcript';
-import { state, strings } from './view';
+import { state, strings, vscode } from './view';
 
 const url = document.querySelector<HTMLScriptElement>('script[data-strings]')?.dataset.figmaDesign;
 let module: Promise<{ openFigmaDesign(options: FigmaDesignOptions): void } | undefined> | undefined;
@@ -31,6 +31,7 @@ export function openFigmaDesign(current?: readonly DesignFrame[]): void {
 	void module.then(loaded => loaded?.openFigmaDesign({
 		strings,
 		sizes: toolRefContext().figmaSizes ?? [],
+		...toolRefContext().designSystem ? {} : { setUpDesignSystem: () => vscode.postMessage({ type: 'command', command: 'gemini.designSystem.sync' }) },
 		...current ? { current } : {},
 		selectMenu,
 		setLabel,
