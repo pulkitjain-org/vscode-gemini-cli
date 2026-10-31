@@ -6,23 +6,27 @@
 // A sample program for Debug mode in the real app (DEBUG_MODE.md, Testing):
 // a shop's cart server with a discount bug. Applying the code SAVE10 and
 // then reloading the cart applies the discount a second time, so a cart of
-// 9.00 shows 7.29 instead of 8.10.
+// 9.00 shows 7.29 instead of 8.10. TypeScript, which Node runs as it is
+// (upstream's hygiene allows no new .js files).
 //
-//   node server.js            then open http://localhost:3001/cart?code=SAVE10 twice
-//   node server.js --check    prints both totals and exits 1 while the bug is there
+//   node server.mts           then open http://localhost:3001/cart?code=SAVE10 twice
+//   node server.mts --check   prints both totals and exits 1 while the bug is there
 
-'use strict';
+import * as http from 'node:http';
 
-const http = require('node:http');
+interface Item {
+	readonly name: string;
+	readonly price: number;
+}
 
-const codes = { SAVE10: 0.1 };
-const cart = { items: [{ name: 'Mug', price: 4.5 }, { name: 'Tea', price: 4.5 }], discounts: [] };
+const codes: Readonly<Record<string, number>> = { SAVE10: 0.1 };
+const cart: { readonly items: readonly Item[]; readonly discounts: number[] } = { items: [{ name: 'Mug', price: 4.5 }, { name: 'Tea', price: 4.5 }], discounts: [] };
 
-function subtotal(items) {
+function subtotal(items: readonly Item[]): number {
 	return items.reduce((sum, item) => sum + item.price, 0);
 }
 
-function applyDiscount(code) {
+function applyDiscount(code: string): void {
 	const rate = codes[code];
 	if (rate === undefined) {
 		return;
@@ -31,7 +35,7 @@ function applyDiscount(code) {
 	cart.discounts.push(rate);
 }
 
-function total() {
+function total(): number {
 	let value = subtotal(cart.items);
 	for (const rate of cart.discounts) {
 		value = value * (1 - rate);
@@ -39,7 +43,7 @@ function total() {
 	return Math.round(value * 100) / 100;
 }
 
-function handle(url) {
+function handle(url: URL): { readonly items: number; readonly total: number } {
 	const code = url.searchParams.get('code');
 	if (code) {
 		applyDiscount(code);
