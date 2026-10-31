@@ -151,6 +151,9 @@ export class FileAccessDeniedError extends Error {
 	}
 }
 
+/** A further check on a session's writes, such as Debug mode's phase guard: why the write is refused, or undefined. */
+export type WriteGuard = (sessionId: string, filePath: string, content: string) => Promise<string | undefined> | undefined;
+
 /** How many sessions' latest refusals are kept for `lastDenial`. */
 const keptDenials = 50;
 
@@ -160,7 +163,7 @@ const keptDenials = 50;
  * JSON-RPC error into "[object Object]" in its tool's failure, so the chat
  * shows this reason in its place (SessionUpdateAdapter).
  */
-export function createFileHandlers(fileSystem: ClientFileSystem, policy: (sessionId: string) => FileAccessPolicyOptions) {
+export function createFileHandlers(fileSystem: ClientFileSystem, policy: (sessionId: string) => FileAccessPolicyOptions, guard?: WriteGuard) {
 	const denials = new Map<string, string>();
 	const refuse = (sessionId: string, filePath: string, reason: string) => {
 		const error = new FileAccessDeniedError(filePath, reason);
@@ -188,7 +191,7 @@ export function createFileHandlers(fileSystem: ClientFileSystem, policy: (sessio
 			return { content: sliceLines(text ?? '', params.line, params.limit) };
 		},
 		async writeTextFile(params: acp.WriteTextFileRequest): Promise<acp.WriteTextFileResponse> {
-			const denied = await checkFileAccess(params.path, 'write', policy(params.sessionId));
+			const denied = await checkFileAccess(params.path, 'write', policy(params.sessionId)) ?? await guard?.(params.sessionId, params.path, params.content);
 			if (denied) {
 				throw refuse(params.sessionId, params.path, denied);
 			}

@@ -132,6 +132,7 @@ function sections(): MenuSection[] {
 				run: () => vscode.postMessage({ type: 'setFollow', on: !state.following }),
 			},
 			...hasTerminal() ? [{ icon: 'terminal', name: strings.run.openTerminal, detail: strings.run.openTerminalDetail, run: () => { closePlusMenu(false); vscode.postMessage({ type: 'command', command: 'gemini.agents.openTerminal' }); } }] : [],
+			...strings.debugStart ? [{ icon: 'debug-alt', name: strings.debugStart[0], detail: strings.debugStart[1], run: () => { closePlusMenu(); vscode.postMessage({ type: 'debugAction', action: 'start' }); } }] : [],
 		],
 	});
 	// Not in a project's coordinator chat, which runs in an empty folder with no branch.

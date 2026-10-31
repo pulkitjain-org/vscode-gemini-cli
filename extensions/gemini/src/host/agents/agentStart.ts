@@ -91,7 +91,7 @@ export interface AgentStartHost {
 	readonly diffPreview: DiffPreview;
 	readonly enhancer: ChatEnhancer;
 	/** The pane's own surface the chat reaches: what activate sets on it (the browser, the team tools, the index, usage), reviews, the spare session and its tabs. */
-	readonly view: Pick<AgentsView, 'browser' | 'teamTools' | 'index' | 'usage' | 'contextCost' | 'reviewChip' | 'openReview' | 'direct' | 'review' | 'cliDefaultMode' | 'prepareStart' | 'open' | 'openChanges'>;
+	readonly view: Pick<AgentsView, 'browser' | 'teamTools' | 'index' | 'debug' | 'usage' | 'contextCost' | 'reviewChip' | 'openReview' | 'direct' | 'review' | 'cliDefaultMode' | 'prepareStart' | 'open' | 'openChanges'>;
 	/** Try in Workspace, Plan Review and the design-system note, loaded once first needed. */
 	readonly features: Pick<AgentFeatures, 'tries' | 'planReviews' | 'onDemand'>;
 	readonly tabs: Pick<AgentTabs, 'reveal'>;
@@ -141,7 +141,7 @@ export class AgentStarter {
 		const cwd = project?.role === 'coordinator' ? coordinatorHome(record.id) : folder;
 		// An agent's worktree starts from a copy of its workspace's index; a coordinator has no code to index.
 		const indexServers = () => cwd === folder ? host.view.index?.mcpServersFor(record.id, folder, record.worktree ? host.model.workspace(record.workspaceId)?.folder : undefined) ?? [] : [];
-		const servers = () => [...host.view.browser?.mcpServersFor(record.id, folder) ?? [], ...host.view.teamTools?.mcpServersFor(record.id, folder) ?? [], ...indexServers(), ...project ? host.projects.mcpServersFor(host.model.agent(record.id) ?? record) : []];
+		const servers = () => [...host.view.browser?.mcpServersFor(record.id, folder) ?? [], ...host.view.teamTools?.mcpServersFor(record.id, folder) ?? [], ...indexServers(), ...host.view.debug?.servers(record.id) ?? [], ...project ? host.projects.mcpServersFor(host.model.agent(record.id) ?? record) : []];
 		const session = new AgentSession(host.service, cwd, record.sessionId, servers, openLater, {
 			// A project agent's session needs the project's server, which a spare never has, listening before it opens:
 			// a session opened without it, as from a restored tab or a thread warmed at project open, never gets the tools.
@@ -155,6 +155,7 @@ export class AgentStarter {
 					host.view.teamTools?.enableTeamTools(record.id);
 				}
 				host.view.index?.bindSession(record.id, folder, servers);
+				host.view.debug?.bindSession(record.id, servers);
 				// Refill, for the next agent, which most likely starts in the same folder; not in an agent's own worktree.
 				if (!host.model.agent(record.id)?.worktree) {
 					host.view.prepareStart(folder, spareDelayMs);
@@ -239,6 +240,9 @@ export class AgentStarter {
 					return found.map(symbol => ({ name: symbol.name, kind: symbol.kind, path: path.join(folder, symbol.path), line: symbol.line, endLine: symbol.endLine }));
 				},
 				toolChips: () => host.view.teamTools && toolChipsFor(host.view.teamTools),
+				// Debug mode's phase and hypotheses, with every prompt while the agent is in it.
+				turnNote: () => host.view.debug?.turnNote(record.id),
+				debugAction: (action, arg) => void vscode.commands.executeCommand('gemini.debug.action', record.id, action, arg),
 				review: () => host.view.reviewChip?.(record.id),
 				openReview: () => host.view.openReview?.(record.id),
 				openMergeRequest: () => void vscode.commands.executeCommand('gemini.team.openMergeRequest', record.id),

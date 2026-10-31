@@ -89,6 +89,10 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	'media/projectSettings.js': 13_000,
 	// The side question panel (/btw), about 4 KB, loaded the first time a side question is asked.
 	'media/sideChat.js': 5_000,
+	// Debug mode's bar and its reproduce, verify, rounds and clean-up cards, about 5 KB, loaded the first time a chat enters Debug mode.
+	'media/debugCard.js': 7_000,
+	// Debug mode's Evidence page, about 11 KB: its table and filters, about 4 KB, and the themed select menus with the menu class.
+	'media/evidence.js': 13_000,
 	// Home's menus (+, folder, mode, From Your Tools, a row's "...", an agent card's Try chevron) with the menu class,
 	// about 10 KB, loaded once Home has settled or on the first click on a menu's button. The Try chevron's menu added about 1 KB.
 	'media/homeMenus.js': 11_000,
@@ -126,6 +130,11 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// agents' calls, the drafts and the Review Page's host, with publishing only the changes kept (draftReview.ts,
 	// blockMerge.ts) and the page's localized strings.
 	'dist/confluence.js': 29_000,
+	// Debug mode, about 115 KB, loaded the first time one of its commands runs or a start finds a Debug mode that did not end
+	// (src/debug.ts): the debugger bridge and its logic, marked lines, one agent's Debug mode with its record, the endpoint,
+	// the picked log file, the Evidence page's host, and the geminicode-debug server's tools; its own copies of the pure
+	// modules they share with the extension. Only its commands and route (debugEntry.ts, under 1 KB) are in dist/extension.js.
+	'dist/debug.js': 125_000,
 	// The audit log, Run Benchmark and the trace recorder, about 31 KB, loaded the first time
 	// one of their commands runs (src/onDemand.ts). Finding or cloning a merge request's repository (reviewClone.ts,
 	// cloneSearch.ts) moved here from dist/extension.js: about 44 KB. Merge Back and Try in Workspace (agentMerge.ts,

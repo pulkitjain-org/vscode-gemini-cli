@@ -194,5 +194,11 @@
 	"configuration.chat.runCommands.off": "No Run button: replies' commands can only be copied.",
 	"configuration.index.buildOn.agentStart": "When an agent first starts in the folder.",
 	"configuration.index.buildOn.workspaceOpen": "When the window opens, for each folder in it.",
-	"configuration.index.buildOn.manual": "Only when you choose Index Now on the Index page."
+	"configuration.index.buildOn.manual": "Only when you choose Index Now on the Index page.",
+	"command.debug.start": "Debug with Gemini",
+	"command.debug.askWhy": "Ask Gemini why",
+	"command.debug.stop": "Stop Debug mode",
+	"command.debug.showEvidence": "Show Debug mode's evidence",
+	"configuration.debugMode.enabled": "Let agents enter Debug mode: they collect evidence from the running program (logpoints, breakpoints that take a snapshot and continue, and marked lines GeminiCode writes and removes) before they fix anything, and edits wait until the evidence confirms a cause. Debug with Gemini is then in an agent's More menu and the chat's + menu, and Ask Gemini why on a failed test in the Testing view.",
+	"colors.debugRegion": "The background of lines Gemini's Debug mode inserted into a file, until it removes them."
 }

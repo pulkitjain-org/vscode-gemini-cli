@@ -137,7 +137,7 @@ export class ChatTurn {
 	constructor(
 		private readonly service: Pick<ChatHost, 'client' | 'ensureReady' | 'open' | 'writeLog'>,
 		private readonly transcript: ChatTranscript,
-		private readonly options: Pick<ChatControllerOptions, 'project' | 'indexHint' | 'designSystemNote' | 'reviewPlan' | 'errorsAfterTurn' | 'sendTriedEdits' | 'teamTools'>,
+		private readonly options: Pick<ChatControllerOptions, 'project' | 'indexHint' | 'designSystemNote' | 'reviewPlan' | 'errorsAfterTurn' | 'sendTriedEdits' | 'teamTools' | 'turnNote'>,
 		private readonly features: TurnFeatures,
 		private readonly host: TurnHost,
 		private readonly post: (message: ToWebview) => void,
@@ -401,6 +401,7 @@ export class ChatTurn {
 			}
 			const carried = sessions.carriedConversation;
 			const context = this.pendingContext;
+			const note = this.options.turnNote?.();
 			const reactionRuleDue = !!session && !this.options.project && agentReactionsOn() && !this.reactionRuleSessions.has(session);
 			if (reactionRuleDue) {
 				this.reactionRuleSessions.add(session!);
@@ -411,7 +412,7 @@ export class ChatTurn {
 				steering: steer && !reactionOnly ? steeringNote() : undefined,
 				notes,
 				reactionRule: reactionRuleDue ? reactionRule() : undefined,
-				context,
+				context: note ? (context ? `${context}\n\n${note}` : note) : context,
 				carried,
 				undoNote: checkpoints.undoNote,
 				hint,

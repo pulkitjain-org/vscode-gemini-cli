@@ -5,6 +5,7 @@
 
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import type { DebugEntry } from './debug/debugEntry';
 import type { ChangeTotals } from '../acp/agentChanges';
 import { agentFolder, AgentRecord, AgentsModel, AgentsSnapshot, isArchived, type StoredAgents } from '../acp/agents';
 import { AgentsStore } from '../acp/agentsStore';
@@ -171,6 +172,8 @@ export class AgentsView implements vscode.Disposable {
 	openReview: ((agentId: string) => void) | undefined;
 	/** The index of each agent's folder and its attached docs, for every agent's session; set by activate. */
 	index: WorkspaceIndex | undefined;
+	/** Debug mode's route, in every session while it is turned on; set by activate. */
+	debug: DebugEntry | undefined;
 	/** Today's quota, for the chats' usage popover. */
 	usage: UsageMeter | undefined;
 	/** What each folder's model calls carry, for the chats' usage popover (/context); set by activate. */
@@ -301,7 +304,7 @@ export class AgentsView implements vscode.Disposable {
 			threadForked: (fork, parent, context) => this.projects.threadForked(fork, parent, context),
 		});
 		this.spare = new SpareSession(this.service, {
-			servers: folder => [...this.browser?.spareServers() ?? [], ...this.teamTools?.spareServers() ?? [], ...this.index?.spareServers(folder) ?? []],
+			servers: folder => [...this.browser?.spareServers() ?? [], ...this.teamTools?.spareServers() ?? [], ...this.index?.spareServers(folder) ?? [], ...this.debug?.servers() ?? []],
 			serving: () => [!!this.browser?.serving, !!this.teamTools?.serving, !!this.index?.serving],
 		});
 		this.review = new ReviewController(() => [...this.live.entries()].map(([id, live]) => ({ id, title: vscode.l10n.t("the agent \"{0}\"", this.model.agent(id)?.title ?? ''), changes: live.changes })));

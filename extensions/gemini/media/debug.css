@@ -1,0 +1,279 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Pulkit Jain. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+/* Debug mode: the bar and cards above a chat's composer (webview-src/debugCard.ts, linked the first time one shows) and the Evidence page (webview-src/evidence.ts). */
+
+.debug-bar {
+	display: flex;
+	flex-direction: column;
+	gap: var(--gc-space-2);
+	margin-bottom: var(--gc-space-3);
+	padding: var(--gc-space-2) var(--gc-space-3);
+	border: var(--gc-hairline) solid var(--gemini-border, var(--vscode-panel-border));
+	border-radius: var(--gc-radius-md);
+	background: var(--vscode-editorWidget-background, transparent);
+	font-size: var(--gc-text-sm);
+}
+
+.debug-head,
+.debug-line,
+.debug-actions,
+.debug-log,
+.debug-left,
+.debug-hint {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--gc-space-2);
+}
+
+.debug-title {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--gc-space-1);
+	font-weight: var(--gc-weight-semibold);
+}
+
+.debug-phases {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--gc-space-1);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.debug-phase {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--gc-space-1);
+	padding: 0 var(--gc-space-2);
+	color: var(--vscode-descriptionForeground);
+}
+
+.debug-phase.current {
+	border-radius: var(--gc-radius-pill);
+	background: var(--vscode-badge-background);
+	color: var(--vscode-badge-foreground);
+	font-weight: var(--gc-weight-medium);
+}
+
+.debug-phase.done {
+	color: var(--vscode-foreground);
+}
+
+.debug-spacer {
+	flex: 1;
+}
+
+.debug-summary,
+.debug-where,
+.debug-button.link,
+.evidence-where {
+	padding: 0;
+	border: none;
+	background: none;
+	color: var(--vscode-textLink-foreground);
+	font: inherit;
+	cursor: pointer;
+}
+
+.debug-summary:hover,
+.debug-where:hover,
+.debug-button.link:hover,
+.evidence-where:hover {
+	text-decoration: underline;
+}
+
+.debug-button {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--gc-space-1);
+	min-height: var(--gc-control);
+	padding: 0 var(--gc-space-3);
+	border: var(--gc-hairline) solid var(--vscode-button-border, transparent);
+	border-radius: var(--gc-radius-sm);
+	font: inherit;
+	cursor: pointer;
+}
+
+.debug-button.primary {
+	background: var(--vscode-button-background);
+	color: var(--vscode-button-foreground);
+}
+
+.debug-button.secondary {
+	background: var(--vscode-button-secondaryBackground, transparent);
+	color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+}
+
+.debug-button.primary:hover {
+	background: var(--vscode-button-hoverBackground);
+}
+
+.debug-button.secondary:hover {
+	background: var(--vscode-button-secondaryHoverBackground, var(--vscode-toolbar-hoverBackground));
+}
+
+.debug-button:focus-visible,
+.debug-summary:focus-visible,
+.debug-where:focus-visible,
+.evidence-where:focus-visible {
+	outline: var(--gc-focus-ring);
+	outline-offset: var(--gc-focus-offset);
+}
+
+.debug-heading,
+.debug-card-title {
+	font-weight: var(--gc-weight-semibold);
+}
+
+.debug-points {
+	display: flex;
+	flex-direction: column;
+	gap: var(--gc-space-1);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.debug-point {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr) auto auto auto auto;
+	align-items: center;
+	gap: var(--gc-space-2);
+}
+
+.debug-id,
+.debug-hypothesis,
+.debug-kind,
+.debug-hits,
+.debug-empty,
+.debug-status {
+	color: var(--vscode-descriptionForeground);
+}
+
+.debug-empty {
+	margin: 0;
+}
+
+.debug-card {
+	display: flex;
+	flex-direction: column;
+	gap: var(--gc-space-2);
+	padding-top: var(--gc-space-2);
+	border-top: var(--gc-hairline) solid var(--gemini-border, var(--vscode-panel-border));
+}
+
+.debug-steps {
+	margin: 0;
+	padding-left: var(--gc-space-5);
+}
+
+.debug-hint {
+	color: var(--vscode-editorWarning-foreground);
+}
+
+.debug-compare {
+	border-collapse: collapse;
+}
+
+.debug-compare td,
+.debug-compare th {
+	padding: var(--gc-space-1) var(--gc-space-2);
+	text-align: left;
+}
+
+.debug-compare tr.changed td {
+	font-weight: var(--gc-weight-medium);
+}
+
+.debug-diff {
+	margin: 0;
+	padding: var(--gc-space-2);
+	overflow-x: auto;
+	border-radius: var(--gc-radius-sm);
+	background: var(--vscode-textCodeBlock-background);
+	font-family: var(--gc-font-mono);
+	font-size: var(--gc-text-xs);
+}
+
+/* The Evidence page. */
+
+.evidence-page main {
+	display: flex;
+	flex-direction: column;
+	gap: var(--gc-space-3);
+	padding: var(--gc-space-4);
+}
+
+.evidence-title {
+	margin: 0;
+	font-size: var(--gc-text-lg);
+}
+
+.evidence-controls {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--gc-space-2);
+}
+
+.evidence-controls select,
+.evidence-controls input {
+	min-height: var(--gc-control);
+	padding: 0 var(--gc-space-2);
+	border: var(--gc-hairline) solid var(--vscode-input-border, transparent);
+	border-radius: var(--gc-radius-sm);
+	background: var(--vscode-input-background);
+	color: var(--vscode-input-foreground);
+	font: inherit;
+}
+
+.evidence-table,
+.evidence-compare-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: var(--gc-text-sm);
+}
+
+.evidence-table th,
+.evidence-table td,
+.evidence-compare-table th,
+.evidence-compare-table td {
+	padding: var(--gc-space-1) var(--gc-space-2);
+	border-bottom: var(--gc-hairline) solid var(--gemini-border, var(--vscode-panel-border));
+	text-align: left;
+	vertical-align: top;
+}
+
+.evidence-time,
+.evidence-point,
+.evidence-totals,
+.evidence-note,
+.evidence-empty {
+	color: var(--vscode-descriptionForeground);
+	white-space: nowrap;
+}
+
+.evidence-values code,
+.evidence-values pre {
+	font-family: var(--gc-font-mono);
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+
+.evidence-row.focused {
+	background: var(--vscode-editor-findMatchHighlightBackground);
+}
+
+.evidence-compare-table tr.changed td {
+	font-weight: var(--gc-weight-medium);
+}
+
+.evidence-footer {
+	display: flex;
+	align-items: center;
+	gap: var(--gc-space-3);
+}

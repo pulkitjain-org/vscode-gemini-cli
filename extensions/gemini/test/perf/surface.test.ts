@@ -31,8 +31,8 @@ export const surfaceBudgets = {
 	paletteCommands: 46,
 	// Commands the palette adds with gemini.developer.showTools on: 8.
 	developerCommands: 8,
-	// Settings that are not deprecated: 47 as of 1.7.
-	settings: 47,
+	// Settings that are not deprecated: 47 as of 1.7; 48 with gemini.debugMode.enabled, which turns Debug mode on.
+	settings: 48,
 	// Right-click entries an agent row shows at the top level: 12 as of 1.7; 6 in 1.8, the rest under More.
 	agentRowMenu: 6,
 	// Right-click entries on a workspace row: 7 as of 1.7; 5 in 1.8, the index's under Index.

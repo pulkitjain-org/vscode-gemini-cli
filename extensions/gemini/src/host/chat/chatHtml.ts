@@ -53,14 +53,18 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 	const threadCard = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'threadCard.js'));
 	const projectSettings = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'projectSettings.js'));
 	const sideChat = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'sideChat.js'));
+	const debugCard = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'debugCard.js'));
+	const debugStyle = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'debug.css'));
 	// About 470 strings, built once per kind of chat and kept: a chat's tab attaches its view again on every open and every agent switch.
-	const stringsAttribute = cachedStrings(`${project}|${fork}|${!project && reactionsOn()}`, (): ChatStrings => ({
+	const debugOn = !project && vscode.workspace.getConfiguration('gemini').get('debugMode.enabled') === true;
+	const stringsAttribute = cachedStrings(`${project}|${fork}|${!project && reactionsOn()}|${debugOn}`, (): ChatStrings => ({
 		placeholder: vscode.l10n.t("Ask Gemini anything about this workspace · / for commands, @ for files"),
 		fromCoordinator: vscode.l10n.t("From coordinator"),
 		// A project chat's strings load with the code they serve, from dist/onDemand.js: most chats aren't project chats.
 		...(project && projectStringsOf ? { project: projectStringsOf() } : {}),
 		...(fork ? { fork: forkStrings() } : {}),
 		side: sideStrings(),
+		...(debugOn ? { debugStart: [vscode.l10n.t("Debug with Gemini"), vscode.l10n.t("Find the bug from the running program's evidence before fixing it")] as const } : {}),
 		...(project ? {} : { reactions: reactionStrings() }),
 		placeholderFollowUp: vscode.l10n.t("Ask a follow-up · /btw asks on the side"),
 		placeholderWorking: process.platform === 'darwin' ? vscode.l10n.t("↩ to steer, Tab or ⌘↩ to queue · ⌥⌘; asks on the side") : vscode.l10n.t("Enter to steer, Ctrl+Enter to queue · Ctrl+Alt+; asks on the side"),
@@ -567,7 +571,7 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 			<div id="commit-box" class="usage-popover commit-box" role="dialog" hidden><label class="usage-heading" for="commit-message"></label><textarea id="commit-message" class="commit-message" rows="4" spellcheck="true"></textarea><p class="usage-note commit-note" role="status"></p><div class="permission-actions"><button type="button" class="secondary commit-cancel"></button><button type="button" class="primary commit-confirm"></button></div></div>
 		</div>
 	</div>
-	<script nonce="${nonce}" type="module" src="${script}" data-highlighter="${highlighter}" data-katex="${katex}" data-katex-style="${katexStyle}" data-fold-work="${foldWorkOn()}" data-emoji-picker="${emojiPicker}" data-figma-design="${figmaDesign}" data-thread-card="${threadCard}" data-project-settings="${projectSettings}" data-side-chat="${sideChat}" data-reactions="${!project && reactionsOn()}" data-research="${!project}" data-developer="${developerToolsOn()}" data-strings="${stringsAttribute}"></script>
+	<script nonce="${nonce}" type="module" src="${script}" data-highlighter="${highlighter}" data-katex="${katex}" data-katex-style="${katexStyle}" data-fold-work="${foldWorkOn()}" data-emoji-picker="${emojiPicker}" data-figma-design="${figmaDesign}" data-thread-card="${threadCard}" data-project-settings="${projectSettings}" data-side-chat="${sideChat}" data-debug-card="${debugCard}" data-debug-style="${debugStyle}" data-reactions="${!project && reactionsOn()}" data-research="${!project}" data-developer="${developerToolsOn()}" data-strings="${stringsAttribute}"></script>
 </body>
 </html>`;
 }

@@ -18,14 +18,15 @@ import type { TokenColors } from '../acp/tokenColors';
 import type { ContextBreakdown } from '../acp/contextCost';
 import type { PendingPromptView } from '../acp/promptQueue';
 import type { TryChoice } from './panelProtocol';
+import type { DebugAction, DebugBarView } from './debug/debugProtocol';
 
 /**
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 53;
+export const chatProtocolVersion = 54;
 /** The hash of the messages below (sourceHash.ts); test/acp/chatProtocolHash.test.ts fails when they change without a bump, and names the new value. */
-export const chatProtocolHash = '51d1b0eaf99a';
+export const chatProtocolHash = 'b33406811d90';
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.signIn', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog', 'gemini.agents.openTerminal', 'gemini.designSystem.sync'] as const;
@@ -461,7 +462,9 @@ export type FromWebview =
 	/** A failed Run's Send Output to Gemini: the command and its output go to the composer. */
 	| { readonly type: 'sendRunOutput'; readonly text: string }
 	/** "Get higher limits" in the usage popover, shown when a model's quota runs low. */
-	| { readonly type: 'openUpgrade' };
+	| { readonly type: 'openUpgrade' }
+	/** A debug bar or card button, or the + menu's Debug with Gemini (`start`); `arg` names a point or region. */
+	| { readonly type: 'debugAction'; readonly action: DebugAction; readonly arg?: string };
 
 export type ToWebview =
 	/** The chat's tab came to the front: the message box takes the focus. */
@@ -562,4 +565,6 @@ export type ToWebview =
 	/** How Run on shell blocks behaves, and where it runs. */
 	| { readonly type: 'run'; readonly run: RunView }
 	/** A shell block's Run, by the block's text. */
-	| { readonly type: 'runState'; readonly text: string; readonly state: RunState };
+	| { readonly type: 'runState'; readonly text: string; readonly state: RunState }
+	/** Debug mode's bar and cards (webview-src/debugCard.ts); undefined takes them away. */
+	| { readonly type: 'debug'; readonly view: DebugBarView | undefined };

@@ -22,6 +22,7 @@ import { TextDeltas } from '../acp/textDeltas';
 import { UpdateBatcher } from '../acp/updateBatcher';
 import { type TurnStall } from '../acp/agentClient';
 import { chatProtocolVersion, FromWebview, ProjectPanel, ProjectRepoView, ProjectSettingsView, ToWebview, type ViewStall } from './chatProtocol';
+import type { DebugBarView } from './debug/debugProtocol';
 import { stallNotice, toViewStatus, type TurnErrorNotice } from './chatStatus';
 import type { DiffPreview } from './diffPreview';
 import { onDidChangeReactions, reactionsOn } from './chatReactions';
@@ -94,6 +95,8 @@ export class ChatController implements vscode.Disposable {
 	private turnStartedAt: number | undefined;
 	/** The step last reported, so tool call updates report only a new one. */
 	private lastStep: string | undefined;
+	/** Debug mode's bar, while the agent is in it. */
+	private debugView: DebugBarView | undefined;
 
 	/** The saved chat being read in, while it is: prompts wait for it, so neither replaces the other. */
 	private restoring: Promise<void> | undefined;
@@ -637,6 +640,23 @@ export class ChatController implements vscode.Disposable {
 		return this.service.client.settings.model?.currentId;
 	}
 
+	/** The session's approval mode, when known. */
+	get mode(): string | undefined {
+		return this.service.client.settings.mode?.currentId;
+	}
+
+	/** The open session's id, which the agent's file requests carry. */
+	get sessionId(): string | undefined {
+		const state = this.service.client.state;
+		return state.kind === 'ready' ? state.sessionId : undefined;
+	}
+
+	/** Debug mode's bar and cards; kept, so a view attached again shows them. */
+	postDebug(view: DebugBarView | undefined): void {
+		this.debugView = view;
+		this.post({ type: 'debug', view });
+	}
+
 	/** Lists the shell programs allowed for this session, to forget some or all of them. */
 	async manageApprovals(): Promise<void> {
 		return this.permissions.manageApprovals();
@@ -832,6 +852,9 @@ export class ChatController implements vscode.Disposable {
 		}
 		void this.usage.postContext();
 		this.postTeamTools();
+		if (this.debugView) {
+			this.post({ type: 'debug', view: this.debugView });
+		}
 	}
 
 	/** Tells the view whether the team tools are on offer in its + menu, on for this agent, or not connected. */

@@ -261,6 +261,8 @@ export interface ChatStrings {
 	readonly side?: SideStrings;
 	/** Emoji reactions' strings; unset in a project's chat, which has none. */
 	readonly reactions?: ReactionStrings;
+	/** The + menu's Debug with Gemini and its detail, while gemini.debugMode.enabled is on. */
+	readonly debugStart?: readonly [string, string];
 	/** The badge on a thread's brief and the notes its coordinator relays. */
 	readonly fromCoordinator: string;
 	readonly placeholderFollowUp: string;

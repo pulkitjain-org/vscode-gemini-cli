@@ -80,7 +80,7 @@ describe('package.json', () => {
 		expect({ sections, deprecated, enums }).toEqual({
 			sections: [
 				{ title: 'Gemini: Account and CLI', order: 1, settings: 8 },
-				{ title: 'Gemini: Agents', order: 2, settings: 13 },
+				{ title: 'Gemini: Agents', order: 2, settings: 14 },
 				{ title: 'Gemini: Chat', order: 3, settings: 8 },
 				{ title: 'Gemini: Browser', order: 4, settings: 3 },
 				{ title: 'Gemini: Workspace Index and Docs', order: 5, settings: 5 },
@@ -127,6 +127,7 @@ describe('package.json', () => {
 			['gemini.agents.tryInWorkspace', 'viewItem =~ /\\.worktree/'],
 			['gemini.agents.takeBack', 'viewItem =~ /\\.trying/'],
 			['gemini.agents.moveToBranch', 'viewItem =~ /\\.movable/'],
+			['gemini.debug.start', 'viewItem =~ /^agent/ && config.gemini.debugMode.enabled'],
 			['gemini.agents.openTerminal', 'viewItem =~ /^agent/'],
 			['gemini.agents.openAsMarkdown', 'viewItem =~ /^agent/'],
 			['gemini.agents.keepTab', 'viewItem =~ /^agent/'],

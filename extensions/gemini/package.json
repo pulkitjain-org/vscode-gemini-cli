@@ -320,6 +320,30 @@
         "icon": "$(git-branch)"
       },
       {
+        "command": "gemini.debug.start",
+        "title": "%command.debug.start%",
+        "category": "%category%",
+        "icon": "$(debug-alt)"
+      },
+      {
+        "command": "gemini.debug.askWhy",
+        "title": "%command.debug.askWhy%",
+        "category": "%category%",
+        "icon": "$(debug-alt)"
+      },
+      {
+        "command": "gemini.debug.stop",
+        "title": "%command.debug.stop%",
+        "category": "%category%",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "gemini.debug.showEvidence",
+        "title": "%command.debug.showEvidence%",
+        "category": "%category%",
+        "icon": "$(output)"
+      },
+      {
         "command": "gemini.agents.stop",
         "title": "%command.agents.stop%",
         "category": "%category%",
@@ -1031,6 +1055,11 @@
           "group": "1_work@5"
         },
         {
+          "command": "gemini.debug.start",
+          "when": "view == gemini.agents && viewItem =~ /^agent/ && config.gemini.debugMode.enabled",
+          "group": "1_work@6"
+        },
+        {
           "command": "gemini.agents.openTerminal",
           "when": "view == gemini.agents && viewItem =~ /^agent/",
           "group": "2_open@1"
@@ -1134,6 +1163,13 @@
           "command": "gemini.mrReview.saveComment",
           "group": "inline@2",
           "when": "commentController == gemini.review"
+        }
+      ],
+      "testing/item/context": [
+        {
+          "command": "gemini.debug.askWhy",
+          "when": "config.gemini.debugMode.enabled && testResultState =~ /^(failed|errored)$/",
+          "group": "gemini@1"
         }
       ],
       "commandPalette": [
@@ -1282,6 +1318,22 @@
           "when": "false"
         },
         {
+          "command": "gemini.debug.start",
+          "when": "false"
+        },
+        {
+          "command": "gemini.debug.askWhy",
+          "when": "false"
+        },
+        {
+          "command": "gemini.debug.stop",
+          "when": "false"
+        },
+        {
+          "command": "gemini.debug.showEvidence",
+          "when": "false"
+        },
+        {
           "command": "gemini.agents.stop",
           "when": "activeWebviewPanelId == 'gemini.agent'"
         },
@@ -1379,6 +1431,18 @@
         }
       ]
     },
+    "colors": [
+      {
+        "id": "gemini.debugRegion",
+        "description": "%colors.debugRegion%",
+        "defaults": {
+          "dark": "#3794ff1f",
+          "light": "#0066bf14",
+          "highContrast": "#00000000",
+          "highContrastLight": "#00000000"
+        }
+      }
+    ],
     "configuration": [
       {
         "title": "%configuration.accountTitle%",
@@ -1504,6 +1568,13 @@
             "scope": "machine",
             "tags": ["advanced"],
             "markdownDescription": "%configuration.projects.maxRunningThreads%"
+          },
+          "gemini.debugMode.enabled": {
+            "type": "boolean",
+            "default": false,
+            "scope": "application",
+            "tags": ["advanced"],
+            "markdownDescription": "%configuration.debugMode.enabled%"
           },
           "gemini.notifications": {
             "type": "string",

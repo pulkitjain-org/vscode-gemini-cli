@@ -22,6 +22,7 @@
 //   project.ts         a project chat's New thread dialog and side panel
 //   projectSettings.ts a project chat's settings popup (settingsLogic.ts holds its state)
 //   runButtons.ts      Run on a reply's shell blocks, and how the command ended
+//   debugCardLoader.ts Debug mode's bar and cards (debugCard.ts, loaded with the first)
 
 import type { ItemUpdate } from '../src/acp/textDeltas';
 import { chatProtocolVersion, type ToWebview } from '../src/host/chatProtocol';
@@ -43,6 +44,7 @@ import { updatePlusMenu } from './plusMenu';
 import { openNewThread, showParentProject, showProjectPanel } from './project';
 import { pickedRepository, showProjectSettings } from './projectSettingsLoader';
 import { onSide } from './sideChatLoader';
+import { onDebug } from './debugCardLoader';
 import { setRunState, setRunView } from './runButtons';
 import { updateOutline } from './promptNav';
 import { setSideLinks } from './sideLinks';
@@ -289,6 +291,9 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			break;
 		case 'runState':
 			setRunState(message.text, message.state);
+			break;
+		case 'debug':
+			onDebug(message);
 			break;
 		case 'stall':
 			setStall(message.stall);

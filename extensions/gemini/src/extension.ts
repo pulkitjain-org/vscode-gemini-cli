@@ -48,7 +48,9 @@ import { measureFolderContextCost } from './host/contextCostProbe';
 import { ContextMeasures } from './host/chat/chatContext';
 import { FixWithGemini } from './host/quickFix';
 import { parseMemoryList, runCliCommands } from './acp/cliCommands';
-import { disposeGitIgnore } from './host/workspaceFileSystem';
+import { agentFileAccessPolicy, disposeGitIgnore } from './host/workspaceFileSystem';
+import { checkFileAccess } from './acp/fileAccess';
+import { DebugEntry } from './host/debug/debugEntry';
 import { logErrorCommand } from './host/errorNotice';
 import { beginStartup } from './host/startup';
 import { background, setBackgroundLog } from './host/background';
@@ -222,6 +224,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		agentInFront: () => agentsView.activeAgentId(),
 		log,
 	}));
+	// Debug mode: its route is in every session while it is turned on, and its code loads with its first command.
+	const debug = chunkLoader<typeof import('./debug')>(__dirname, 'debug');
+	const debugEntry = agentsView.debug = new DebugEntry(String(context.extension.packageJSON.version ?? ''), context.globalStorageUri, entry => new LazyFeature(['gemini.debug.start', 'gemini.debug.askWhy', 'gemini.debug.stop', 'gemini.debug.showEvidence', 'gemini.debug.action'], () => new (debug().DebugFeature)({
+		context, log, agents: agentsView, entry, service,
+		fileAccess: (folder, file) => checkFileAccess(file, 'write', agentFileAccessPolicy(folder)),
+	})));
+	context.subscriptions.push(debugEntry);
 	const teamFlows = new TeamFlows(context.extensionUri, teamTools, agentsView, context.globalState, onDemand);
 	// A reviewer agent's chat has a chip that opens its review.
 	agentsView.reviewChip = agentId => {

@@ -85,7 +85,7 @@ export interface RouterHost {
 export function chatRouter(
 	service: Pick<ChatHost, 'open' | 'writeLog'>,
 	transcript: ChatTranscript,
-	options: Pick<ChatControllerOptions, 'project' | 'reviewPlan' | 'sharedFiles' | 'teamTools'>,
+	options: Pick<ChatControllerOptions, 'project' | 'reviewPlan' | 'sharedFiles' | 'teamTools' | 'debugAction'>,
 	features: RouterFeatures,
 	host: RouterHost,
 ): (message: FromWebview) => void {
@@ -233,6 +233,7 @@ export function chatRouter(
 		measureContext: message => f.usage.onMessage(message),
 		runCommand: message => f.runs.onMessage(message),
 		sendRunOutput: message => f.runs.onMessage(message),
+		debugAction: message => options.debugAction?.(message.action, message.arg),
 	} satisfies ChatHandlers;
 
 	// A type the table lacks (a view script older than the protocol) does nothing, as before.

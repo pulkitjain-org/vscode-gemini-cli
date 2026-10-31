@@ -37,6 +37,9 @@ run({
 		'threadCard': path.join(srcDir, 'threadCard.ts'),
 		'projectSettings': path.join(srcDir, 'projectSettings.ts'),
 		'sideChat': path.join(srcDir, 'sideChat.ts'),
+		// Debug mode's bar and cards in the chat, loaded with the first one, and its Evidence page (src/host/debug/evidencePage.ts).
+		'debugCard': path.join(srcDir, 'debugCard.ts'),
+		'evidence': path.join(srcDir, 'evidence.ts'),
 		'katex-style': path.join(import.meta.dirname, 'node_modules', 'katex', 'dist', 'katex.min.css'),
 		'codicon': path.join(import.meta.dirname, 'node_modules', '@vscode', 'codicons', 'dist', 'codicon.css'),
 	},

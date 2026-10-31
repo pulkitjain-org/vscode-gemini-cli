@@ -13,7 +13,7 @@ import { AgentError, AgentErrorInfo, errorMessage, parseCliRetry } from '../acp/
 import { patchCliBundle } from '../acp/cliPatches';
 import { provideRipgrep } from '../acp/cliRipgrep';
 import { appRipgrep } from '../acp/index/ripgrepPath';
-import { createFileHandlers } from '../acp/fileAccess';
+import { createFileHandlers, type WriteGuard } from '../acp/fileAccess';
 import { PermissionBroker } from '../acp/permissions';
 import { CliResolution, isOlderThan } from '../acp/cliResolution';
 import { FolderTrust } from './folderTrust';
@@ -57,7 +57,9 @@ export class AgentService implements vscode.Disposable {
 	readonly runtime: AgentRuntime;
 	/** The workspace's file requests for every session, with the access policy applied. */
 	/** The agents' file reads and writes, each session held to its own folder (`agentFileAccessPolicy`). */
-	readonly files = createFileHandlers(new WorkspaceFileSystem(), sessionId => agentFileAccessPolicy(this.runtime.folderOf(sessionId) ?? getWorkspaceCwd()));
+	readonly files = createFileHandlers(new WorkspaceFileSystem(), sessionId => agentFileAccessPolicy(this.runtime.folderOf(sessionId) ?? getWorkspaceCwd()), (...args) => this.writeGuard?.(...args));
+	/** Debug mode's phase guard on every session's writes, while its bundle is loaded. */
+	writeGuard: WriteGuard | undefined;
 	/**
 	 * A session of the service's own, opened only when something asks for it
 	 * (`ensureReady`), such as Sign In: the status comes from

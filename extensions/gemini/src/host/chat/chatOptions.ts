@@ -22,6 +22,7 @@ import type { FinishedCommand, RunPlace } from '../../acp/runCommands';
 import type { RunOutcome } from '../agentTerminals';
 import type { ForkAction, ForkRequest, NewThread, ProjectSettingsAction, ProjectSettingsSave, SideLink, ThreadAction, ViewContextBreakdown, ViewSideLinks } from '../chatProtocol';
 import type { TryChoice } from '../panelProtocol';
+import type { DebugAction } from '../debug/debugProtocol';
 import type { ToolChips } from '../toolChips';
 import type { UsageMeter } from '../usageMeter';
 import type { FileMatch } from '../workspaceFiles';
@@ -137,6 +138,10 @@ export interface ChatControllerOptions {
 	contextCost?(): ChatContextCost | undefined;
 	/** The @ picker's Symbols: definitions named like `query` in the folder's index; undefined while the index is off, unavailable or not built. */
 	symbols?(query: string): Promise<readonly ChatSymbol[] | undefined>;
+	/** A note every prompt carries, such as Debug mode's phase and hypotheses; undefined adds none. */
+	turnNote?(): string | undefined;
+	/** A debug bar or card button (src/host/debug); unset where Debug mode is not offered. */
+	debugAction?(action: DebugAction, arg?: string): void;
 }
 
 /** What the side column shows and opens. */
