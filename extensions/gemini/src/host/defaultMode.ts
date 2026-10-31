@@ -10,7 +10,7 @@
 import * as vscode from 'vscode';
 import { configSection } from './configuration';
 
-/** `gemini.agents.defaultMode` as the user or an administrator set it; undefined when nobody did, so the CLI's own default applies. */
+/** `gemini.agents.defaultMode` as the user set it; undefined when nobody did, so the CLI's own default applies. */
 export function configuredDefaultMode(): string | undefined {
 	const info = vscode.workspace.getConfiguration(configSection).inspect<string>('agents.defaultMode');
 	const value = info?.workspaceFolderValue ?? info?.workspaceValue ?? info?.globalValue;

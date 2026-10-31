@@ -19,7 +19,7 @@ import { showError } from './errorNotice';
  * (when `gemini.browser.enabled`), driving the Integrated Browser through the
  * workbench's `_gemini.browser.*` commands (contrib/gemini/electron-browser/
  * geminiBrowser.ts). Sites other than local ones ask once per agent and
- * site, unless `gemini.browser.allowOtherSites` (a policy) is off; files
+ * site, unless `gemini.browser.allowOtherSites` is off; files
  * follow the agent's file access policy. Turning `gemini.browser.enabled`
  * off stops the server, so running agents lose the tools too.
  *

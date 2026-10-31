@@ -75,7 +75,7 @@ export interface TeamToolContext {
 	children?(): TeamChildren;
 	/** Told when a child server could not start and the call went through the in-process connector instead. */
 	childUnavailable?(server: string, reason: string): void;
-	/** Whether the admin allows shell commands (`gemini.tools.allowShell`); tools that run the project's build code are refused when not. */
+	/** Whether shell commands are allowed (`gemini.tools.allowShell`); tools that run the project's build code are refused when not. */
 	allowShell?(): boolean;
 	/** Whether `agent` may only read, such as a merge request's reviewer: it is offered no write tool, and any it asks for is refused. */
 	readOnly?(agent: string): boolean;
@@ -287,7 +287,7 @@ export const confirmToolNames: readonly string[] = [
 ];
 
 /**
- * The confirm class by server, for the admin policy: GeminiCode's own tools, and the same actions in
+ * The confirm class by server, for the tool policy: GeminiCode's own tools, and the same actions in
  * the servers a team names `jira` and `gitlab`, as their settings file does.
  */
 export function confirmToolGroups(): { server: string; tools: string[] }[] {

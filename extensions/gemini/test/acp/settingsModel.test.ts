@@ -6,7 +6,7 @@
 import { readFileSync } from 'node:fs';
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { filterSettings, helpSegments, inspectedValue, isPolicyLocked, parseSettingValue, resolveNls, sectionId, sectionTitle, settingControl, settingLabel, settingSections, settingTarget, type ContributedSection, type SettingRow } from '../../src/acp/settingsModel';
+import { filterSettings, helpSegments, parseSettingValue, resolveNls, sectionId, sectionTitle, settingControl, settingLabel, settingSections, settingTarget, type ContributedSection, type SettingRow } from '../../src/acp/settingsModel';
 
 const sections: ContributedSection[] = [
 	{
@@ -65,18 +65,6 @@ describe('settings model', () => {
 			{ text: 'Use ' }, { text: 'pnpm', code: true }, { text: ' here. See ' }, { text: 'gemini.cliPath', code: true }, { text: ' and the guide, always.' },
 		]);
 		expect(helpSegments('')).toEqual([]);
-	});
-
-	it('tells a policy\'s value from the settings files\', which inspect reports and get does not', () => {
-		expect(inspectedValue({ defaultValue: true, globalValue: false })).toBe(false);
-		expect(inspectedValue({ defaultValue: true, globalValue: false, workspaceValue: true })).toBe(true);
-		expect(inspectedValue(undefined)).toBeUndefined();
-		// get returns the files' value: no policy.
-		expect(isPolicyLocked(false, { defaultValue: true, globalValue: false })).toBe(false);
-		expect(isPolicyLocked(['a'], { defaultValue: [], globalValue: ['a'] })).toBe(false);
-		// get returns something no file holds: a policy decides it.
-		expect(isPolicyLocked(false, { defaultValue: true })).toBe(true);
-		expect(isPolicyLocked([], { defaultValue: [], globalValue: ['github'] })).toBe(true);
 	});
 
 	it('writes to the user\'s settings, or the workspace\'s for a resource-scoped setting with a folder open, never a machine one', () => {

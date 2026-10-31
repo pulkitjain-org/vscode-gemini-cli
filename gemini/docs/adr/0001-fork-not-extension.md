@@ -4,7 +4,7 @@
 
 ## Context
 
-The product owns the shell, the branding, the first-run flow, the admin policy and the Agents layout. An extension cannot change the title bar, editor groups, menus or policy templates. A fork can, at the cost of a monthly upstream move.
+The product owns the shell, the branding, the first-run flow and the Agents layout. An extension cannot change the title bar, editor groups or menus. A fork can, at the cost of a monthly upstream move.
 
 ## Decision
 

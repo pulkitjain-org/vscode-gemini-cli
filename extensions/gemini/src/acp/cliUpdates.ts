@@ -13,7 +13,7 @@ export const updateCheckInterval = 24 * 60 * 60 * 1000;
 export interface UpdateCheckState {
 	/** The `gemini.cli.checkForUpdates` setting. */
 	readonly enabled: boolean;
-	/** The `gemini.cli.version` setting; a pin, by the user or an admin, turns the check off. */
+	/** The `gemini.cli.version` setting; a pin turns the check off. */
 	readonly pinnedVersion: string | undefined;
 	/** Where the running CLI came from; installing changes nothing when `gemini.cliPath` is set. */
 	readonly source: CliSource;

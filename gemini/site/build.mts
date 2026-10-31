@@ -1025,7 +1025,7 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 			<div class="stack" data-stagger>
 				<div class="row reveal" data-reveal>
 					<span class="n">01</span>
-					<div><h3 class="serif">Approval modes</h3><p>Default asks every time. Auto Edit asks only before commands. Plan changes nothing. YOLO is off unless your admin enables it.</p></div>
+					<div><h3 class="serif">Approval modes</h3><p>Default asks every time. Auto Edit asks only before commands. Plan changes nothing. YOLO is off until you allow it.</p></div>
 				</div>
 				<div class="row reveal" data-reveal>
 					<span class="n">02</span>

@@ -150,7 +150,7 @@ export function planBuildModels(planUsage: readonly { readonly model: string; re
 /** The approval modes `gemini.agents.defaultMode` takes: gemini-cli 0.64's `ApprovalMode` ids. */
 export const startModeIds = [defaultModeId, autoEditModeId, planModeId, yoloModeId] as const;
 
-/** The mode a new agent's first session switches to, from `gemini.agents.defaultMode`: undefined for Default, an unknown value or one policy turns off. */
+/** The mode a new agent's first session switches to, from `gemini.agents.defaultMode`: undefined for Default, an unknown value or one the approval settings turn off. */
 export function defaultStartMode(setting: unknown, isAllowed: (modeId: string) => boolean): string | undefined {
 	return typeof setting === 'string' && setting !== defaultModeId && (startModeIds as readonly string[]).includes(setting) && isAllowed(setting) ? setting : undefined;
 }

@@ -6,9 +6,10 @@ A project hands a larger piece of work to a team of agents. You talk to a **coor
 
 ## Start a project
 
-1. Choose **+** next to **Projects** in the agent list, or on Home.
-2. Pick a folder in a Git repository: an open workspace or any other folder.
-3. The project chat opens at once, named after the repository. Describe the work and press Return.
+1. Choose **New Project** at the top of the Agents pane and pick a folder in a Git repository: an open workspace or any other folder. Or right-click a repository in the pane and choose **New Project** there.
+2. The project chat opens at once, named after the repository. Describe the work and press Return.
+
+You can also start one from Home: open the chevron beside **On a branch**, pick **New Project in** your repository, describe the work and choose **Start Project**.
 
 The coordinator plans the work and starts a thread for each part.
 
@@ -19,7 +20,7 @@ The coordinator plans the work and starts a thread for each part.
 
 ## Talk to the coordinator
 
-The coordinator never edits files or reads the code itself. It plans, starts threads, passes your follow-ups to them and answers questions about their progress. It runs on a Flash model in an empty folder of its own, and reads the repository's context files, such as `GEMINI.md` and `AGENTS.md`. Once a repository's [index](agents.md#workspace-index-and-docs) is built, the coordinator also gets its outline (folders, languages and public definitions), so the threads it starts are pointed at the right parts of the code.
+The coordinator never edits files or reads the code itself. It plans, starts threads, passes your follow-ups to them and answers questions about their progress. It runs in an empty folder of its own, on a Flash model unless you pick another in its chat, and reads the repository's context files, such as `GEMINI.md` and `AGENTS.md`. Once a repository's [index](agents.md#workspace-index-and-docs) is built, the coordinator also gets its outline (folders, languages and public definitions), so the threads it starts are pointed at the right parts of the code.
 
 Only your messages wake the coordinator. When a thread finishes, asks something or fails, you take it up in that thread; the coordinator sees what changed the next time you write to it. A follow-up on work a thread already has goes to that thread, whether it's working, waiting or done.
 
@@ -31,23 +32,23 @@ If a coordinator turn fails, for example on a quota or network error, its error 
 
 ## Threads
 
-Each thread shows as a card in the project chat with its state, branch, changed lines and time, and updates in place. Click its title, or **Open**, to open its chat in a tab of its own. A thread's questions and permission requests stay in its own chat (**Open to Answer**). A line of three steps on the card, **In the thread**, **Trying in your workspace** and **Kept**, shows where its work is.
+Each thread has a card in the project chat that shows its state, branch, changed lines and time, and updates in place. Click its title, or **Open**, to open its chat in a tab of its own. A thread's questions and permission requests stay in its own chat (**Open to Answer**). A line of three steps on the card, **In the thread**, **Trying in your workspace** and **Kept**, shows where its work is.
 
 ![Finished thread cards in the project chat, with the side panel counting threads by state and each thread's requests](../../site/media/project-threads-dark.webp)
 
-Threads run in the repository's worktrees with all of its rules, and a thread's agent starts while its folder is set up. If you quit while a thread is still being set up, it keeps its brief: when the project opens again, the setup runs again and the thread gets its brief then. In the agent list, the **Projects** section lists each project with its threads below it.
+Threads run in the repository's worktrees with all of its rules, and a thread's agent starts while its folder is set up. If you quit while a thread is still being set up, it keeps its brief: when the project opens again, the setup runs again and the thread gets its brief then. In the Agents pane, each project is a row under its folder, with its threads below it.
 
 When the coordinator passes a thread a note while the thread is working, the note shows above the thread's input as **From coordinator: goes after this turn**. It goes when the turn ends; **Send now** gives it to the thread after its current step instead, and **Remove** drops it. A note held while a thread is still being set up survives quitting, and goes when the project opens again.
 
 ### How many threads run at once
 
-At most four of a project's threads work at once (`gemini.projects.maxRunningThreads`, which your administrator can lock). A thread started beyond that, by you or the coordinator, waits: the side panel lists it as waiting, with **Starts when a running thread finishes** and how many run, and it starts on its own when one finishes its turn, is merged or is removed. Notes the coordinator sends it meanwhile wait with it. A thread that is planned or done doesn't count as running.
+At most four of a project's threads work at once (`gemini.projects.maxRunningThreads`). A thread started beyond that, by you or the coordinator, waits: the side panel lists it as waiting, with **Starts when a running thread finishes** and how many run, and it starts on its own when one finishes its turn, is merged or is removed. Notes the coordinator sends it meanwhile wait with it. A thread that is planned or done doesn't count as running.
 
 When today's Gemini quota is over 90% used, as the usage meter in the status bar reads it, new threads wait too: a banner in the side panel says how many it holds and when the quota resets. They start when it resets, or at once with **Start Anyway**. A sign-in with an API key has no quota to read, so nothing waits for it.
 
 ## Start a thread yourself
 
-Choose **New thread** in the project chat's **+** menu, or **New Thread** on the project's row in the agent list. Give it a title, what it should do, a branch and a model. It starts at once, and the coordinator hears about it afterwards.
+Choose **New thread** in the project chat's **+** menu, or **New Thread** on the project's row in the Agents pane. Give it a title, what it should do, a branch and a model. It starts at once, and the coordinator hears about it afterwards.
 
 Tick **Plan first** to have it write a short plan and wait for **Approve Plan** before changing files.
 
@@ -67,8 +68,8 @@ When a thread finishes with changes, its card offers **Try in Workspace** and **
 
 While you try a thread's work:
 
-- **Ask for changes in the thread.** When its turn ends, your workspace updates by itself, and the card counts the updates.
-- **Edit the files yourself.** Your edits stay. **Send My Edits to the Thread** copies them into the thread's folder, so its next turn builds on them.
+- Ask the thread for changes. When its turn ends, your workspace updates by itself, and the card counts the updates.
+- Edit the files yourself. Your edits stay, and **Send My Edits to the Thread** copies them into the thread's folder, so its next turn builds on them.
 - **Keep Changes** makes the changes yours and finishes the thread. They stay unstaged; commit them when you're ready. Committing the tried files yourself keeps them too.
 - **Take Back** removes the thread's changes from your workspace. Edits you made yourself stay, and **Try in Workspace** brings the changes back.
 
@@ -122,4 +123,4 @@ When the project chat is at least 1000 px wide, a panel on its right lists the t
 
 ## Turn Projects off
 
-Projects are on by default. To hide them, turn off `gemini.projects.enabled` in Settings. **New Project** then offers to turn them back on.
+Projects are on by default. To hide them, turn off `gemini.projects.enabled` in Settings. **Gemini: New Project** in the Command Palette then offers to turn them back on.

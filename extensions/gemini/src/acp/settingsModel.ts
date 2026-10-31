@@ -6,7 +6,7 @@
 // The Settings page's model, built from the extension's own contributed
 // configuration (package.json), so the page lists every setting and never
 // drifts from it: its sections in order, each setting with the control that
-// edits it, and what is advanced, deprecated or an administrator's.
+// edits it, and what is advanced or deprecated.
 
 export interface ContributedSetting {
 	readonly type?: string | readonly string[];
@@ -193,31 +193,9 @@ export function helpSegments(help: string): HelpSegment[] {
 	return segments;
 }
 
-/** What `WorkspaceConfiguration.inspect` reports for a key: the values the settings files hold. */
-export interface InspectedSetting {
-	readonly defaultValue?: unknown;
-	readonly globalValue?: unknown;
-	readonly workspaceValue?: unknown;
-	readonly workspaceFolderValue?: unknown;
-}
-
 /** Whether two setting values are the same, by their JSON. */
 export function sameValue(a: unknown, b: unknown): boolean {
 	return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
-}
-
-/** The value the settings files give a key, as the editor merges them: the folder's, the workspace's, the user's, else the default. */
-export function inspectedValue(inspected: InspectedSetting | undefined): unknown {
-	return inspected?.workspaceFolderValue ?? inspected?.workspaceValue ?? inspected?.globalValue ?? inspected?.defaultValue;
-}
-
-/**
- * Whether an administrator's policy decides the setting. The editor's `get`
- * returns a policy's value ahead of every settings file, while `inspect`
- * reports only the files, so a value that matches none of them is a policy's.
- */
-export function isPolicyLocked(effective: unknown, inspected: InspectedSetting | undefined): boolean {
-	return !sameValue(effective, inspectedValue(inspected));
 }
 
 export type SettingTarget = 'global' | 'workspace';

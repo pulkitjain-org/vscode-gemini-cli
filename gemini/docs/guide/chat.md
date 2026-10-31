@@ -1,6 +1,6 @@
 # Chat and prompting
 
-Everything you need to talk to an agent sits in the composer's **+** menu. Attach the files that matter, turn a rough request into a precise prompt, and let the agent plan before it builds.
+You talk to an agent in its chat. The composer at the bottom is where you write, attach files and pick the mode and model, and most of what it offers is in its **+** menu.
 
 ![The composer's + menu with Fork, the mode, files, context, Follow the agent, Open Terminal and your team's tools](../../site/media/docs/plus-menu-dark.webp)
 
@@ -8,17 +8,18 @@ Everything you need to talk to an agent sits in the composer's **+** menu. Attac
 
 The **+** menu at the bottom left of the composer holds:
 
-- **Mode**: Default, Auto Edit, Plan and, if your admin allows it, YOLO. See [Approval modes](review.md#approval-modes). In a trusted folder that is a Git repository with at least one commit, Auto Edit is tagged **Recommended here**: its edits apply at once and you review them with Keep and Undo, while commands still ask. The tag never switches the mode for you. `gemini.agents.defaultMode` sets the mode new agents start in.
+- **Fork**: start a new agent from this conversation. See [Fork an agent](agents.md#fork-an-agent).
+- **Mode**: Default, Auto Edit and Plan, and YOLO once you turn on `gemini.approval.allowYolo`. Turning off `gemini.approval.allowAutoEdit` removes Auto Edit. See [Approval modes](review.md#approval-modes). In a trusted folder that is a Git repository with at least one commit, Auto Edit is tagged **Recommended here**: its edits apply at once and you review them with Keep and Undo, while commands still ask. The tag never switches the mode for you. `gemini.agents.defaultMode` sets the mode new agents start in.
 - **Files** and **Context**: attach files from anywhere, or workspace files with `@`.
 - **Use team tools**, while a team tool is connected and this agent doesn't have them yet: gives the agent Jira, GitLab and the other connected tools for good. A ticket, merge request, page or design in a message or an attachment does this by itself; until then the agent's model calls carry none of their definitions. See [Team tools](team-tools.md#in-chat).
 - **Follow the agent**: open each file the agent reads or edits.
-- **Model**: the models the terminal's `/model` shows, in the same order. The model you pick is used for every new or reopened agent. **Set as Default for the CLI**, the menu's last row, saves it as the model the Gemini CLI itself starts on (`model.name` in `~/.gemini/settings.json`), as the terminal's `/model` dialog does, so a `gemini` started in a terminal uses it too.
-- **Fork**: start a new agent from this conversation. See [Fork an agent](agents.md#fork-an-agent).
 - **Open Terminal**: the agent's own terminal, in its folder. See [Terminal](terminal.md).
+- **Open Merge Request**, with GitLab connected, and **From your tools**, which attaches a ticket, merge request, Figma design or Confluence page. See [Team tools](team-tools.md).
+- **Model**: the models the terminal's `/model` shows, in the same order. The model you pick is used for every new or reopened agent. **Set as Default for the CLI**, the menu's last row, saves it as the model the Gemini CLI itself starts on (`model.name` in `~/.gemini/settings.json`), as the terminal's `/model` dialog does, so a `gemini` started in a terminal uses it too.
 - **Usage and quota**: how full the chat is, what each turn carries, and today's quota.
 - **Skills and commands**: the same list as typing `/`.
 
-A mode other than Default shows as a chip beside **+**; click its × to go back. From the keyboard, <kbd>⇧Tab</kbd> steps to the next mode and <kbd>⌘Y</kbd> toggles YOLO, as in the Gemini CLI's own terminal (<kbd>⌘.</kbd> still steps too); <kbd>⌥⌘.</kbd> switches the model (**Gemini: Cycle Approval Mode**, **Gemini: Toggle YOLO** and **Gemini: Switch Model...**), and <kbd>⌃⌘I</kbd> puts the cursor back in the message box (**Gemini: Focus Chat**).
+A mode other than Default shows as a chip beside **+**; click its × to go back. From the keyboard, <kbd>⇧Tab</kbd> or <kbd>⌘.</kbd> steps to the next mode and <kbd>⌘Y</kbd> toggles YOLO, as in the Gemini CLI's own terminal; <kbd>⌥⌘.</kbd> switches the model (**Gemini: Cycle Approval Mode**, **Gemini: Toggle YOLO** and **Gemini: Switch Model...**), and <kbd>⌃⌘I</kbd> puts the cursor back in the message box (**Gemini: Focus Chat**).
 
 ## Attaching context
 
@@ -34,17 +35,15 @@ A mode other than Default shows as a chip beside **+**; click its × to go back.
 
 The agent can't read secret files such as `.env` and private keys, or git-ignored files.
 
-GeminiCode has no inline (ghost text) completions as you type, and none are planned: the agents, inline edit and **Fix with Gemini** are how Gemini changes code in the editor.
+GeminiCode has no inline (ghost text) completions as you type: the agents, inline edit and **Fix with Gemini** are how Gemini changes code in the editor.
 
 ## Slash commands and skills
 
-Type `/` at the start of the composer, or choose **Skills and commands** in the **+** menu, to list commands, under a heading for each source: GeminiCode's own first, then the team's, the skills and the CLI's. Keep typing to filter, then press <kbd>Tab</kbd> or <kbd>Enter</kbd> to complete the name and add arguments.
+Type `/` at the start of the composer, or choose **Skills and commands** in the **+** menu, to list commands under a heading for each source: GeminiCode's own first, then the team's, the skills and the Gemini CLI's. Keep typing to filter, then press <kbd>Tab</kbd> or <kbd>Enter</kbd> to complete the name and add arguments.
 
-- **Gemini CLI commands** such as `/init`, `/memory` and `/restore` run in the CLI.
-- **The Gemini CLI's commands, as GeminiCode offers them**, listed first under the names the terminal uses: `/resume` (also `/chat`) browses the saved sessions and restores one, `/rewind` goes back to before a message, `/plan [goal]` switches to Plan mode with a goal and `/plan copy` copies the latest plan, `/compress` summarizes the older work (below), `/context` (also `/stats`) shows what each turn carries (see [Usage and quota](#usage-and-quota)), and `/permissions trust` opens the folder trust dialog.
-- **GeminiCode's own**: `/btw` asks a [side question](#side-questions), which can read the code too, and `/fork` forks the agent.
-- **Team commands** are TOML files in `.gemini/commands/` in the workspace, or in `~/.gemini/commands/` for your own. It's the Gemini CLI's own format, so the same files work in the terminal: `git/commit.toml` becomes `/git:commit`.
-- **Skills** are folders with a `SKILL.md`, in `.gemini/skills/` (or `.agents/skills/`) in the workspace, or in `~/.gemini/skills/` for your own. Picking one asks the agent to load it, with what you typed after the name as the task.
+GeminiCode's own commands include the Gemini CLI commands it runs itself, under the names the terminal uses: `/resume` (also `/chat`) browses the saved sessions and restores one, `/rewind` goes back to before a message, `/plan [goal]` switches to Plan mode with a goal and `/plan copy` copies the latest plan, `/compress` summarizes the older work (see [Compress](#compress)), `/context` (also `/stats`) shows what each turn carries (see [Usage and quota](#usage-and-quota)), and `/permissions trust` opens the folder trust dialog. Two more are GeminiCode's alone: `/btw` asks a [side question](#side-questions), and `/fork` forks the agent. The CLI's other commands, such as `/init`, `/memory` and `/restore`, run in the CLI.
+
+Team commands are TOML files in `.gemini/commands/` in the workspace, or in `~/.gemini/commands/` for your own. They use the Gemini CLI's own format, so the same files work in the terminal: `git/commit.toml` becomes `/git:commit`.
 
 ```toml
 description = "Review a file for bugs"
@@ -52,6 +51,8 @@ prompt = "Review {{args}} for bugs and suggest fixes."
 ```
 
 In a team command, `{{args}}` is replaced by what you typed after the name, `@{path}` puts a file's text in the prompt, and `!{command}` the output of a shell command run in the agent's folder. Before any `!{command}` runs, GeminiCode shows every command and asks.
+
+Skills are folders with a `SKILL.md`, in `.gemini/skills/` (or `.agents/skills/`) in the workspace, or in `~/.gemini/skills/` for your own. Picking one asks the agent to load it, with what you typed after the name as the task.
 
 ## Enhance prompt
 
@@ -67,7 +68,7 @@ The rewrite replaces your draft as Gemini writes it; **Cancel** or <kbd>esc</kbd
 
 ## Plan, then build
 
-In **Plan** mode the agent reads and proposes a plan without changing anything. When a reply ends in Plan mode, **Approve Plan** under it switches the chat back to the mode it was in before Plan (Default when it started in Plan) and asks Gemini to carry out the plan. The chevron beside it is the CLI's own approval dialog, in its words: **Yes, automatically accept edits** builds in Auto Edit, **Yes, manually accept edits** builds in Default, **Edit or comment the plan first** opens Plan Review, and **Not yet** leaves the plan as it is. When you switched to another model after planning, a line under the button names both: "Builds with … ; planned with …". The Gemini CLI doesn't say ahead which model Auto will pick, so with Auto there is no such line.
+In **Plan** mode the agent reads and proposes a plan without changing anything. When a reply ends in Plan mode, **Approve Plan** under it switches the chat back to the mode it was in before Plan (Default when it started in Plan) and asks Gemini to carry out the plan. The chevron beside it is the CLI's own approval dialog, in its words: **Yes, automatically accept edits** builds in Auto Edit, **Yes, manually accept edits** builds in Default, **Edit or comment the plan first** opens Plan Review, and **Not yet** leaves the plan as it is. When you switched to another model after planning, a line under the button names both: "Builds with ...; planned with ...". The Gemini CLI doesn't say ahead which model Auto will pick, so with Auto there is no such line.
 
 ![An agent in Plan mode writing a plan that ends with Approve Plan and Review Plan](../../site/media/showcase-plan-dark.webp "clip")
 
@@ -162,11 +163,11 @@ The panel shows each part as it's read; **Stop** ends every worker and reports w
 
 ![A reply with typeset math and coloured code](../../site/media/replies-dark.webp)
 
-Each message you send shows the time you sent it, **Rewind** and **Copy**. Under each reply is how long the agent worked, the time it finished and **Copy**.
+Each message you send shows the time you sent it, **Rewind** (the clock) and **Copy**. Under each reply are how long the agent worked, the time it finished, **Copy** and **Fork**, with **Retry** on the latest reply and **Undo** on one that changed files; see [Undo or retry a reply](review.md#undo-or-retry-a-reply).
 
 ### Reacting to replies
 
-Sometimes a reply only needs a nod, or a quick "no, not that". React to it with an emoji instead of writing a message.
+When a reply only needs a nod, or a quick "no, not that", react to it with an emoji instead of writing a message.
 
 The smiley at the end of a reply's row opens the reaction bar when you point at it or tab to it. It has four quick reactions, and a smiley of its own that opens every emoji, with search and the ones you used last.
 
@@ -189,7 +190,7 @@ A reaction is sent straight away. It shows as a chip on the reply and as a line 
 
 Gemini may react to your message too, with a small emoji on its corner, when it has something to add. Most messages get none.
 
-To change what an emoji asks for, or to give a new one a meaning, set `gemini.chat.reactions.meanings`, such as `{ "🚀": "Go ahead, then commit with a short message." }`. In a workspace's settings it is shared with everyone who opens the folder. `gemini.chat.reactions.agentReactions` turns Gemini's own reactions off, and `gemini.chat.reactions.enabled` turns reactions off altogether.
+To change what an emoji asks for, or to give a new one a meaning, set `gemini.chat.reactions.meanings`, such as `{ "🚀": "Go ahead, then commit with a short message." }`. In a workspace's settings it is shared with everyone who opens the folder. `gemini.chat.reactions.enabled` turns reactions off, Gemini's own included.
 
 Reactions work in agents' and threads' chats. A project's coordinator chat has none.
 
@@ -203,8 +204,8 @@ The composers underline misspelt words; right-click a word for suggestions or **
 
 The ring at the bottom right of the composer shows how full this chat's context window is. It turns amber at 50%, where Gemini starts summarising older messages, and red at 90%. Click it, or choose **Usage and quota** in the **+** menu, for:
 
-- **Context window**: the tokens in the latest request out of the model's limit, and what they are: the conversation, the MCP servers' tools, the rule files (`GEMINI.md` and the files it imports), GeminiCode's own tools and the CLI's own prompt. The parts are measured with one short request each on the lightest model, in the background, at most once a day per folder; **Measure Again** measures now. The rule files are listed as the CLI loaded them, with their sizes, and one over 20 KB gets a warning, since every turn carries it. Typing `/context` opens the same view. Settings' **Context cost** shares the measure.
-- **Today's quota**: how much of today's quota each model has used for your account, and when it resets. **All models** shows the rest.
+- **Context window**: the tokens in the latest request out of the model's limit, and what they are: the conversation, the MCP servers' tools, the rule files (`GEMINI.md` and the files it imports), GeminiCode's own tools and the CLI's own prompt. The parts are measured with one short request each on the lightest model, in the background, at most once a day per folder; **Measure Again** measures now. The rule files are listed as the CLI loaded them, with their sizes, and one over 20 KB gets a warning, since every turn carries it. Typing `/context` opens the same view, and Settings' **Context per model call** shows the same measure.
+- **Today's quota**: how much of today's quota each model has used for your account, and when it resets. **All N models** shows the rest.
 - **This chat**: input, cached and output tokens over the chat's replies, with **Details by model**.
 
 Hover the **Gemini** item in the status bar to see today's quota too; once a model passes 80% it shows the percentage, and the popover offers **Get higher limits**. The quota needs a Google sign-in. Turn it off with `gemini.usageMeter.enabled`.
@@ -215,7 +216,7 @@ Hover the **Gemini** item in the status bar to see today's quota too; once a mod
 
 When a session's history reaches half of the model's context window, the Gemini CLI summarises the older part and keeps the most recent 30% as it was. Its `/compress` does the same on request. Both happen only in memory: when the session is reopened, after a restart for example, it comes back whole.
 
-**Compress** in GeminiCode does the same when you ask, under the CLI's name, and the result is kept. Type `/compress`, or choose **Compress** in the usage popover, which offers it once the agent has answered and is idle. Once the context passes 40%, the chat also offers it, once.
+GeminiCode's **Compress** summarises when you ask, and keeps the result. Type `/compress`, or choose **Compress** in the usage popover, which offers it once the agent has answered and is idle. Once the context passes 40%, the chat suggests it once.
 
 Gemini writes a summary of the work so far (goal, decisions, files, current state and next steps), and the chat moves to a new session made of that summary and your latest messages, as they were. A line across the chat shows the tokens before and after, with **View Summary** and **Undo**. Undo goes back to the full session, even after a restart. The conversation above the line stays in the chat either way.
 
@@ -226,9 +227,9 @@ Writing the summary is a model turn, so it counts toward your quota.
 ### Finding your way
 
 - Once a chat has two prompts, a thin outline of them runs down its left edge, one tick for each. Point at a tick to see the prompt and the start of its reply, and click it to jump there. <kbd>⌥⌘↑</kbd> and <kbd>⌥⌘↓</kbd> do the same.
+- **Latest**, above the input, takes you back to the newest message.
+- **Open Chat as Markdown**, under **More** in an agent's right-click menu or in the Command Palette (for the agent in front), opens the whole conversation as a document you can search, save or share.
 
 ![The prompt outline at the chat's left edge, with a tick's card showing a prompt and the start of its reply](../../site/media/prompt-outline-dark.webp)
-- **Latest**, above the input, takes you back to the newest message.
-- **Open Chat as Markdown**, in an agent's right-click menu or the Command Palette (for the agent in front), opens the whole conversation as a document you can search, save or share.
 
 For a fresh session, start a new agent. Removing an agent you no longer need also deletes its saved conversation.

@@ -64,13 +64,13 @@ export type BrowserAction = 'goto' | 'back' | 'forward' | 'reload' | 'click' | '
 
 /** Decides which pages an agent may see. */
 export interface BrowserGate {
-	/** For a site that is not local: asks the user, or follows policy. */
+	/** For a site that is not local: asks the user, or follows the settings. */
 	allow(agent: string, url: URL): Promise<boolean>;
 	/** The file access policy for the agent's `file:` pages, as for its file reads. */
 	files(agent: string): FileAccessPolicyOptions;
 	/** Whether the browser is on; when it is off every tool call fails. */
 	enabled?(): boolean;
-	/** Whether agents may see sites other than local ones at all (`gemini.browser.allowOtherSites`, also a policy). */
+	/** Whether agents may see sites other than local ones at all (`gemini.browser.allowOtherSites`). */
 	otherSites(): boolean;
 	/** The user handed the agent a page at `url`: lets it see that page's site, as if it had asked and the user allowed it. */
 	grant(agent: string, url: URL): void;
@@ -79,8 +79,8 @@ export interface BrowserGate {
 	/** The model the agent's session is on, when known, for what its screenshots can carry. */
 	model?(agent: string): string | undefined;
 	/**
-	 * The only origins agents may open (`gemini.browser.allowedOrigins`, also a
-	 * policy): empty or unset allows every site, as the other checks decide.
+	 * The only origins agents may open (`gemini.browser.allowedOrigins`): empty
+	 * or unset allows every site, as the other checks decide.
 	 */
 	allowedOrigins?(): readonly string[];
 	/** The local web servers running now, as URLs such as http://localhost:5173/. */
@@ -265,7 +265,7 @@ export function sharedPageText(title: string, url: string): { readonly title: st
 }
 
 /**
- * Whether `url` is one of `origins`, the admin's list of sites agents may
+ * Whether `url` is one of `origins`, the user's list of sites agents may
  * open: `*` is every site, `https://*.example.com` is example.com and its
  * subdomains, `http://localhost:*` is localhost on any port, and any other
  * entry is an origin (scheme, host and port).
@@ -396,7 +396,7 @@ export class BrowserToolHost {
 
 	/**
 	 * Why the user's page at `url` can't be handed to the agent, or undefined
-	 * when it can: web pages unless policy keeps agents to local ones, and
+	 * when it can: web pages unless the settings keep agents to local ones, and
 	 * files the agent's file policy lets it read. Asks nothing: the user
 	 * handing the page over is the answer for its site.
 	 */
@@ -411,7 +411,7 @@ export class BrowserToolHost {
 		if (parsed.protocol === 'file:') {
 			return this.refusal(agent, parsed);
 		}
-		return this.policyRefusal(parsed) ?? (isLocalUrl(parsed) || this.gate.otherSites() ? undefined : 'policy keeps agents to pages on this machine');
+		return this.policyRefusal(parsed) ?? (isLocalUrl(parsed) || this.gate.otherSites() ? undefined : 'GeminiCode\'s settings keep agents to pages on this machine');
 	}
 
 	/**
@@ -634,10 +634,10 @@ export class BrowserToolHost {
 		return 'the user did not allow that site';
 	}
 
-	/** Why the admin's list of sites keeps agents off `url`, an http(s) URL, or undefined when it doesn't. */
+	/** Why `gemini.browser.allowedOrigins` keeps agents off `url`, an http(s) URL, or undefined when it doesn't. */
 	private policyRefusal(url: URL): string | undefined {
 		const origins = this.gate.allowedOrigins?.() ?? [];
-		return origins.length && !isAllowedOrigin(url, origins) ? 'policy allows agents only on the sites it lists' : undefined;
+		return origins.length && !isAllowedOrigin(url, origins) ? 'GeminiCode\'s settings allow agents only on the sites they list' : undefined;
 	}
 
 	private async livePage(agent: string): Promise<string | undefined> {

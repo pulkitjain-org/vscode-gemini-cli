@@ -337,7 +337,6 @@ function contextSection(cost: ContextCostView, developer: boolean): HTMLElement 
 interface RowControl {
 	readonly element: HTMLElement;
 	set(value: unknown): void;
-	setDisabled(disabled: boolean): void;
 }
 
 /** A text or number field; the value goes to the host when it is committed (change), not on every keystroke. */
@@ -372,7 +371,6 @@ function fieldControl(row: SettingRowView): RowControl {
 				input.value = value === undefined || value === null ? '' : String(value);
 			}
 		},
-		setDisabled: disabled => input.disabled = disabled,
 	};
 }
 
@@ -404,10 +402,6 @@ function pickerControl(row: SettingRowView): RowControl {
 			menu.element.title = choices[index]?.help ?? '';
 			menu.sync();
 		},
-		setDisabled: disabled => {
-			select.disabled = disabled;
-			menu.sync();
-		},
 	};
 }
 
@@ -421,7 +415,6 @@ function listControl(row: SettingRowView): RowControl {
 	}, 'add');
 	list.append(entries, add);
 	let shown: string[] = [];
-	let disabled = false;
 	const values = () => [...entries.querySelectorAll('input')].map(input => input.value.trim()).filter(Boolean);
 	const send = () => post({ type: 'setSetting', key: row.key, value: values() });
 	function entry(value: string): HTMLElement {
@@ -431,13 +424,11 @@ function listControl(row: SettingRowView): RowControl {
 		input.value = value;
 		input.placeholder = strings.entryPlaceholder;
 		input.setAttribute('aria-label', row.label);
-		input.disabled = disabled;
 		input.addEventListener('change', send);
 		const remove = button('icon-button', '', () => {
 			line.remove();
 			send();
 		}, 'close', strings.removeEntry);
-		remove.disabled = disabled;
 		line.append(input, remove);
 		return line;
 	}
@@ -450,13 +441,6 @@ function listControl(row: SettingRowView): RowControl {
 			}
 			shown = next;
 			entries.replaceChildren(...next.map(entry));
-		},
-		setDisabled: off => {
-			disabled = off;
-			add.disabled = off;
-			for (const control of entries.querySelectorAll('input, button')) {
-				(control as HTMLInputElement | HTMLButtonElement).disabled = off;
-			}
 		},
 	};
 }
@@ -486,7 +470,6 @@ function jsonControl(row: SettingRowView, note: (text: string | undefined) => vo
 				area.classList.remove('invalid');
 			}
 		},
-		setDisabled: disabled => area.disabled = disabled,
 	};
 }
 
@@ -496,7 +479,7 @@ interface SettingRowNode {
 	apply(row: SettingRowView): void;
 }
 
-/** One gemini.* setting: its name and key, its help, a note when it is locked or saved for the workspace, its control and Reset. */
+/** One gemini.* setting: its name and key, its help, a note when it is saved for the workspace, its control and Reset. */
 function settingRow(first: SettingRowView): SettingRowNode {
 	const node = el('div', `row setting ${first.control}`);
 	node.dataset.key = first.key;
@@ -514,28 +497,28 @@ function settingRow(first: SettingRowView): SettingRowNode {
 		help.append(el(segment.code ? 'code' : 'span', undefined, segment.text));
 	}
 	const note = el('div', 'row-note');
-	const noteIcon = icon('lock');
+	const noteIcon = icon('root-folder');
 	const noteText = el('span');
 	note.append(noteIcon, noteText);
 	main.append(title, help, note);
 	let problem: string | undefined;
-	const setNote = (locked: boolean, target: SettingRowView['target']) => {
-		const text = problem ?? (locked ? strings.lockedByAdmin : target === 'workspace' ? strings.savedInWorkspace : '');
+	const setNote = (target: SettingRowView['target']) => {
+		const text = problem ?? (target === 'workspace' ? strings.savedInWorkspace : '');
 		noteText.textContent = text;
-		noteIcon.className = `codicon codicon-${problem ? 'warning' : locked ? 'lock' : 'root-folder'}`;
+		noteIcon.className = `codicon codicon-${problem ? 'warning' : 'root-folder'}`;
 		note.hidden = !text;
 	};
 	let shown = first;
 	const control: RowControl = first.control === 'toggle'
 		? (() => {
 			const toggle = switchButton(false, first.label, first.label, on => post({ type: 'setSetting', key: first.key, value: on }));
-			return { element: toggle, set: value => setSwitch(toggle, value === true), setDisabled: disabled => toggle.disabled = disabled };
+			return { element: toggle, set: value => setSwitch(toggle, value === true) };
 		})()
 		: first.control === 'picker' ? pickerControl(first)
 			: first.control === 'list' ? listControl(first)
 				: first.control === 'json' ? jsonControl(first, text => {
 					problem = text;
-					setNote(shown.locked, shown.target);
+					setNote(shown.target);
 				})
 					: fieldControl(first);
 	const reset = button('icon-button reset', '', () => post({ type: 'resetSetting', key: first.key }), 'discard', strings.reset);
@@ -551,10 +534,8 @@ function settingRow(first: SettingRowView): SettingRowNode {
 		apply: row => {
 			shown = row;
 			control.set(row.value);
-			control.setDisabled(row.locked);
-			node.classList.toggle('locked', row.locked);
-			reset.hidden = !row.modified || row.locked;
-			setNote(row.locked, row.target);
+			reset.hidden = !row.modified;
+			setNote(row.target);
 		},
 	};
 }

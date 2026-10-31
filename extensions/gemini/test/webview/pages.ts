@@ -146,8 +146,8 @@ export async function showChatPage(options: { project?: boolean; fork?: boolean 
 	const html = await hostModule('src/host/chat/chatHtml.ts');
 	// The extension loads a project chat's strings from dist/onDemand.js; here they come straight from their module.
 	(html.setProjectStrings as (load: () => unknown) => void)(await hostExport<() => unknown>('src/host/chat/projectStrings.ts', 'projectStrings'));
-	const chatHtml = html.chatHtml as (webview: unknown, media: string, project: boolean, fork: boolean) => string;
-	showPage(chatHtml(fakeWebview, 'media', !!options.project, !!options.fork));
+	const chatHtml = html.chatHtml as (webview: unknown, media: string, project: boolean, fork: 'try' | undefined) => string;
+	showPage(chatHtml(fakeWebview, 'media', !!options.project, options.fork ? 'try' : undefined));
 }
 
 /**

@@ -24,7 +24,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import './sourceImports.mts';
 import { patchCliBundle } from '../src/acp/cliPatches.ts';
-import { provideRipgrep } from '../src/acp/cliRipgrep.ts';
+import { cliRipgrepPath, provideRipgrep } from '../src/acp/cliRipgrep.ts';
 
 // Imported once sourceImports.mts resolves the sources' extensionless imports.
 const { checkCliContract } = await import('../src/acp/cli/contract.ts');
@@ -42,17 +42,24 @@ async function patch(): Promise<void> {
 		throw new Error(`Gemini CLI ${version} no longer has the code src/acp/cliPatches.ts patches: update the patch before bundling this version.`);
 	}
 	console.log(result === 'patched' ? `Capped tool output in ACP mode for Gemini CLI ${version}.` : `Gemini CLI ${version} is already patched.`);
-	// The app's ripgrep, where the CLI looks for its own (src/acp/cliRipgrep.ts); both Mac architectures, since the app is universal.
-	const arches = process.platform === 'darwin' ? ['arm64', 'x64'] : [process.arch];
-	for (const arch of arches) {
-		const binary = process.platform === 'win32' ? 'rg.exe' : 'rg';
-		const source = path.join(extensionDir, '..', '..', 'node_modules', '@vscode', 'ripgrep-universal', 'bin', `${process.platform}-${arch}`, binary);
-		const placed = await provideRipgrep(path.join(target, 'bundle'), source, process.platform, arch);
-		if (placed === 'unavailable' && process.env.CI) {
-			// A release without it searches three to four times slower; CI installs the root packages, which carry it.
-			throw new Error(`No ripgrep for ${process.platform}-${arch} at ${path.relative(process.cwd(), source)}: install the root packages (npm ci) first.`);
+	// The app's ripgrep, where the CLI looks for its own (src/acp/cliRipgrep.ts), for the Mac that builds the app
+	// only: releases are built on, and for, Apple silicon. A copy for another architecture is removed.
+	const platform = `${process.platform}-${process.arch}`;
+	const binary = process.platform === 'win32' ? 'rg.exe' : 'rg';
+	const source = path.join(extensionDir, '..', '..', 'node_modules', '@vscode', 'ripgrep-universal', 'bin', platform, binary);
+	const bundle = path.join(target, 'bundle');
+	const placed = await provideRipgrep(bundle, source);
+	if (placed === 'unavailable' && process.env.CI) {
+		// A release without it searches three to four times slower; CI installs the root packages, which carry it.
+		throw new Error(`No ripgrep for ${platform} at ${path.relative(process.cwd(), source)}: install the root packages (npm ci) first.`);
+	}
+	console.log(placed === 'unavailable' ? `No ripgrep for ${platform} in node_modules; the bundled CLI falls back to git grep there.` : `Ripgrep for ${platform}: ${placed}.`);
+	const own = cliRipgrepPath(bundle);
+	const vendor = path.dirname(own);
+	for (const name of fs.existsSync(vendor) ? fs.readdirSync(vendor) : []) {
+		if (name.startsWith('rg-') && path.join(vendor, name) !== own) {
+			fs.rmSync(path.join(vendor, name), { force: true });
 		}
-		console.log(placed === 'unavailable' ? `No ripgrep for ${process.platform}-${arch} in node_modules; the bundled CLI falls back to git grep there.` : `Ripgrep for ${process.platform}-${arch}: ${placed}.`);
 	}
 	const mismatches = await checkCliContract(path.join(target, 'bundle', 'gemini.js'));
 	if (mismatches.length) {

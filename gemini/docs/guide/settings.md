@@ -1,6 +1,6 @@
 # Settings
 
-Every GeminiCode setting, by area, as the [Settings page](helpers.md) lists them with a switch, a picker or a field for each (**Gemini: Settings**; VS Code's own Settings editor lists them too under `gemini`). The Gemini CLI's own settings are in [Settings](helpers.md#gemini-cli-settings).
+Every GeminiCode setting, in the sections of the [Settings page](helpers.md) (**Gemini: Settings**), which gives each one a switch, a picker or a field. VS Code's own Settings editor lists them too, under `gemini`. The Settings page also sets [a few of the Gemini CLI's own settings](helpers.md#gemini-cli-settings).
 
 A setting in a workspace's settings applies only to that folder, and is shared with everyone who opens it when the folder's `.vscode/settings.json` is checked in. Settings marked *machine* are set per Mac, never by a workspace.
 
@@ -22,9 +22,9 @@ A setting in a workspace's settings applies only to that folder, and is shared w
 
 | Setting | Default | What it does |
 | --- | --- | --- |
-| `gemini.agents.defaultMode` *(machine)* | Default (`default`) | The approval mode new agents start in; an agent started with a mode of its own starts in that one, and the Gemini CLI's own `general.defaultApprovalMode` applies when this is left at Default. A mode ``gemini.approval.allowAutoEdit`` or ``gemini.approval.allowYolo`` turns off falls back to Default. Choices: Default (`default`), Auto Edit (`autoEdit`), Plan (`plan`), YOLO (`yolo`). |
-| `gemini.agents.ownBranch` | off | Start every new agent in a Git repository on its own branch, in its own folder under `~/.geminicode/worktrees`, so agents working side by side never edit the same files. Off, agents work in the workspace folder, and On a Branch does this for one agent. See [Agents on their own branch](agents.md#agents-on-their-own-branch). |
-| `gemini.agents.worktreeSetup` *(machine)* | empty | A shell command run in each new agent branch's folder before the agent starts, such as `npm ci && cp "$GEMINI_SOURCE_REPOSITORY/.env" .`; empty runs the repository's own `.gemini/worktree-setup.sh` if it has one. Runs only in trusted workspaces, and only your user settings or an administrator's policy set it. Before a repository's script runs the first time, GeminiCode shows it and asks; the command can use `GEMINI_SOURCE_REPOSITORY`, the repository the copy came from, to copy files Git doesn't carry. |
+| `gemini.agents.defaultMode` *(machine)* | Default (`default`) | The approval mode new agents start in; an agent started with a mode of its own starts in that one, and the Gemini CLI's own `general.defaultApprovalMode` applies while this is not set. A mode ``gemini.approval.allowAutoEdit`` or ``gemini.approval.allowYolo`` turns off falls back to Default. Choices: Default (`default`), Auto Edit (`autoEdit`), Plan (`plan`), YOLO (`yolo`). |
+| `gemini.agents.ownBranch` | off | Start every new agent in a Git repository on its own branch, in its own folder under `~/.geminicode/worktrees`, so agents working side by side never edit the same files. Off, agents work in the workspace folder, and On a branch on Home does this for one agent. See [Agents on their own branch](agents.md#agents-on-their-own-branch). |
+| `gemini.agents.worktreeSetup` *(machine)* | empty | A shell command run in each new agent branch's folder before the agent starts, such as `npm ci && cp "$GEMINI_SOURCE_REPOSITORY/.env" .`; empty runs the repository's own `.gemini/worktree-setup.sh` if it has one. Runs only in trusted workspaces, and only your user settings set it. Before a repository's script runs the first time, GeminiCode shows it and asks; the command can use `GEMINI_SOURCE_REPOSITORY`, the repository the copy came from, to copy files Git doesn't carry. |
 | `gemini.agents.allWorkspaceFolders` | off | Let every agent read and edit all folders of a multi-root window, not only the folder it works in. Changing this restarts the agent. |
 | `gemini.projects.enabled` *(machine)* | on | Projects: a project chat whose coordinator splits work into threads, each an agent on its own branch, shown as cards you can open, try in your workspace and keep. Off, New Project and the Projects section are hidden. |
 | `gemini.projects.maxRunningThreads` *(machine)* | `4` | How many of a project's threads may work at once; a thread started beyond it waits for a running one to finish. Above 90% of today's Gemini quota, new threads wait too, until the reset or **Start Anyway**. |
@@ -33,7 +33,7 @@ A setting in a workspace's settings applies only to that folder, and is shared w
 | `gemini.keepAwake` *(machine)* | on | Keep the Mac from sleeping while any agent is working; the display can still sleep. Ends as soon as no agent is working. |
 | `gemini.home.openOnStartup` *(machine)* | on | Open Home in front of your restored tabs every time GeminiCode starts. Off, Home shows when no tab is open in the Agents layout, or from the Agents pane. |
 | `gemini.layout.showAgentsInNewWorkspaces` *(machine)* | on | Show the Agents pane, with the agent's Changes below it, the first time a workspace opens. Afterwards the layout you arrange is kept. |
-| `gemini.agents.branchDefaults` | empty | Defaults for every agent started on a branch, by New Agent on a Branch, Fork and New thread: `prefix` for the branch name (`gemini/` unless set), `model`, and `planFirst`. A project's own defaults override it for its threads. A project's settings page sets the same three for its threads. |
+| `gemini.agents.branchDefaults` | empty | Defaults for every agent started on a branch, by New Agent on Its Own Branch, Fork and New thread: `prefix` for the branch name (`gemini/` unless set), `model`, and `planFirst`. A project's own defaults override it for its threads. Set those under **Defaults for new threads** in the project's settings. |
 
 ## Chat
 
@@ -41,7 +41,7 @@ A setting in a workspace's settings applies only to that folder, and is shared w
 | --- | --- | --- |
 | `gemini.chat.sendWith` *(machine)* | Return (`enter`) | Which key sends a message in the chat's composer; the other one adds a line. Choices: Return (`enter`), ⌘Return (`cmdEnter`). |
 | `gemini.chat.foldFinishedWork` *(machine)* | on | Fold each finished turn's thoughts and steps under one line, with the files it changed and any failed step kept in sight. Off shows every step as it happened. |
-| `gemini.chat.runCommands` *(machine)* | Ask when risky (`askWhenRisky`) | Run on a reply's shell blocks: the command runs in the agent's own terminal, in its folder. Commands that delete work, force-push, run as root, download, write a disk or write outside the folder ask first, as do blocks of several commands. Choices: Ask when risky (`askWhenRisky`), Always ask (`alwaysAsk`), Off (`off`). See [Running commands from a reply](chat.md#replies). |
+| `gemini.chat.runCommands` *(machine)* | Ask when risky (`askWhenRisky`) | Run on a reply's shell blocks: the command runs in the agent's own terminal, in its folder. Commands that delete work, force-push, run as root, download, write a disk or write outside the folder ask first, as do blocks of several commands. Choices: Ask when risky (`askWhenRisky`), Always ask (`alwaysAsk`), Off (`off`). See [Run a command from a reply](terminal.md#run-a-command-from-a-reply). |
 | `gemini.chat.reactions.enabled` *(machine)* | on | React to Gemini's replies with an emoji (👍 goes ahead, 👎 stops and asks what to change, ❓ asks for a simpler explanation, ❤️ is a thanks), and let Gemini react to your messages when it has something to add. Off hides the reaction button and chips. |
 | `gemini.chat.reactions.meanings` | empty | What an emoji reaction asks Gemini to do, by emoji, such as `{ "🚀": "Go ahead, then commit with a short message." }`; an entry changes a built-in meaning or adds one. Set it in a workspace's settings to share it with the team. |
 | `gemini.usageMeter.enabled` *(machine)* | on | Show today's Gemini quota use in the Gemini status bar item and the chat's usage popover, read every 10 minutes at most with the sign-in the Gemini CLI saved. Google sign-in only. |
@@ -60,7 +60,7 @@ A setting in a workspace's settings applies only to that folder, and is shared w
 
 | Setting | Default | What it does |
 | --- | --- | --- |
-| `gemini.index.enabled` *(machine)* | on | Keep an index of the code in each folder agents work in, with the documentation you attach, and give agents tools to search it in one step instead of file by file. It stays on this machine, in `~/.geminicode/index`, built in a separate process at low priority; applies to agents started afterwards. The tools are `code_search`, `find_symbol`, `related_files`, `repo_map` and `docs_search`; see [Workspace index and docs](agents.md#workspace-index-and-docs). |
+| `gemini.index.enabled` *(machine)* | on | Keep an index of the code in each folder agents work in, with the documentation you attach, and give agents tools to search it in one step instead of file by file. It stays on this machine, in `~/.geminicode/index`, built in a separate process at low priority. Applies to agents started afterwards. The tools are `code_search`, `find_symbol`, `related_files`, `repo_map` and `docs_search`; see [Workspace index and docs](agents.md#workspace-index-and-docs). |
 | `gemini.index.buildOn` *(machine)* | When an agent starts (`agentStart`) | When a folder's index is first built. After that it is kept up to date as files change, whichever you pick. Choices: When an agent starts (`agentStart`), When the workspace opens (`workspaceOpen`), Manually (`manual`). |
 | `gemini.index.include` | empty | Files to index even though they would be left out, in `.gitignore` syntax, such as `src/generated/**` or `docs/large-spec.md`. Secret files such as `.env` and files with binary content are never indexed. **Index Anyway** on the Index & Docs tab adds a file here for you. |
 | `gemini.index.exclude` | empty | Files and folders to leave out of the index, in `.gitignore` syntax, such as `fixtures/` or `**/*.snap`. Files git ignores, `.geminiignore` entries, secret files, binaries and lock files are always left out. |
@@ -74,7 +74,7 @@ A setting in a workspace's settings applies only to that folder, and is shared w
 | `gemini.team.runTeamServers` *(machine)* | off | Run the tools' own MCP servers for the team tools' calls: the Jira, GitLab and SonarQube servers in Docker at pinned versions with your keychain tokens, and Snyk's from your Snyk CLI. Each stops when idle; while one is still starting, calls go to the tool's API directly. Jira's and GitLab's servers start when an agent's session opens, the others on their first call. |
 | `gemini.figma.viewports` | empty | The screen sizes **Add Figma Design** asks a frame for, such as `["Mobile", "Tablet", "Desktop"]`; empty uses XS, S, M and L. A repository's `figma.viewports` in `.gemini/geminicode-tools.json` outranks it. |
 
-## Administration
+## Safety and Limits
 
 | Setting | Default | What it does |
 | --- | --- | --- |
@@ -107,40 +107,4 @@ These names are still read for a release, so nothing you set is lost; the editor
 
 ## When a change applies
 
-A description that ends in "Changing this restarts the agent" takes effect through a restart: open agents resume their sessions. "Applies to agents started afterwards" means running agents keep what they had. Everything else applies at once.
-
-## Settings your administrator can lock
-
-An organisation can lock these settings through VS Code's policy system: a macOS configuration profile, Group Policy on Windows, or a JSON policy file on Linux. A locked setting shows its value in Settings but can't be changed there.
-
-| Setting | Policy |
-| --- | --- |
-| `gemini.cliPath` | `GeminiCliPath` |
-| `gemini.cli.version` | `GeminiCliVersion` |
-| `gemini.cli.checkForUpdates` | `GeminiCliCheckForUpdates` |
-| `gemini.cli.registry` | `GeminiCliRegistry` |
-| `gemini.inlineEdit.enabled` | `GeminiInlineEdit` |
-| `gemini.usageMeter.enabled` | `GeminiUsageMeter` |
-| `gemini.app.checkForUpdates` | `GeminiCodeCheckForUpdates` |
-| `gemini.approval.allowAutoEdit` | `GeminiAllowAutoEdit` |
-| `gemini.approval.allowYolo` | `GeminiAllowYolo` |
-| `gemini.tools.allowShell` | `GeminiAllowShell` |
-| `gemini.browser.enabled` | `GeminiBrowser` |
-| `gemini.browser.allowOtherSites` | `GeminiBrowserOtherSites` |
-| `gemini.tools.denyEnvironmentCommands` | `GeminiDenyEnvironmentCommands` |
-| `gemini.mcp.allowedServers` | `GeminiAllowedMcpServers` |
-| `gemini.browser.allowedOrigins` | `GeminiBrowserAllowedOrigins` |
-| `gemini.index.enabled` | `GeminiIndex` |
-| `gemini.docs.enabled` | `GeminiDocs` |
-| `gemini.docs.allowedDomains` | `GeminiDocsAllowedDomains` |
-| `gemini.chat.runCommands` | `GeminiChatRunCommands` |
-| `gemini.projectId` | `GeminiProjectId` |
-| `gemini.projects.enabled` | `GeminiProjects` |
-| `gemini.team.runTeamServers` | `GeminiRunTeamServers` |
-| `gemini.agents.worktreeSetup` | `GeminiWorktreeSetup` |
-| `gemini.agents.defaultMode` | `GeminiAgentsDefaultMode` |
-| `gemini.agents.allWorkspaceFolders` | `GeminiAllWorkspaceFolders` |
-| `gemini.projects.maxRunningThreads` | `GeminiProjectsMaxRunningThreads` |
-| `gemini.browser.keepSignIns` | `GeminiBrowserKeepSignIns` |
-
-To pin one CLI version for everyone, lock `GeminiCliPath` to an empty string and `GeminiCliVersion` to the version. How each policy reaches the Gemini CLI is described in [the architecture notes](https://github.com/pulkitjain-org/vscode-gemini-cli/blob/main/gemini/docs/ARCHITECTURE.md#security-model).
+When a description ends in "Changing this restarts the agent", the agent restarts once no turn is running, or at once when the change takes a permission away or changes `gemini.mcp.allowedServers`. Open agents resume their sessions. "Applies to agents started afterwards" means running agents keep what they had. Every other change applies at once.

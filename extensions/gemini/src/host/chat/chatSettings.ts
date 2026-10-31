@@ -10,7 +10,7 @@
 
 import * as path from 'node:path';
 import * as vscode from 'vscode';
-import { isModeAllowed } from '../../acp/adminPolicy';
+import { isModeAllowed } from '../../acp/toolPolicy';
 import type { ChatTranscript } from '../../acp/chatTranscript';
 import { nextApprovalMode } from '../../acp/chatTurns';
 import { setCliDefaultModel } from '../../acp/cliPreferences';

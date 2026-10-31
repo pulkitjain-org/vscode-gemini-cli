@@ -8,15 +8,14 @@
 // set at the same level; a more specific level wins over a less specific one,
 // as VS Code merges a single key.
 
-/** The levels of `WorkspaceConfiguration.inspect` an alias reads, policy first. */
+/** The levels of `WorkspaceConfiguration.inspect` an alias reads, most specific first. */
 export interface SettingLevels<T> {
-	readonly policyValue?: T;
 	readonly workspaceFolderValue?: T;
 	readonly workspaceValue?: T;
 	readonly globalValue?: T;
 }
 
-const levels = ['policyValue', 'workspaceFolderValue', 'workspaceValue', 'globalValue'] as const;
+const levels = ['workspaceFolderValue', 'workspaceValue', 'globalValue'] as const;
 
 /** A renamed setting's value: the new key's or the old key's, level by level, else `fallback`. */
 export function aliasedSetting<T>(current: SettingLevels<T> | undefined, old: SettingLevels<T> | undefined, fallback: T): T {

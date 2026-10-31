@@ -7,7 +7,7 @@ import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
-import { isModeAllowed } from '../acp/adminPolicy';
+import { isModeAllowed } from '../acp/toolPolicy';
 import { effectiveStartMode } from '../acp/chatTurns';
 import { errorMessage } from '../acp/errors';
 import { secretPathReason } from '../acp/fileAccess';

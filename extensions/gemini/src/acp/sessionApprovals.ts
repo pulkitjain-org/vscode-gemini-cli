@@ -83,7 +83,7 @@ export function isGitHookFile(filePath: string): boolean {
 /**
  * GeminiCode's and the editor's own settings in a repository: the worktree setup script, the CLI's
  * project settings (hooks, MCP servers) and the folder's editor settings and tasks. Writing one decides
- * what runs next, outside any approval, so an agent's write to one always asks (adminPolicy.ts).
+ * what runs next, outside any approval, so an agent's write to one always asks (toolPolicy.ts).
  * The ignore files are here too: what git ignores is what an agent may not read (fileAccess.ts),
  * so a write that un-ignores a secret would open it.
  */

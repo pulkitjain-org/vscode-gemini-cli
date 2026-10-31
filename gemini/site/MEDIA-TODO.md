@@ -8,7 +8,7 @@ Every screenshot and clip comes from the real app, except `showcase-console-*`, 
 
 - Each was taken in GeminiCode Dark and GeminiCode Light, with the window filling the built-in display at 2x, and exported at 2000 × 1250.
 - Each product shot has a `-dark.webp` and a `-light.webp` copy, and the site shows the one that matches the page's theme.
-- Every screenshot and clip still also has a 1000-pixel-wide copy (`<name>-<theme>-1000.webp`), which phones get instead. Make one for each new or retaken shot ([RELEASING.md](../docs/RELEASING.md#screenshots-and-clips) has the command).
+- Every screenshot and clip also has a 1000-pixel-wide copy (`<name>-<theme>-1000.webp`), which phones get instead. Make one for each new or retaken shot ([RELEASING.md](../docs/RELEASING.md#screenshots-and-clips) has the command).
 - A shot that is missing leaves a labelled placeholder frame on the page.
 
 Capture from the real app, against demo data, so no real account, ticket, name or path shows. Never redraw a shot, and never reuse one from this folder for a different purpose.
@@ -36,12 +36,12 @@ Nothing at the moment.
 
 The 1.7 release renames and moves what these show, so each is retaken from the 1.7 dev build before the site is rebuilt:
 
-- `docs/plus-menu` (Chat guide): the model menu now ends in **Set as Default for the CLI**.
+- `docs/plus-menu` (Chat guide): the model menu ends in **Set as Default for the CLI**.
 - `compact-line` (Chat guide): the line reads **Compressed**, and the command is `/compress`.
 - The `showcase-plan` clip and `docs/plan-review` (Chat guide, feature pages): **Build This Plan** is **Approve Plan**, with the CLI's four answers on its chevron.
 - Every Home shot (`showcase-work` poster, the Home shots in the Agents guide and the landing page): the chooser is **Here** / **On a Branch** with a chevron, the quick actions are New Agent, Review and Run Checks, there is no Index button, and the tool logos are one line.
 - `agents-pane` (Agents guide): rows say "needs you", "done", "kept" and "merged", not "waiting" and "idle".
-- `docs/project-helpers`, `index-page` and the Connections shot (Agent Setup, Agents and Team tools guides): Agent Setup now has the tab strip (Loads, Index & Docs, Connections, Storage & Audit), and Storage sits on the Storage & Audit tab.
+- `docs/project-helpers`, `index-page` and the Connections shot (Agent Setup, Agents and Team tools guides): Agent Setup has a tab strip (Loads, Index & Docs, Connections, Storage & Audit), with Storage on the Storage & Audit tab.
 - Any shot with the status bar: one **Gemini** item carries the team tools, the index and the audit count.
 - `fork-list`, `try-scm` and `try-workspace` (Agents guide): the Try button carries a chevron.
 - The side question shot, if one is taken: **Read the code too** beside **Ask**.
@@ -53,7 +53,7 @@ These show a page or diff beside an agent's chat. With a side group open the cha
 ## Notes for the next capture
 
 - Record clips with the window right of the Dock (it sits on the left): x 96, 1960 × 1225 points. A screen recording picks up the Dock over the window; window stills don't.
-- Turn off `gemini.chat.reactions.agentReactions` in the capture profile. Agents otherwise start a later message with `<react>X</react>`, which shows as text.
+- Turn off `gemini.chat.reactions.enabled` in the capture profile, except for shots of reactions. Agents otherwise start a later message with `<react>X</react>`, which shows as text. The setting also hides the reaction button and chips.
 - Park the pointer over the empty sidebar, not the status bar, whose items show a hover card.
 - Agent Setup lists the Mac's trusted folders below Rules; keep the shot above them.
 - If the Mac locks during a capture, the window can't take focus: its traffic lights turn grey, keys and typing must go through the debugger, and screen recording shows the lock screen. The 2026-10-28 clips were recorded as `capturePage` frames of the window, with the (grey) traffic lights laid over from a still of the same window, since `capturePage` leaves them out. Keep the display awake (`caffeinate -d`) to avoid this.

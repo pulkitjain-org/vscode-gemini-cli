@@ -34,11 +34,11 @@ node --experimental-transform-types gemini/bench/select.mts \
   --grader 'npm ci && npm test' --max 30
 ```
 
-It keeps tickets whose merge request merged, changed between 20 and 400 lines, and touched at least one test file. Read each task file before keeping it: a ticket written for a person may need a line of context an agent will not have.
+It keeps tickets whose merge request merged, changed between 20 and 400 lines (`--min-lines` and `--max-lines` change the range), and touched at least one test file. Read each task file before keeping it: a ticket written for a person may need a line of context an agent will not have.
 
 ## Running
 
-In the release build, run **Gemini: Run Benchmark...** from the Command Palette or the Gemini status menu.
+In the release build, turn on `gemini.developer.showTools`, then run **Gemini: Run Benchmark...** from the Command Palette or the Gemini status menu.
 
 1. It uses `gemini/bench/tasks` when the window has this repository open, or asks for a tasks folder.
 2. It asks for the model and confirms the run.
@@ -46,16 +46,18 @@ In the release build, run **Gemini: Run Benchmark...** from the Command Palette 
 
 Cancel it from its notification. A cancelled run writes nothing.
 
-The same run as a script, for a CLI the app doesn't use:
+The same run as a script takes any CLI, here the one the app bundles:
 
 ```sh
-node --experimental-transform-types extensions/gemini/scripts/bench-run.mts --cli /Applications/GeminiCode.app/Contents/Resources/app/extensions/gemini/cli/0.64.0/bundle/gemini.js \
-  --model gemini-3.8-flash --out gemini/bench/results/1.2.0-0.64.0.json
+node --experimental-transform-types extensions/gemini/scripts/bench-run.mts --cli /Applications/GeminiCode.app/Contents/Resources/app/extensions/gemini/cli/0.66.0/bundle/gemini.js \
+  --model gemini-3.8-flash --version <GeminiCode version>
 ```
+
+It writes the results file into `gemini/bench/results/` under the same name the command uses; `--out` names another file. `--only` runs some of the tasks by key, `--project` sets the Google Cloud project, and `--timeout` caps each turn (20 minutes by default).
 
 For each task, the run:
 
-1. clones the repository at `baseSha` into a temporary worktree;
+1. clones the repository at `baseSha` into a temporary folder;
 2. starts `gemini --acp` with your saved sign-in and the project ID you use;
 3. opens a session there in Auto Edit mode on the named model and sends the prompt;
 4. allows the agent's tool calls;
@@ -63,7 +65,7 @@ For each task, the run:
 
 It records the tokens the CLI reports for the turn, the number of model calls, the time to the first text and to the end, and the grader's result. Tasks run one at a time. A task takes about 15 requests, so 30 tasks on two models fit in a day's Enterprise quota with room left to work.
 
-Add the results files to `results/` by pull request. On release day the release workflow opens an issue titled `Benchmark <version>` as the reminder.
+Add the results files to `results/` by pull request. When a stable release is published, the release workflow opens an issue titled `Benchmark <version>` as the reminder; with the repository's Issues off, it leaves a warning on the run instead.
 
 The site has no Benchmark page. `gemini/site/bench.mts` can write the results files as a Markdown page (`benchmarkMarkdown`), but `build.mts` does not use it, and the Pages workflow does not run when a results file changes.
 

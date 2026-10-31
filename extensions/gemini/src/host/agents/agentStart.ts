@@ -34,7 +34,7 @@ import { toolChipsFor } from '../toolChips';
 import { ChatActivity, ChatController, ChatEnhancer, ChatWorkspace, FileSearch } from '../chatController';
 import { getApprovalPolicy, includedFolderPaths } from '../configuration';
 import { configuredDefaultMode } from '../defaultMode';
-import { isModeAllowed } from '../../acp/adminPolicy';
+import { isModeAllowed } from '../../acp/toolPolicy';
 import { effectiveStartMode } from '../../acp/chatTurns';
 import { type InstantAnswer, shellCommand } from '../../acp/permissions';
 import { isReadOnlyGitRead } from '../../acp/sessionApprovals';

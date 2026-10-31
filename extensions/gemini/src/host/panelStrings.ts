@@ -272,8 +272,6 @@ export interface SettingsPageStrings {
 	readonly loads: string;
 	/** The other Agent Setup pages the side index opens, in order: Index, Connections, Storage & Audit. */
 	readonly otherPages: readonly { readonly id: string; readonly label: string }[];
-	/** A setting an administrator's policy decides. */
-	readonly lockedByAdmin: string;
 	/** A note under a resource-scoped setting while a folder is open. */
 	readonly savedInWorkspace: string;
 	readonly reset: string;

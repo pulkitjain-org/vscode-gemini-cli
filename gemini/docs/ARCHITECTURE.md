@@ -4,7 +4,7 @@ GeminiCode is a hard fork of VS Code that ships the Gemini CLI as its built-in c
 
 ## Decisions
 
-- **Fork VS Code, don't extend it.** The product is a standalone, branded application. A fork owns the shell, branding, first-run experience and admin policy.
+- **Fork VS Code, don't extend it.** The product is a standalone, branded application. A fork owns the shell, branding, first-run experience and the Agents layout.
 - **Don't reimplement the agent.** GeminiCode runs the official `gemini --acp` as a child process ("sidecar") and implements only the client side of the [Agent Client Protocol](https://agentclientprotocol.com) (ACP). Sign-in, licensing and model calls stay in the CLI. The Gemini API SDK was ruled out because it cannot use a Gemini Code Assist license.
 - **Build it as a built-in extension.** Almost all fork code lives in `extensions/gemini/`. It ships inside the app, adds very little to upstream merges, and builds without recompiling the workbench. Code moves into the workbench only for things the extension API cannot do.
 
@@ -16,10 +16,10 @@ extensions/gemini/
                     workbench later: the sidecar and the shared agent runtime, sessions, permissions and
                     session approvals, the file access policy, error classification, CLI install and
                     resolution, the transcript model and storage, the local MCP servers (the browser's,
-                    the team tools', a project's and the index's, on one base in localMcpServer.ts),
-                    the workspace index and its docs store (index/, docs/), the team
+                    the team tools', a project's, the index's and Debug mode's, on one base in
+                    localMcpServer.ts), the workspace index and its docs store (index/, docs/), the team
                     connectors and the team's servers as children (mcpStdio.ts, teamContainers.ts), the
-                    audit log and the benchmark.
+                    audit log, the benchmark and the editor-free part of Debug mode (debug/).
   src/host/         The VS Code side: the chat view and agent tabs, the Agents pane, Agent Home, the
                     Changes view, the status bar, the settings and team pages, commands, git actions,
                     update notices and the setup state. ChatController owns a chat's
@@ -29,7 +29,7 @@ extensions/gemini/
                     running in the window (sessions, chats, tabs) and their saved state; its list,
                     the title bar and tab indicators, the spare session, worktrees, Merge Back,
                     Try in Workspace, Projects and the ways of starting an agent are modules in
-                    agents/.
+                    agents/. Debug mode's editor side is in debug/ (see DEBUG_MODE.md).
   webview-src/      The webviews' code, bundled to media/*.js.
   media/            Webview stylesheets and icons.
   themes/           The GeminiCode Dark and Light colour themes.
@@ -51,16 +51,18 @@ gemini/             Fork material that is not shipped: docs, the patch series an
 
 ### Upstream files GeminiCode edits
 
-Upstream files are touched only where the fork must register itself or rebrand. Each edit carries a `GEMINI-FORK` comment, and the patch series in `gemini/patches/` keeps every one, JSON and icons included (see [../README.md](../README.md#touching-upstream-files)).
+Upstream files are touched only where the fork must register itself, rebrand, or do what the extension API cannot. Each edit carries a `GEMINI-FORK` comment, and the patch series in `gemini/patches/` keeps every one, JSON and icons included (see [../README.md](../README.md#touching-upstream-files)).
 
-- **`product.json`**: names, icons, links, the Open VSX gallery, the download page URL, onboarding themes (the GeminiCode themes are listed in `onboardingThemes`) and the Gemini setting policies. It carries no Copilot auto-update, auth trust or voice endpoint, and no `enableTelemetry`, so telemetry is off.
+- **`product.json`**: names, icons, links, the Open VSX gallery, the download page URL, and onboarding themes (the GeminiCode themes are listed in `onboardingThemes`). It carries no Copilot auto-update, auth trust or voice endpoint, and no `enableTelemetry`, so telemetry is off.
 - **Top-level docs**: `README.md`, `SECURITY.md` and `AGENTS.md`, which point at the fork's docs.
 - **Build lists** that register the extension: `build/npm/dirs.ts`, `build/gulpfile.extensions.ts`, `build/lib/extensions.ts`, `build/filters.ts`, `build/hygiene.ts`, `.eslint-ignore`, `eslint.config.js`.
+- **The compile cache check** (`build/lib/nodeCompileCache.ts`), which accepts the cache tag Node writes on macOS and Linux (it ends with the user's id) and drops the temporary file a quit leaves mid-write.
 - **Branding**:
   - packaging metadata in `build/lib/electron.ts`, `build/win32/code.iss`, and the macOS, Linux, Windows and server files and icons under `resources/` (the Debian scripts never add Microsoft's apt repository);
   - a rebuild of the dev app when its name or icons change (`build/lib/preLaunch.ts`);
   - the `.dmg` volume name and background (`build/darwin/create-dmg.ts`, which reads `resources/darwin/dmg-background.tiff`);
-  - packaging without upstream's Copilot extension (`build/gulpfile.vscode.ts`);
+  - packaging without upstream's Copilot extension or the Copilot SDK's runtime (`build/gulpfile.vscode.ts`);
+  - one build of the Mermaid extension's Markdown preview and notebook renderer, so they share mermaid's chunks rather than each shipping a copy of about 18 MB (`extensions/mermaid-markdown-features/esbuild.webview.mts` and its `package.json`);
   - GeminiCode's version and the Gemini CLI in use in the About dialog, asked of the extension through `_gemini.cliVersion` (`platform/dialogs/electron-browser/dialog.ts`, `workbench/electron-browser/parts/dialogs/dialog.contribution.ts`);
   - the workbench icons (`code-icon.svg`, `letterpress-*.svg`).
 - **The fork's workbench contribution**, `contrib/gemini/electron-browser/gemini.contribution.ts`, imported from `workbench.desktop.main.ts` (described next).
@@ -72,10 +74,11 @@ Upstream files are touched only where the fork must register itself or rebrand. 
   - with `chat.disableAIFeatures` on (GeminiCode's default), Copilot setup does not start (`chatSetupContributions.ts`), so there are no entitlement requests to GitHub at startup;
   - the `tunnel-forwarding` extension, which needs the `code` CLI GeminiCode does not ship, is left out of the build (`build/lib/extensions.ts`);
   - the layout tolerates the activity bar being hidden before its grid exists (`browser/layout.ts`), which Agents layout does at startup.
-- **Four workbench edits**:
+- **Workbench edits**:
   - Chat commands are hidden from the Command Palette while upstream AI is off (`commandsQuickAccess.ts`);
   - the Gemini extension cannot be disabled (`extensionEnablementService.ts`, with its test);
   - the product name in the welcome walkthrough (`gettingStartedContent.ts`);
+  - dialogs drawn by the workbench rather than the system (`window.dialogStyle` defaults to `custom` in `electron-browser/desktop.contribution.ts`);
   - the default colour themes (`ThemeSettingDefaults` in `services/themes/common/workbenchThemeService.ts`, with a fallback in `services/themes/browser/workbenchThemeService.ts` to upstream's Dark/Light 2026 if the GeminiCode themes are ever missing).
 
 Edits for specific features (tab rows, agent groups, spell check, menus, the browser) are described with those features under [The agent workspace](#the-agent-workspace).
@@ -87,11 +90,11 @@ Edits for specific features (tab rows, agent groups, spell check, menus, the bro
 - **System notifications and the Dock badge.** It registers the internal commands `_gemini.showToast`, `_gemini.hideToast` and `_gemini.setApplicationBadge`.
 - **Window defaults.** When the workbench loads, it registers the defaults that must hold from the first frame, before any extension runs. An extension's `configurationDefaults` arrive after the startup page has decided what to open. These defaults are: upstream's AI off; no onboarding, startup editor or empty-editor hint; the view icons at the top of the side bar; the secondary side bar hidden; pill tabs; and the browser button in the title bar.
 - **Code fonts.** It loads the bundled JetBrains Mono and Geist Mono (TTF files in `contrib/gemini/electron-browser/media/`, declared in `geminiFonts.css`), because extensions cannot add fonts to the editor.
-- **`geminiSoft.css`.** This is the half of GeminiCode Dark and Light that a colour theme cannot express: a static graphite tint at the top of the window (no accent hue) behind the Modern UI layout's floating cards; 8px card corners whose top edge catches the light; the title bar's Home button, Agents | Editor switch and tabs as glass (a translucent fill and a rim); and upstream's frosted pop-ups made opaque (no blur) with a sheen and the rim. All of it is keyed to `gemini-soft`, a class the same file puts on each workbench window while one of the two themes is on (stylelint rejects matching on the theme's own class name). Its CSS variables are listed in `build/lib/stylelint/vscode-known-variables.json`, which hygiene checks against.
+- **`geminiSoft.css`.** This is the half of GeminiCode Dark and Light that a colour theme cannot express: a static graphite tint at the top of the window (no accent hue) behind the Modern UI layout's floating cards; 8px card corners whose top edge catches the light; the title bar's Home button, Agents | Editor switch and tabs as glass (a translucent fill and a rim); and upstream's frosted pop-ups made opaque (no blur) with a sheen and the rim. All of it is keyed to `gemini-soft`, a class the contribution puts on each workbench window while one of the two themes is on (stylelint rejects matching on the theme's own class name). Its CSS variables are listed in `build/lib/stylelint/vscode-known-variables.json`, which hygiene checks against.
 
-The stylesheet is static apart from one transform, which slides the mode switch's lens, so it costs nothing at runtime. It was profiled with an agent streaming a long reply while the chat scrolls, a menu open over it and a mode switch, three runs before and after: no measure (paint, raster, composite, layout, dropped frames) moved beyond the spread between runs, under 0.01 ms per frame.
+The stylesheet is static apart from one transform, which slides the mode switch's lens, so it costs nothing at runtime. Profiled with an agent streaming a long reply while the chat scrolls, a menu open over it and a mode switch, three runs with the stylesheet and three without, no measure (paint, raster, composite, layout, dropped frames) moved beyond the spread between runs, under 0.01 ms per frame.
 
-Its siblings in the same folder are `geminiModes.ts` (the window modes), `geminiTitleTabs.ts` (Agents layout's title bar tabs) and `geminiBrowser.ts` (the agents' browser), all described below. The i18n list in `build/lib/i18n.resources.json` names the folder.
+Its siblings in the same folder are `geminiModes.ts` (the window modes), `geminiTitleTabs.ts` (Agents layout's title bar tabs), `geminiAgentGroups.ts` (each agent's side group), `geminiContextMenu.ts` (themed menus), `geminiNewAgentDialog.ts` and `geminiBrowser.ts` (the agents' browser), all described below. The i18n list in `build/lib/i18n.resources.json` names the folder.
 
 ## How a prompt flows
 
@@ -103,48 +106,57 @@ Chat webview ──postMessage──▶ ChatController ──▶ AgentClient ─
 
 ### The agent process
 
-`AgentSidecar` spawns the CLI with the application's own Node (`ELECTRON_RUN_AS_NODE=1`), so users need no Node install. The process starts when a chat first opens, not at activation.
+`AgentSidecar` spawns the CLI with the application's own Node (`ELECTRON_RUN_AS_NODE=1`), so users need no Node install. The process starts when a chat first opens, or right after activation when it can start without asking anything (`AgentWarmup`, below).
 
-It inherits the editor's environment, including proxy and CA variables, with these changes ([FINDINGS.md](FINDINGS.md#starting-the-agent)):
+It inherits the editor's environment with these changes ([FINDINGS.md](FINDINGS.md#starting-the-agent)):
 
+- variables whose names look like credentials taken out, and the editor's proxy and the system's certificates added where the environment names none (see [Security model](#security-model) and [Networks and certificates](#networks-and-certificates));
 - `GOOGLE_CLOUD_PROJECT` set to the resolved project, and `GOOGLE_CLOUD_PROJECT_ID` cleared;
 - `GEMINI_CLI_NO_RELAUNCH=true` and an explicit heap size;
 - `--admin-policy` (see [Security model](#security-model));
-- `--include-directories` for each folder, only with `gemini.agents.allWorkspaceFolders` in a multi-root window (`includeDirectoryArgs`). ACP sessions build their config from the process's arguments, so every session's workspace would then cover all the window's folders. The setting is off by default, so an agent keeps to the folder it works in. With it on, a change to the folders restarts the process once no prompt runs. The chat's `@` picker follows the same scope: the window's file list (`workspaceFiles.ts`) is filtered to the agent's folder and the folders it is launched with (`includedFolderPaths`), read on each search, so a change to the setting applies at once.
+- `--include-directories` for each folder (`includeDirectoryArgs`), only in a multi-root window with `gemini.agents.allWorkspaceFolders` on. ACP sessions build their config from the process's arguments, so with the flag every session's workspace covers all the window's folders. The setting is off by default, so an agent keeps to the folder it works in; with it on, a change to the folders restarts the process once no prompt runs. The chat's `@` picker follows the same scope: the window's file list (`workspaceFiles.ts`) is filtered on each search to the agent's folder and the folders it is launched with (`includedFolderPaths`), so a change to the setting applies at once.
 
 Restarts:
 
-- A crashed process restarts with backoff (1 s, 4 s, 15 s; the count resets once the process has served a prompt, `markHealthy`, not after a minute of uptime, so a CLI that dies on every first prompt after a long setup is not started again without end), but never after a fatal exit such as a failed sign-in (exit code 41). A process that could not be started at all (its command could not be worked out, or did not spawn) fails as `not-started`, with Install and the CLI path setting offered, rather than as one that exited. A folder's own process ([Sessions, modes and models](#sessions-modes-and-models)) restarts once, and the user is told; its sessions open again on the fresh process.
+- A crashed process restarts after 1 s, 4 s and 15 s, but never after a fatal exit such as a failed sign-in (exit code 41). The count resets once the process has served a prompt (`markHealthy`), not after some uptime, so a CLI that dies on every first prompt after a long setup is not started again without end. A process that could not be started at all (its command could not be worked out, or did not spawn) fails as `not-started` and offers Install and the CLI path setting. A folder's own process ([One process, many agents](#one-process-many-agents)) restarts once, and the user is told; its sessions open again on the fresh process.
 - Exit code 199, the CLI asking to be relaunched, restarts it at once.
-- A connection that closes while the process keeps running (the SDK ends it on a message over its limit, raised to 128 MB) gets the process ended and restarted like a crash, since every later request would fail. So does an agent that stopped reading its input while its process lives on, which the host's side of the pipe reports.
-- `initialize`, `session/new` and `session/load` fail after 120 s and `authenticate` after 330 s (the CLI's own sign-in waits 5 minutes), with an error that offers Restart Agent ([FINDINGS.md](FINDINGS.md#sessions)); `session/set_mode`, `session/set_model` and `session/close`, which the CLI answers at once, after 15 s, falling back as a failed call does (the mode or model stays as it was, and a session that could not be closed stays in the process).
+- A connection that closes while the process keeps running (the SDK ends it on a message over its limit, which GeminiCode sets to 128 MB) gets the process ended and restarted like a crash, since every later request would fail. So does an agent that stopped reading its input while its process lives on, which the host's side of the pipe reports.
+- `initialize`, `session/new` and `session/load` fail after 120 s and `authenticate` after 330 s (the CLI's own sign-in waits 5 minutes), with an error that offers Restart Agent ([FINDINGS.md](FINDINGS.md#sessions)). `session/set_mode`, `session/set_model` and `session/close`, which the CLI answers at once, fail after 15 s like any failed call: the mode or model stays as it was, and a session that could not be closed stays in the process.
 - Changing a setting that affects the process (CLI path or version, project, approval or shell settings) restarts it. The restart is immediate when the change takes a permission away or changes which MCP servers may load (`takesAway`); otherwise it waits until no prompt runs, so turning on YOLO doesn't cut off a running turn.
 
-The command is worked out without blocking the extension host. The CLI's resolution, the CLI's settings and the admin policy file are read at once, asynchronously, and a stop that arrives while they are read wins, so a stopped agent never starts late.
+The command is worked out without blocking the extension host: the CLI's resolution, the CLI's settings and the tool policy file are read asynchronously and in parallel, and a stop that arrives meanwhile wins, so a stopped agent never starts late.
 
 ### One process, many agents
 
 `AgentRuntime` runs `initialize` once and serves every chat from that process. Each chat is its own ACP session with its own `cwd`. With a Google sign-in a new session takes about 0.8 s, against about 3 s for a new process ([FINDINGS.md](FINDINGS.md#sessions)).
 
-The agent's status (status bar, Home) comes from the process and from how opening sessions went for every chat (`describeRuntimeStatus`): a sign-in, project, network or timeout error from any chat's session shows once as a notification. The service's own session (`AgentService.client`) opens only when something asks for it, such as the walkthrough's Sign In, so a process start opens no session of its own.
+A session whose folder's project settings differ from those of the process's own folder is reopened on a process of that folder's own (`folderProcess`), for the reason in [Lessons](#the-gemini-cli-in-acp-mode).
 
-`AgentWarmup` starts the process as soon as the extension has activated (`gemini.agents.startEarly`, which still reads its old name, `gemini.agent.startEarly`; before 1.8 it waited 3 s, which only pushed the process's own 6 to 21 s start later, FINDINGS.md), but only when it can start without asking anything: setup finished before, a saved sign-in or API key, and no project problem. A CLI with no saved sign-in opens the sign-in flow as it starts.
+gemini-cli 0.66 cannot close a session (below), so every session a process opened stays in it. A process holding eight or more sessions that has served no prompt for half an hour is restarted to free them (`recycleIfIdle` in `agentService.ts`); its chats reopen their sessions by id on the next prompt, as after a crash.
+
+The agent's status (status bar, Home) comes from the process and from how opening sessions went for every chat (`describeRuntimeStatus`): a sign-in, project, network or timeout error from any chat's session shows once as a notification. The service's own session (`AgentService.client`) opens only when something asks for it, such as Sign In, so a process start opens no session of its own.
+
+`AgentWarmup` starts the process as soon as the extension has activated, with no delay: on real machines the process takes 6 to 21 s from spawn to ready ([FINDINGS.md](FINDINGS.md#startup-on-a-real-machine)), so a delay only pushes the first chat's wait later. It starts early only when it can start without asking anything: setup finished before, a saved sign-in or API key, and no project problem, since a CLI with no saved sign-in opens the sign-in flow as it starts. `gemini.agents.startEarly` turns this off; its deprecated name, `gemini.agent.startEarly`, is still read.
 
 While the user types on Agent Home, `AgentRuntime.prepareSession` opens a spare session for that folder and the agent's browser servers (the agent id is chosen ahead for that). The next `newSession` with the same key takes it, so starting the agent waits for no `session/new`. A project's coordinator and threads never take a spare, because their sessions need the project's MCP server, which a spare opens without.
 
 ### Sessions, modes and models
 
-`AgentClient` opens a session (`session/new`, or `session/load` to resume), signs in when the CLI asks, sends prompts, and exposes the modes and models the agent reports, minus any mode the admin policy turns off. Nothing in the UI hardcodes a mode or model ID: the ids GeminiCode's own rules must name (the YOLO policy, the protected writes, Plan Review) are `knownModes` in `sessionSettings.ts`, and the list a new agent may start in (`startModeList`: Home's chooser, the New Agent dialog) is what a session offered, with the CLI's own names and descriptions, else the CLI's list as `buildAvailableModes` writes it in 0.66, until a session has opened. A new agent starts in `gemini.agents.defaultMode` when set, else in the CLI's own Default Approval Mode (`general.defaultApprovalMode`, read from `~/.gemini/settings.json` through `cliPreferences.ts`; Agent Setup shows and sets it), so a terminal and GeminiCode start the same way (`effectiveStartMode`). In the composer, Shift+Tab cycles Default, Auto Edit and Plan as the CLI's own key does (never YOLO, and not Plan while a turn runs), ⌘Y toggles YOLO where policy allows it, and ⌘. stays as the older key. When the CLI drops from YOLO to Auto Edit by itself after an edit is allowed for the session (`isAutoEditTransition`, still so in 0.66), the client puts YOLO back and the chat says so once.
+`AgentClient` opens a session (`session/new`, or `session/load` to resume), signs in when the CLI asks, sends prompts, and exposes the modes and models the agent reports, minus any mode the approval settings turn off.
 
-It closes the sessions it leaves (the one a new session replaces, once the new one has opened; its own when disposed; and one an outdated open created) when the CLI advertises `sessionCapabilities.close`. gemini-cli 0.66.0 does not (its `sessionCapabilities` is empty), so with it they stay until the process exits. `newSession` and `loadSession` reject when no session opened, and a session a chat moved away from (a new chat, a full context) is never reopened after a restart.
+Nothing in the UI hardcodes a mode or model ID. The ids GeminiCode's own rules must name (the YOLO policy, the protected writes, Plan Review) are `knownModes` in `sessionSettings.ts`. The modes a new agent may start in (`startModeList`, for Home's chooser and the New Agent dialog) are those a session offered, with the CLI's own names and descriptions; until a session has opened, they are the CLI's list as `buildAvailableModes` writes it in 0.66. A new agent starts in `gemini.agents.defaultMode` when set, else in the CLI's own Default Approval Mode (`general.defaultApprovalMode` in `~/.gemini/settings.json`, read through `cliPreferences.ts` and set in Agent Setup), so a terminal and GeminiCode start the same way (`effectiveStartMode`).
 
-A session that fails to open while the process stays ready (a passing network or MCP error) is opened again the next time the chat needs it (`retryOpen`): at once, then after 2, 5 and 15 s since the last failure, so one failure no longer needs Restart Agent. Waiting for a session (`whenReady`) can be stopped: Stop while a turn waits for its session ends the turn without sending. A stopped turn the CLI has not ended after 10 s is ended in the chat.
+In the composer, Shift+Tab cycles Default, Auto Edit and Plan as the CLI's own key does (never YOLO, and not Plan while a turn runs), and so does ⌘.; ⌘Y toggles YOLO where the approval settings allow it. When the CLI drops from YOLO to Auto Edit by itself after an edit is allowed for the session (`isAutoEditTransition`, still so in 0.66), the client puts YOLO back and the chat says so once.
+
+It closes the sessions it leaves (the one a new session replaces, once the new one has opened; its own when disposed; and one an outdated open created) when the CLI advertises `sessionCapabilities.close`. gemini-cli 0.66.0 does not (its `sessionCapabilities` is empty), so with it they stay until the process exits or is recycled (above). `newSession` and `loadSession` reject when no session opened, and a session a chat moved away from (a new chat, a full context) is never reopened after a restart.
+
+A session that fails to open while the process stays ready (a passing network or MCP error) is opened again the next time the chat needs it (`retryOpen`): at once, then 2, 5 and 15 s after the last failure, so a passing failure needs no Restart Agent. Waiting for a session (`whenReady`) can be stopped: Stop while a turn waits for its session ends the turn without sending. A stopped turn the CLI has not ended after 10 s is ended in the chat.
 
 A turn with no update for 45 s, and no tool running or question waiting, counts as stalled (`AgentClient.stall`), with the CLI's latest retry from its debug log when there is one. The next update clears it.
 
 A failed turn's notice says what failed in plain words, without the API's JSON (`classifyTurnError` in `errors.ts`, `turnErrorNotice` in `chatStatus.ts`): a used-up quota with its model and reset time when the error gives them, no connection to Google, an expired sign-in, a server error, or an agent restart. Each notice also lists its ways out (Retry, Switch Model, Sign In, Show Log) for its buttons.
 
-The model picker rebuilds the list the terminal's `/model` dialog shows from the one the CLI sends apps, which can name a model twice and lacks Gemma (`modelList.ts`). The model the user picked last (kept in global state) is applied to each new or reopened session when the agent offers it. With no pick yet, or one the agent no longer offers, it is the first Flash model the agent lists (`defaultModel`, never Flash-Lite). That also spares the CLI its Auto routing call ([FINDINGS.md](FINDINGS.md#a-prompts-first-reply)).
+The model picker rebuilds the list the terminal's `/model` dialog shows from the one the CLI sends apps, which can name a model twice and lacks Gemma (`modelList.ts`). The model the user picked last (kept in global state) is applied to each new or reopened session when the agent offers it. With no pick yet, or one the agent does not offer, it is the first Flash model the agent lists (`defaultModel`, never Flash-Lite). That also spares the CLI its Auto routing call ([FINDINGS.md](FINDINGS.md#a-prompts-first-reply)).
 
 A chat restored at launch (`openLater`) waits to `session/load` until its tab is shown or used, or 2 s after its webview is ready, so restoring many tabs does not replay every history at once.
 
@@ -152,7 +164,7 @@ A chat restored at launch (`openLater`) waits to `session/load` until its tab is
 
 `sessionUpdates.ts` turns `session/update` notifications into a few UI events, and `ChatTranscript` folds them into plain, serialisable items. The controller streams item changes to the webview about 30 times a second, sending only appended text for streaming messages.
 
-- **Long transcripts.** A long transcript shows its last 30 items first and adds the older ones above them in idle time, 20 at a time. All but the last 30 elements are marked settled, so they skip layout while out of view.
+- **Long transcripts.** Only the newest items are drawn; older ones stand in as slots until they scroll near ([Long chats](#long-chats)). Of the drawn elements, all but the last 30 are marked settled, so they skip layout while out of view.
 - **Hidden chats.** An agent's chat whose tab or pane is hidden keeps the updates it receives and renders them, coalesced, when it shows again. The host sends `visibility`, since `document.hidden` doesn't see a hidden tab.
 - **Streaming replies.** A streaming reply re-renders only its unfinished tail. A tail over 4,000 characters re-renders at most every 150 ms, and code in an unclosed fence isn't highlighted until it closes.
 - **Markdown.** The webview renders agent Markdown with raw HTML disabled, then adds GitHub-style callouts (`> [!NOTE]`), scrolling tables and links on file names in `code` (`markdownExtras.ts`; the extension finds the file from the agent's folder, else by name).
@@ -185,7 +197,7 @@ These always ask again:
 
 Approvals of task runners (`npm`, `make`, `gradle`, `cargo`, `go`, `npx` and the like) and of git commands that run hooks lapse when the agent writes a build file through the editor (`package.json`, a `Makefile`, `build.gradle`, `Cargo.toml`, a tool's config such as `vitest.config.ts`, anything in `node_modules` and so on), since the next run would run what the agent wrote. Every git approval lapses when it writes a git hook (any file named as one, wherever `core.hooksPath` points), a hook manager's settings, a `.git` file or a bare repository's `config` or `HEAD`. A lapsed permanent rule asks again for the rest of the session.
 
-In Auto Edit gemini-cli 0.66 applies edits without consulting its policy engine (`shouldConfirmExecute` returns before the policy check), so no admin rule can make one ask. GeminiCode serves the writes, and `AgentClient` shows a card before writing a file that decides what runs next (`decidesWhatRuns` in `sessionApprovals.ts`: a git hook or a hook manager's settings, a build file, a protected setting such as `.gemini/*.sh`, `.gemini/settings.json`, `.vscode/settings.json` and `.vscode/tasks.json`, and the ignore files `.gitignore`, `.geminiignore` and `.git/info/exclude`, since what git ignores is what the agent may not read), refusing the write when the user rejects it. A write to an ignore file also drops the cached ignore answers and the `git check-ignore` processes that gave them. The commits GeminiCode itself makes on an agent's behalf (`commitAll`: Try in Workspace, the team flows) run with `--no-verify` and `core.hooksPath` pointed at nothing, so a hook in the checkout, which may be the agent's own work, never runs with the user's privileges.
+In Auto Edit gemini-cli 0.66 applies edits without consulting its policy engine (`shouldConfirmExecute` returns before the policy check), so no policy rule can make one ask. GeminiCode serves the writes, and `AgentClient` shows a card before writing a file that decides what runs next (`decidesWhatRuns` in `sessionApprovals.ts`: a git hook or a hook manager's settings, a build file, a protected setting such as `.gemini/*.sh`, `.gemini/settings.json`, `.vscode/settings.json` and `.vscode/tasks.json`, and the ignore files `.gitignore`, `.geminiignore` and `.git/info/exclude`, since what git ignores is what the agent may not read), refusing the write when the user rejects it. A write to an ignore file also drops the cached ignore answers and the `git check-ignore` processes that gave them. The commits GeminiCode itself makes on an agent's behalf (`commitAll`: Try in Workspace, the team flows) run with `--no-verify` and `core.hooksPath` pointed at nothing, so a hook in the checkout, which may be the agent's own work, never runs with the user's privileges.
 
 In YOLO the chat allows requests itself, except the team tools that write ([Team tools](#team-tools)), which always ask: a comment, a reply or an assignment as much as the confirm class, since nothing undoes a write to a team's tools (`isTeamWriteToolCall`). **Commands Allowed for This Session...** lists and forgets the session's approvals.
 
@@ -235,30 +247,30 @@ Each agent's files get a side group of their own, from `geminiAgentGroups.ts` (f
 
 - Before it opens a file, diff or the Changes view, the extension asks for the agent's column with `_gemini.agentGroupColumn`. The group is made beside the agents' group the first time.
 - Only the group of the agent in front is visible. The others are hidden with the grid's own view visibility, through `geminiSetGroupVisible`, a marked addition to `editorPart.ts`, so switching agents reloads nothing and each agent's files come back as left.
-- A group that comes to hold an agent or Agent Home is the agents' group from then on and is never hidden (a hidden group's webviews lose their CSS anchor and draw as a small box in the corner). Team-flow pages do not count (`isAgentsTab`). New agents and Agent Home open in the agents' group (`_gemini.agentsColumn`), not the active group.
+- A group that comes to hold an agent or Agent Home is the agents' group from then on and is never hidden (a hidden group's webviews lose their CSS anchor and draw as a small box in the corner). The pages that open beside their agent (a team flow's, Plan Review, Confluence's Review Page, an agent's Files and Debug mode's Evidence) do not count (`isAgentsTab`). New agents and Agent Home open in the agents' group (`_gemini.agentsColumn`), not the active group.
 - Activating a hidden group (from Open Editors, say) brings its agent to the front.
 - Closing an agent's tab or removing the agent sends `_gemini.closeAgentGroup`, which closes its files except those with unsaved changes. The group goes when its last file closes.
 - The agent-to-group map is kept in workspace storage, since group ids survive a reload.
 - An agent's Files page (below) moves beside an open file in a narrow group of its own, showing only its tree (`_gemini.agentFilesBeside`). The tree's width comes out of the side group's, so the chat keeps its own. It hides and comes back with the side group, keeps its width across switches, and takes the side group's place, at their joint width, when the side group's last file closes. A page not restored with the window leaves no empty group.
 - Each agent's chat and tree widths are kept when another agent's side group hides, and the workbench checks which agent is in front again when an agent tab's icon arrives, so after a reload the agent in front shows its side group without a click.
 
-#### Title bar and side bar
+#### Title bar
 
-In Agents layout the title bar carries a search button, which opens Quick Open in place of the Command Center that `geminiModes.css` hides there. It also carries the integrated browser button, which the window defaults turn on (`workbench.browser.showInTitleBar`). The foot of the side bar shows the selected agent's branch, which the extension sends with `_gemini.setAgentFooter` (a tree view cannot draw a footer).
+In Agents layout the title bar carries a search button, which opens Quick Open in place of the Command Center that `geminiModes.css` hides there. It also carries the integrated browser button, which the window defaults turn on (`workbench.browser.showInTitleBar`).
 
 ### Agent Home
 
 Agent Home (`agentHome.ts`, `webview-src/home.ts`) opens in Agents layout whenever the editor area is empty (except right after closing Agent Home itself), and from the house at the start of the title bar (`geminiModes.ts`, which runs `gemini.home`). The page loads only when first shown, and keeps its page while an agent's tab is in front (`retainContextWhenHidden`), so coming back is a tab switch.
 
-Since 1.8 Home is the greeting, one composer and three cards, Pending on you, Your tickets and Agents (the quality card is off until the gear's menu turns it on): the tool logos, the refresh button, the index icon, the row of buttons under the composer and the second agent list below the cards went, since each repeated something the cards, the status bar, the Settings page or the composer's + menu already had. The gear's menu holds Refresh, Settings and the card switches; the + menu holds Files and an Actions section (Review, Run checks); a card's query is its title's tooltip, not text on the page.
+Home is the greeting, one composer and the cards (`homeDashboard.ts`, their order and defaults in `src/acp/dashboard.ts`): Pending on you, Your tickets, Agents and Gemini, with Unfinished when a quit cut a flow or a write short and, with `gemini.developer.showTools` on, a card of what is back for three minutes after a start. The Quality card is off until the gear's menu turns it on. Home holds nothing that the cards, the status bar, the Settings page or the composer's + menu already show. The gear's menu holds Refresh, Settings and the card switches; the + menu holds Files and an Actions section (Review, Run checks); a card's query is its title's tooltip, not text on the page.
 
 Its composer starts an agent in a chosen workspace and sends the prompt in one step: Here, or On a Branch (a branch named after the prompt), whose chevron, once Projects are on, offers a branch of its own or a project (the folder's repository's projects first, then the others', then a new one), which sends the prompt to that project's coordinator. The folder picker shows each folder's trust (`FolderTrust.label`), and Open Folder... adds a folder for agents without adding it to the window. Cards show the agents that are working, waiting, done or have changes, with Stop, Review, the Try button with its chevron, and Open. Earlier agents can be resumed. Projects are listed apart from agents.
 
-The Merge requests card ranks the reviews asked of the user (`rankReviews` in `src/acp/dashboard.ts`: ones the user started, then ones where they are the only reviewer, then the longest waiting, with the ones the author must fix first after them), then the drafts and reviews already given. Home once had a "Needs you" strip above the cards; it was removed because every row it showed repeated a card's row with the same button.
+The Pending on you card lists merge requests. It ranks the reviews asked of the user (`rankReviews` in `src/acp/dashboard.ts`: ones the user started, then ones where they are the only reviewer, then the longest waiting, with the ones the author must fix first after them), then the drafts and reviews already given.
 
 ### Agents pane
 
-The pane is a tree of workspaces (the open folder plus any the user adds) with agents under each. Workspace rows show just the folder's name, with its path as the tooltip.
+The pane is one list grouped by folder: each workspace (the open folder plus any the user adds) is a row with its agents under it, built by `src/acp/agentList.ts` (pure). A project is an expandable row under its folder with its threads and its Archived row, and forks sit under their parent. Workspace rows show just the folder's name, with its path as the tooltip.
 
 Each agent row shows its status as a coloured dot, or a spinner while it works: working, waiting for permission, done but unread, needs attention, idle, or not started in this window. After the title is one short note (`src/acp/agentRow.ts`):
 
@@ -269,13 +281,13 @@ Each agent row shows its status as a coloured dot, or a spinner while it works: 
 
 The `+N −M` count and the git branch (read from `.git/HEAD`) are in the tooltip. An agent takes its name from its first prompt unless the user renames it. Removing an agent deletes its saved conversation; removing a workspace only drops it from the list.
 
-Since 1.8 the pane is one list grouped by folder (`src/acp/agentList.ts`, pure, for the rows of a workspace): a project is an expandable row under its folder with its threads and its Archived row, forks sit under their parent, and the view's title bar holds New agent, New project and an overflow with Add workspace, Home, Review my changes, Settings and Connections. A row's right-click menu is short, Open, Rename, Fork, Stop, More and Remove, with the rest (Open changes, Merge back, Try or Take back, Open terminal, Open chat as Markdown, Keep in own tab, Move to its own branch, a project's New thread and Project settings) under the More submenu, and a workspace row's index commands under Index. `test/perf/surface.test.ts` caps each.
+The view's title bar holds New agent, New project and an overflow with Add workspace, Home, Review my changes, Settings and Connections. An agent row's right-click menu is Open, Rename, Fork, Stop, More and Remove, with the rest (Open changes, Merge back, Try or Take back, Open terminal, Open chat as Markdown, Keep in own tab, Move to its own branch, a project's New thread and Project settings) under the More submenu, and a workspace row's index commands under Index. `test/perf/surface.test.ts` caps each.
 
 ### Agent tabs
 
 Each agent opens as an editor tab that reuses the chat webview, and is the main editor. There is no sidebar chat.
 
-Since 1.8 a click on a row shows the agent in one shared tab (`agentTabs.ts`, with `src/acp/sharedTab.ts` keeping which agent it shows and which have tabs of their own): the controller of the agent shown before detaches from the webview and the next one attaches, so switching agents is a state swap in one view, not a new panel, and the chat's HTML with its 470 strings is built once per kind of chat (`chatHtml.ts`). A busy agent keeps running when the shared tab moves on. **Keep in own tab**, in the tab's title bar and the row's More menu, gives the agent a panel of its own, as every agent had before; sending a message in the shared tab does the same. A controller whose agent has had no tab for ten minutes and is not busy is released, keeping its record and session id, and restored from its snapshot on the next open.
+A click on a row shows the agent in one shared tab (`agentTabs.ts`, with `src/acp/sharedTab.ts` keeping which agent it shows and which have tabs of their own). The controller of the agent shown before detaches from the webview and the next one attaches, so switching agents is a state swap in one view, not a new panel, and the chat's HTML with its 470 strings is built once per kind of chat (`chatHtml.ts`). A busy agent keeps running when the shared tab moves on. **Keep in own tab**, in the tab's title bar and the row's More menu, gives the agent a panel of its own, and so does sending a message in the shared tab. A controller whose agent has had no tab for ten minutes and is not busy is released, keeping its record and session id, and restored from its snapshot on the next open.
 
 Files, proposed edits and diffs that the agent's chat or its Changes open go in the agent's own side group (above). Outside GeminiCode's workbench they go in the group after the agent's tab, added once if there is none (`editorPlacement.ts`). Either way the chat stays in view.
 
@@ -306,7 +318,7 @@ The CLI's `invoke_agent` tool reaches ACP as one `think` tool call titled `Deleg
 
 #### Long chats
 
-The transcript is virtualized (`webview-src/virtualBlocks.ts`, since 1.8): on open the view draws the newest 60 items (whole turns when work folds) and stands each older block in as a slot of its measured height, drawn when it scrolls within 1200px and turned back into a slot once it is 3000px away, so a 300-turn chat opens with about 60 items' DOM and stays bounded as it grows (the oldest drawn turns are released past 120). A block holding focus or a selection is kept; a slotted item's updates change the model only; the outline's jumps and a reaction's "show reply" scroll to the slot, which then draws. Before 1.8 every older item was backfilled into the DOM at idle. `test/perf/budgets.test.ts` times the open of a 300-turn chat and counts the DOM.
+The transcript is virtualized (`webview-src/virtualBlocks.ts`). On open the view draws the newest 60 items (whole turns when work folds) and stands each older block in as a slot of its height (an estimate until it has been drawn once). A slot is drawn when it scrolls within 1200px of the view and turned back into a slot once it is 3000px away, so a 300-turn chat opens with about 60 items' DOM and stays bounded as it grows: once the drawn part reaches 120 items, its oldest turns go back to blocks. A block holding focus or a selection is kept; a slotted item's updates change the model only; the outline's jumps and a reaction's "show reply" scroll to the slot, which then draws. `test/perf/budgets.test.ts` times the open of a 300-turn chat and counts the DOM.
 
 From two prompts on, the chat draws a tick per prompt down its left edge, centred on the view's height (`webview-src/promptNav.ts`), and jumps between prompts with ⌥⌘↑ and ⌥⌘↓. Hovering a tick shows the prompt and the start of its reply (`replyPreview` in `chatLogic.ts`) in a card in the top layer, not a native tooltip. Prompt positions are read only on a jump, or once a frame while scrolling, to light the current tick.
 
@@ -363,7 +375,7 @@ The user can react with an emoji to any of the agent's replies in an agent's or 
 - when the agent is idle, the reaction starts a turn;
 - while a turn runs, a thumbs down steers it at the next safe point (the note then warns that the last step may not have finished), and any other reaction waits in the queue. A second reaction to the same reply replaces one still waiting (`PromptQueue.addReaction`).
 
-**The agent's reactions.** With `gemini.chat.reactions.enabled` on (the default), a `<reaction_rule>` sent once per session lets the agent begin a reply with `<react>X</react>`. `ChatTranscript` holds the start of a turn's first reply (up to 32 characters) while it could still be that tag, and lifts the emoji onto the prompt as a badge before the reply is stored or shown. Anything else is left as text.
+**The agent's reactions.** With `gemini.chat.reactions.enabled` on, a `<reaction_rule>` sent once per session lets the agent begin a reply with `<react>X</react>`. `ChatTranscript` holds the start of a turn's first reply (up to 32 characters) while it could still be that tag, and lifts the emoji onto the prompt as a badge before the reply is stored or shown. Anything else is left as text.
 
 Reactions are optional fields on transcript items, so they survive reloads, Fork and Rewind. A replayed CLI session turns its notes back into reactions (`withoutReactionNotes`). When a thread's turn came from the user's reactions, its turn-end report tells the coordinator "The user reacted ... to its reply." (`reactionReport`).
 
@@ -403,13 +415,13 @@ A compacted copy is a summary, the model's acknowledgement, then the latest prom
 
 #### Compress
 
-`/compress`, the CLI's name for it, the usage popover's button, or the card the chat shows once a session passes 40% of the window (`shouldSuggestCompact`) runs Compress (`chat/chatCompact.ts`; the code keeps the older name inside):
+`/compress`, the CLI's name for it, the usage popover's button, or the card the chat shows once a session passes 40% of the window (`shouldSuggestCompact`) runs Compress (`chat/chatCompact.ts`; inside the code it is "compact"):
 
 1. A summary turn runs whose updates stay out of the transcript (`ChatController.quietly`).
 2. That turn is rewound out of the session.
 3. The compacted copy is written and the chat moves to it with `session/load`.
 
-The `compact` item keeps both session ids, so Undo moves back to the full session, also after a restart. If the agent can't open the copy, the chat goes back to its session. The CLI's own `/compress` (and its automatic compression at half the window, keeping 30%) lives only in memory and is lost when a session is reopened, which is why GeminiCode's writes a copy session instead.
+The `compact` item keeps both session ids, so Undo moves back to the full session, also after a restart. If the agent can't open the copy, the chat goes back to its session. The CLI's own `/compress` (and its automatic compression at half the window, keeping 30%) lives only in memory and is lost when a session is reopened, which is why GeminiCode's Compress writes a copy session.
 
 #### Fork Agent
 
@@ -456,7 +468,7 @@ In Editor layout the **Changes view** below the Agents pane is shown instead. It
 
 Each chat's composer shows the folder's branch as a pill that switches or creates a branch through the built-in Git extension, which is only activated when the user picks an action (`gitActions.ts`).
 
-An agent's chat also offers **Create Branch & Commit**. It stages and commits only that agent's changed files to a new branch (suggested as `gemini/<agent name>`), warns first when other files are already staged, and then clears the agent's Changes list. The message is written by the quick model from the diff (`commitMessage.ts`, the same prompt as Generate Commit Message), with the agent's name when it can't be. `commitToCurrentBranch` commits to the branch checked out instead.
+An agent's chat also offers **Create Branch and Commit**. It stages and commits only that agent's changed files to a new branch (suggested as `gemini/<agent name>`), warns first when other files are already staged, and then clears the agent's Changes list. The message is written by the quick model from the diff (`commitMessage.ts`, the same prompt as Generate Commit Message), with the agent's name when it can't be. `commitToCurrentBranch` commits to the branch checked out instead.
 
 #### Worktrees
 
@@ -464,7 +476,7 @@ An agent can work on its own branch in a Git worktree (`src/acp/worktrees.ts`, p
 
 The agent's session gets the worktree (or the workspace's matching subfolder in it) as its `cwd`, and the agent record keeps the folder, branch and base. Creating one costs a checkout of the repository's files, shown as progress, and nothing on later prompts.
 
-The Try button is one button on every surface (the Changes panel, Home's cards, thread and fork cards, the pane's row) with a chevron that offers Try in Workspace, Merge Back and, with GitLab connected, Open Merge Request; the pick is remembered per repository in global state (`agents/tryChoices.ts`, `AgentsView.pickTryChoice`), and the button then does that. `gemini.agents.mergeBack` is removed; until a pick is made in a repository, its old "commit" still means Merge Back. **Merge Back** commits leftovers with a message written the same way (the agent's name when none is) and runs `git merge --no-ff` in the workspace's repository, leaving conflicts for Source Control. By default the button runs Try in Workspace (below).
+The Try button is one button on every surface (the Changes panel, Home's cards, thread and fork cards, the pane's row) with a chevron that offers Try in Workspace, Merge Back and, with GitLab connected, Open Merge Request. The pick is remembered per repository in global state (`TryChoices` in `agents/tryChoices.ts`), and the button then does that. Until a pick is made in a repository, the button runs Try in Workspace (below), or Merge Back where the deprecated `gemini.agents.mergeBack` is set to `commit`. **Merge Back** commits leftovers with a message written as for Create Branch and Commit (above) and runs `git merge --no-ff` in the workspace's repository, leaving conflicts for Source Control.
 
 #### Try in Workspace
 
@@ -497,7 +509,7 @@ These terminals are the user's. Agent commands run inside the CLI: `clientCapabi
 3. checks it (`runRisk`) for deletes, `git clean`, discarded work, force-push, root, a download piped to a shell, disk writes, writes outside the folder (by redirect or by a `cp`, `mv`, `rm` or `tee` argument), and several commands;
 4. either asks in the block or runs it with `shellIntegration.executeCommand`, waiting for as many commands to end as the block has lines. Without shell integration after 3 s it types the command in and reports nothing.
 
-Block states go back by the block's text, so a redrawn block keeps its result. `gemini.chat.runCommands` (policy `GeminiChatRunCommands`) is `askWhenRisky`, `alwaysAsk` or `off`. A coordinator's Run always asks.
+Block states go back by the block's text, so a redrawn block keeps its result. `gemini.chat.runCommands` is `askWhenRisky`, `alwaysAsk` or `off`. A coordinator's Run always asks.
 
 **From a terminal to Gemini:**
 
@@ -525,7 +537,7 @@ The coordinator's session runs in an empty folder of its own (`~/.geminicode/pro
 
 #### Threads
 
-Threads show as cards in the project chat that update in place (`webview-src/threadCard.ts`, a chunk loaded with the first card). Each card has one main button for the next step (Approve Plan, Try in Workspace, Keep Changes, Open the Conflict, Restore Discarded Work), Review Changes and Take Back beside it, a three-step line (in the thread, trying in your workspace, kept) and a More menu for the rest, Remove Thread… among them. The Try button's chevron offers Merge Back and Open Merge Request, remembered per repository, and the button follows the pick. Its menu is GeminiCode's (`webview-src/tryChoiceMenu.ts`), the same on the Changes panel (from the `changesMenu.js` chunk), Home's agent cards and the thread cards, never a quick pick. Approvals stay in the thread that asked. A thread's chat has a bar back to its project chat, and the project chat's side panel lists every thread to open.
+Threads show as cards in the project chat that update in place (`webview-src/threadCard.ts`, a chunk loaded with the first card). Each card has one main button for the next step (Approve Plan, Try in Workspace, Keep Changes, Open the Conflict, Restore Discarded Work), Review Changes and Take Back beside it, a three-step line (in the thread, trying in your workspace, kept) and a More menu for the rest, Remove Thread… among them. The Try button works as on every surface ([Worktrees](#worktrees)); its chevron's menu is GeminiCode's (`webview-src/tryChoiceMenu.ts`), the same on the Changes panel (from the `changesMenu.js` chunk), Home's agent cards and the thread cards, never a quick pick. Approvals stay in the thread that asked. A thread's chat has a bar back to its project chat, and the project chat's side panel lists every thread to open.
 
 "New thread" in the + menu opens a dialog in the chat's webview (title, brief, branch, model, Plan first). The thread starts at once and the coordinator hears afterwards.
 
@@ -548,9 +560,9 @@ Fork Agent on a single-repository thread makes a new thread of the same project,
 
 New Project asks only which folder (an open workspace or any Git folder) and opens the project chat at once, named after its repository.
 
-The Gemini CLI loads MCP servers only in trusted folders. Opening or starting a project therefore asks the folder trust question for the repository when it is unanswered ([Security model](#security-model)); the coordinators' folder is one of GeminiCode's own trusted rules, and the repository's worktrees folder follows the repository's trust. A project with several repositories also asks to trust `~/.geminicode/threads`. A change of trust waits for the agent process to restart.
+The Gemini CLI loads MCP servers only in trusted folders. Opening or starting a project therefore asks the folder trust question for the repository when it is unanswered ([Security model](#security-model)); the coordinators' folder is one of GeminiCode's own trusted rules, and the repository's worktrees folder follows the repository's trust (for several repositories, see [below](#projects-across-several-repositories)). A change of trust waits for the agent process to restart.
 
-A coordinator whose session opened before the CLI trusted the project's folders has no `start_thread` and can only say so. So before the first wake goes out, `Projects.ensureTools` opens the session and waits up to 10 s for the CLI to list the coordinator's tools (`ProjectMcpServer.whenListed`). If they don't appear, the message waits while GeminiCode asks to trust the folders or, when they are trusted already, restarts the agent once no agent is working (`reloadProjectTools`), and the session reopens with them. When something else keeps the tools out, `projectToolsCheck.ts` reads the files the CLI decides by (folder trust, `mcp.excluded`, `admin.mcp.enabled`, `mcp-server-enablement.json`) and the project chat names the cause instead of restarting.
+A coordinator whose session opened before the CLI trusted the project's folders has no `start_thread` and can only say so. So before the first wake goes out, `Projects.ensureTools` opens the session and waits up to 10 s for the CLI to list the coordinator's tools (`ProjectMcpServer.whenListed`). If they don't appear, the message waits while GeminiCode asks to trust the folders or, when they are trusted already, restarts the agent once no agent is working (`reloadProjectTools`), and the session reopens with them. When something else keeps the tools out, `projectToolsCheck.ts` reads the files the CLI decides by (folder trust, `mcp.excluded`, `mcp-server-enablement.json`) and the project chat names the cause instead of restarting.
 
 #### Side panel and footer
 
@@ -627,9 +639,9 @@ The tool descriptions, the server's `instructions` and the shared-page note tell
 
 #### Agents' pages
 
-`geminiBrowser.ts` adds the "Gemini is using this page" bar with Stop to pages an agent owns. Pages open in the side group without taking focus. Open, snapshot and screenshot return the page's real URL, which the server checks after every step. Removing an agent closes its pages and session, except pages the user handed it, which go back to the user.
+`geminiBrowser.ts` adds the "Gemini is using this page" bar with Stop to pages an agent owns. Pages open in the side group without taking focus, and an agent's page is never throttled in the background (`browserView.ts`, a marked edit): a throttled page runs no animation frames, so Playwright's stability check would never pass. Open, snapshot and screenshot return the page's real URL, which the server checks after every step. Removing an agent closes its pages and session, except pages the user handed it, which go back to the user.
 
-With `gemini.browser.keepSignIns` on, `_gemini.browser.open` creates agents' pages in workspace storage instead of agent storage (`agentPageStorage`), except where the user's own pages use workspace storage, in an empty or untrusted window, or under a network policy. The ids of pages agents opened are kept in workspace storage, so after a reload a page is told apart from one the user handed over. The extension also defaults `workbench.browser.openLocalhostLinks` on.
+With `gemini.browser.keepSignIns` on, `_gemini.browser.open` creates agents' pages in workspace storage instead of agent storage (`agentPageStorage`), except where the user's own pages use workspace storage, in an empty or untrusted window, or under a network policy. The ids of pages agents opened are kept in workspace storage, so after a reload a page is told apart from one the user handed over. The extension also defaults `workbench.browser.openLocalhostLinks` on, and a link clicked in a Gemini chat opens beside the chat rather than behind it (`browserTabManagementFeatures.ts`, a marked edit).
 
 #### What a page may load
 
@@ -641,7 +653,7 @@ With `gemini.browser.keepSignIns` on, `_gemini.browser.open` creates agents' pag
 
 Those last two rules need work in the main process. Electron gives `file:` pages more than a browser does, so a page the agent wrote could otherwise show it, in a frame or through fetch or a worker, a file the policy refuses; and any local page could fetch the user's intranet or signed-in sites with the browser's cookies, which `gemini.browser.keepSignIns` keeps.
 
-- The main process (`platform/browserView/electron-main/geminiAgentFiles.ts`) holds each `file:` load of a Gemini agent's page, and each load of another site by an agent's local page (frames, fetch, XHR and the rest; the navigation itself the extension checks once the page is there), until the page's window has asked the extension (`_gemini.browser.loadAllowed`, `BrowserToolHost.loadAllowed`).
+- The main process (`platform/browserView/electron-main/geminiAgentFiles.ts`, hooked into each browser session by marked edits in `browserSession.ts`) holds each `file:` load of a Gemini agent's page, and each load of another site by an agent's local page (frames, fetch, XHR and the rest; the navigation itself the extension checks once the page is there), until the page's window has asked the extension (`_gemini.browser.loadAllowed`, `BrowserToolHost.loadAllowed`).
 - An agent's documents get `worker-src 'none'`, because workers load files where neither `webRequest` nor the session's `file:` handler sees them.
 - Loads with no page (a service worker) are refused in a session that held an agent's page.
 - A `file:` page the user hands over is reloaded so its files are checked as the agent's.
@@ -651,7 +663,7 @@ Those last two rules need work in the main process. Electron gives `file:` pages
 **Let Gemini Use This Page** is an `Action2` in `geminiBrowser.ts`, in the page's actions toolbar and the Command Palette. It is hidden on any agent's page (the editor-scoped `geminiBrowserPageIsAgents` key) and when `config.gemini.browser.enabled` is off. It calls the extension's `_gemini.browser.handOver`, which:
 
 1. Shows a quick pick: New Agent..., the running agents, and up to ten recent ones, which start before they get the page (`BrowserTools.handOver`). New Agent opens one popup, `_gemini.newAgentDialog` in `geminiNewAgentDialog.ts`, for the folder, its own branch or not, the model, the mode and an optional task. The workbench draws it because no extension API can float a form over the browser's page, and its block carries `monaco-dialog-modal-block` so the browser's overlay manager hides the page under it. `AgentsView.newAgentFor` then starts the agent with its tab open, and a task is sent with the page.
-2. Checks the page's URL as for the agent's own pages, without asking (`handOverRefusal`): http(s) unless the policy keeps agents local, `file:` per the file policy, nothing else.
+2. Checks the page's URL as for the agent's own pages, without asking (`handOverRefusal`): http(s) within `gemini.browser.allowedOrigins`, and off this machine only with `gemini.browser.allowOtherSites` on; `file:` per the file policy; nothing else.
 3. Calls `_gemini.browser.share`. The workbench refuses a page that any agent owns or that is being handed over (one agent per page), adds the agent's session as the page's audience (the main process refuses that outside the network policy), makes the agent the owner, and waits for Playwright to see it.
 4. Checks the returned URL again, records the page as the agent's and its origin as allowed for that agent (`adopt`), and adds a note to the agent's composer that names the page and says its text is not the user's.
 
@@ -675,12 +687,12 @@ The extension contributes two colour themes (`extensions/gemini/themes/`), **Gem
 
 Defaults, each of which the user can change:
 
-- the window defaults (see [The workbench contribution](#the-workbench-contribution)) put the view icons at the top of the side bar, hide the secondary side bar, use pill editor tabs and the browser button in the title bar, and open no startup editor or empty-editor hint;
+- the window defaults for the side bar, tabs, title bar and startup (see [The workbench contribution](#the-workbench-contribution));
 - the extension's `configurationDefaults` set JetBrains Mono as the editor font, the `geminicode-icons` file icons, localhost links opening in the browser, no breadcrumbs or minimap, and a slightly roomier editor.
 
 The layout uses only native views and editor groups, so every part stays resizable.
 
-The webviews' stylesheets (`media/chat.css`, `media/panels.css` and the shared `media/menu.css`) name the theme's colours once, as `--gemini-*` variables, so they follow any theme. High contrast themes keep their own colours and borders. Chat text is 14px. The Gemini gradient is kept to the sparkle, the working bar on the composer's top edge and the focused composer's outline.
+The webviews' stylesheets (`media/chat.css`, `media/panels.css` and the shared `media/menu.css`) name the theme's colours once, as `--gemini-*` variables, so they follow any theme, and take their sizes from `media/tokens.css`. High contrast themes keep their own colours and borders. Chat text is 15px (`--gc-text-lg`). The Gemini gradient is kept to the sparkle, the working bar on the composer's top edge and the focused composer's outline.
 
 `media/glass.css`, loaded last on every page, gives the webviews the same glass as the workbench: cards and the composer with a lighter top edge, glass buttons and pills, and opaque pop-ups with a sheen and one shadow (the **+**, model, branch and folder menus in `webview-src/menu.ts`, the `@` and `/` picker, usage, and the dialogs). Nothing uses `backdrop-filter` or a mask (`test/themes/noBlur.test.ts` fails on one), and every animation is a `transform` or an `opacity`, paused while the view is hidden.
 
@@ -694,17 +706,18 @@ The model, branch and folder menus replace the system select menu and quick pick
 
 #### The local MCP servers
 
-GeminiCode runs four MCP servers of its own: the browser's, the team tools' `geminicode-tools` (`src/acp/teamToolsMcp.ts`), a project's `geminicode-project` and the index's `geminicode-index`. All four are built on `localMcpServer.ts`:
+GeminiCode runs four MCP servers of its own: the browser's `geminicode-browser`, the team tools' `geminicode-tools` (`src/acp/teamToolsMcp.ts`), a project's `geminicode-project` and the index's `geminicode-index`, which are `ownServers` in `configuration.ts`. Debug mode, off by default, adds `geminicode-debug` ([DEBUG_MODE.md](DEBUG_MODE.md)). All are built on `localMcpServer.ts`:
 
 - Streamable HTTP with plain JSON replies on `127.0.0.1`;
 - one URL and HMAC bearer token per route;
+- a request with an `Origin` header, or a `Host` other than the server's own loopback address, refused before the token is looked at, so a page in a browser can't reach it;
 - a JSON-RPC error for a request that fails, and an error result the model can read for a tool that throws.
 
 The browser's and the team tools' routes are agents, with slots for spare sessions that are bound to the agent that takes the session (at most eight unbound slots are kept). An agent's slots are dropped when it is removed, after which they answer 404.
 
 #### Connectors
 
-`TeamConnections` (`src/host/teamConnections.ts`) owns `geminicode-tools` and gives it to every session once any tool is connected. The server lists tools only for connected tools, so a user with nothing connected pays nothing in prompt size.
+`TeamConnections` (`src/host/teamConnections.ts`) owns `geminicode-tools` and gives it to every session once any tool is connected. The server lists only the connected tools' tools, and to an agent only once its task needs them (`enableTeamTools`): a ticket, merge request, page or design of a connected tool in a prompt or an attachment (`promptNeedsTools`), a team flow, or the + menu's Use team tools, which the agent's record remembers. A running session hears through `notifications/tools/list_changed`, so no session reloads, and a task that needs no team tool carries none of their definitions in its model calls.
 
 The connectors call each tool from the user's machine, so the Mac's VPN, proxy and certificates apply:
 
@@ -717,9 +730,11 @@ The connectors call each tool from the user's machine, so the Mac's VPN, proxy a
 | Figma desktop app's Dev Mode MCP server on `127.0.0.1:3845` | `figma.ts`, a small MCP client | none |
 | Confluence Cloud REST | `confluence.ts`, in its own bundle (`dist/confluence.js`) | the Jira site's email plus API token |
 
-`teamHttp.ts` gives every read an 8-second timeout and every write 20 seconds, and turns failures into a reason the user can act on (no answer: check the VPN; 401: replace the token; a write with no answer: it may have gone through, and its audit intent stays open). It keeps one reachability state per server (`teamReachability`): after no answer, calls fail at once for 30 s, 1, 2 and up to 5 minutes, and `TeamConnections` checks the server again when the wait ends; a refused token stops calls with that token until it changes. A read that meets 429, 502, 503 or 504 is retried once, honouring Retry-After up to 5 s; a write never is. Tokens are in SecretStorage only; agents never see them. Tool results are trimmed text (`teamTools.ts`), never raw JSON. Tool results that carry other people's text are wrapped in an `<external>` tag (`external()` in `teamTools.ts`), which the server's instructions tell the model to read as data. Team defaults come from `.gemini/geminicode-tools.json` (`teamDefaults.ts`).
+`teamHttp.ts` gives every read an 8-second timeout and every write 20 seconds, and turns failures into a reason the user can act on (no answer: check the VPN; 401: replace the token; a write with no answer: it may have gone through, and its audit intent stays open). It keeps one reachability state per server (`teamReachability`): after no answer, calls fail at once for 30 s, then 1, 2, 4 and 5 minutes, and `TeamConnections` checks the server again when the wait ends; a refused token stops calls with that token until it changes. A read that meets 429, 502, 503 or 504 is retried once, honouring Retry-After up to 5 s; a write never is.
 
-Figma takes several seconds per frame and may give up on one by itself, so `figma_design` reads without Code Connect (unless the repository's defaults file sets `codeConnect`) or the screenshot, a frame too large for one answer a section at a time under the CLI's 40,000-character part cap (`figmaPartLimit`), with a deadline per call, and answers a read Figma stopped with the frame's outline and variables. Requests go one at a time, and a frame's design is kept for ten minutes, keyed by file and node.
+Tokens are in SecretStorage only; agents never see them. Tool results are trimmed text (`teamTools.ts`), never raw JSON, and those that carry other people's text are wrapped in an `<external>` tag (`external()` in `teamTools.ts`), which the server's instructions tell the model to read as data. Team defaults come from `.gemini/geminicode-tools.json` (`teamDefaults.ts`).
+
+Figma takes several seconds per frame and may give up on one by itself. So `figma_design` reads without Code Connect (unless the repository's defaults file sets `codeConnect`) and without the screenshot, with a deadline per call. A frame too large for one answer is read a section at a time, each part under the CLI's 40,000-character cap (`figmaPartLimit`), and a read Figma stopped is answered with the frame's outline and variables. Requests go one at a time, and a frame's design is kept for ten minutes, keyed by file and node.
 
 #### Jira sites
 
@@ -742,9 +757,9 @@ The confirm class (`teamConfirmTools`) is a ticket's status, a time log, a new m
 
 #### Audit log
 
-Every write, by an agent or from a page, goes through the audit log (`src/acp/auditLog.ts`): one JSON line per record, in a file per day under global storage, never rewritten. Days older than `gemini.storage.keepLogsDays` (90 by default, at least 7) are removed a minute after startup. Each write records an intent before the call, then a result with the id the tool gave back, or the failure.
+Every write, by an agent or from a page, goes through the audit log (`src/acp/auditLog.ts`): one JSON line per record, in a file per day under global storage, never rewritten. Days older than `gemini.audit.keepDays` (90 by default, at least 7; `0` keeps everything) are removed a minute after startup (`storageMaintenance.ts`), and the deprecated `gemini.storage.keepLogsDays` counts where only it is set. Each write records an intent before the call, then a result with the id the tool gave back, or the failure.
 
-An intent with no result is a write that was running when the app quit. **Open Audit Log** (`src/host/auditPage.ts`, a webview page over the same files) highlights those, Home lists them under Unfinished, and the status bar counts the day's writes (`auditStatusBar.ts`).
+An intent with no result is a write that was running when the app quit. **Open Audit Log** (`src/host/auditPage.ts`, a webview page over the same files) highlights those, Home lists them under Unfinished, and the Gemini status bar item's tooltip counts the day's writes and the unfinished ones (`statusBar.ts`).
 
 #### A repository's own Jira and GitLab servers
 
@@ -766,7 +781,7 @@ A review (`src/host/reviewSession.ts`, one per merge request, listed by `src/hos
 
 **The clone.** A review or a fix checks the branch out from the user's clone of the project, found by `findClone` (`src/acp/cloneSearch.ts`): the clone remembered for the project, the window's folders, the folders agents used, then VS Code's recent folders, and remembered once found. With none, `reviewClone.ts` asks Choose Folder... (checked to be a clone) or Clone It..., which runs `git clone` over HTTPS or SSH in a terminal, so git asks for the user's own credentials.
 
-**The reviewer.** The reviewer agent works in a worktree of its own checked out at the source branch, on GeminiCode's own `review/<iid>-…` branch (`reviewWorktree` in `releaseMerge.ts`), under `~/.geminicode/reviews/<repository>` (`reviewsHome`), which the CLI never trusts, so the merge request's own settings, hooks and MCP servers never run; its prompt carries the merge request's description and the ticket's text instead, and its read-only git commands are answered by GeminiCode. A second review of the same merge request reuses the worktree, moved to the new head, and its reviewer. Its team tools only read (`TeamConnections.markReadOnlyFolder`, `readOnly` in `teamTools.ts`). The CLI 0.64.0 offers no per-session way to ignore the branch's own `.gemini/settings.json`, hooks or MCP servers: `session/new` takes only `cwd` and `mcpServers`, and `--allowed-mcp-server-names`, `GEMINI_CLI_HOME` and `hooksConfig` apply to the whole process. Folder trust is the one per-session control. It reads the merge request against its ticket and the open threads, and ends with its findings as a JSON block.
+**The reviewer.** The reviewer agent reads the merge request against its ticket and the open threads, and ends with its findings as a JSON block. It works in a worktree of its own checked out at the source branch, on GeminiCode's own `review/<iid>-…` branch (`reviewWorktree` in `releaseMerge.ts`), under `~/.geminicode/reviews/<repository>` (`reviewsHome`). The CLI never trusts that folder, so the merge request's own settings, hooks and MCP servers never run: the CLI (0.64.0) offers no per-session way to ignore a branch's `.gemini/settings.json`, hooks or MCP servers, since `session/new` takes only `cwd` and `mcpServers`, and `--allowed-mcp-server-names`, `GEMINI_CLI_HOME` and `hooksConfig` apply to the whole process. Folder trust is the one per-session control. The reviewer's prompt carries the merge request's description and the ticket's text, GeminiCode answers its read-only git commands, and its team tools only read (`TeamConnections.markReadOnlyFolder`, `readOnly` in `teamTools.ts`). A second review of the same merge request reuses the worktree, moved to the new head, and its reviewer.
 
 **The draft.** `src/acp/reviewDraft.ts` turns that block into draft comments, replies and suggested changes. The module holds the draft's logic and calls nothing: ticking, editing (an edited comment of Gemini's is kept when Gemini reviews again), moving comments to a newer version by the text of their line, and the GitLab position each one is posted at.
 
@@ -788,14 +803,13 @@ GeminiCode indexes each folder agents work in, and documentation the user attach
 - **The tools.** `IndexMcpServer` (`src/acp/indexMcp.ts`) binds each agent's route and token to the folder it works in, and a spare session's slot to its folder, so no token reaches another folder's index.
   - `code_search` runs BM25 over the chunks, with names and paths weighted above body text and the chunk defining a queried name first (`query.ts`).
   - `find_symbol`, `related_files` and `repo_map` read the symbols, imports and co-change tables.
-  - Results are capped at 8,000 characters (`format.ts`).
+  - Results are capped at 8,000 characters (`format.ts`). Within that, `code_search` shows each hit's chunk (up to 30 lines) and `find_symbol` the first definition's body, so the model works from what it found rather than opening the file again.
   - While a folder's first build runs, `code_search` and `find_symbol` answer from the app's ripgrep and say so, leaving out what the index leaves out (secret files, `.geminiignore`, `gemini.index.exclude`).
   - The server's instructions carry the folder's outline (`repoMap.ts`), fetched when a session is prepared.
   - It is one of `ownServers`, so `--allowed-mcp-server-names` always includes it.
 - **Docs.** `DocsSources` (`src/host/docsSources.ts`) keeps the sources, and the folders each is attached to, in `~/.geminicode/index/docs/sources.json`. It fetches in the extension host (`src/acp/docs/crawler.ts`): `llms-full.txt`, `llms.txt`, the sitemap, then links under the address, within robots.txt, a page limit and conditional requests. Redirects are followed by hand, each hop checked against `gemini.docs.allowedDomains` and the source's scope; sitemaps named by robots.txt or a sitemap index must be on an allowed host; and nothing is fetched from a private, loopback or link-local address unless the source's own address is one. Bodies are read through a 5 MB cap, whatever length the server gives, and pages go to the indexer in batches of 20 pages or 8 MB. The indexer converts HTML to Markdown (`htmlToMarkdown.ts`, nesting kept to 200 levels), cuts it by heading and stores each source once (`docsLibrary.ts`), in transactions of about 40 ms; a store SQLite reports damaged is fetched again, and one that fails to open for another reason is kept. Due sources refresh in the background; a source whose fetch failed is tried again 15 minutes later, then twice as long each time up to a day. A lock beside the stores lets one window fetch a source at a time. A worktree's agent sees its workspace's docs.
 - **Pages.**
-  - The Index page (`src/host/indexPage.ts`, `webview-src/indexPage.ts`), Agent Setup's Index & Docs tab, opens as a tab in the active group from Home's drum icon, the Agents pane's workspace menu, the status bar menu or **Gemini: Manage Index**.
-  - Home shows a drum icon beside the workspace pill (full, half or empty). Whether a folder has an index is read from the index file, so Home never starts the indexer.
+  - The Index page (`src/host/indexPage.ts`, `webview-src/indexPage.ts`), Agent Setup's Index & Docs tab, opens as a tab in the active group from a workspace row's Index menu in the Agents pane, the status bar menu or **Gemini: Manage Index**.
   - The Files Left Out popup groups the left-out files by reason and adds files to `gemini.index.include`.
   - The Gemini status bar item shows **Indexing N%** only while a build of 50 files or more runs (`statusBar.ts`).
   - Suggested docs come from the folder's manifests and a list that ships with the extension (`src/acp/docs/suggest.ts`).
@@ -804,7 +818,7 @@ GeminiCode indexes each folder agents work in, and documentation the user attach
 
 ### Context per model call
 
-Agent Setup measures what every model call carries in the workspace (`src/acp/contextCost.ts`, `src/host/contextCostProbe.ts`). It sends one "reply OK" prompt on the lightest Flash model per variant, each in a CLI started as agents are (`getAgentCommand` with an explicit `--allowed-mcp-server-names`). The variants are:
+The chat's usage popover, and Agent Setup's Measure buttons with `gemini.developer.showTools` on, show what every model call carries in the workspace (`src/acp/contextCost.ts`, `src/host/contextCostProbe.ts`). The probe sends one "reply OK" prompt on the lightest Flash model per variant, each in a CLI started as agents are (`getAgentCommand` with an explicit `--allowed-mcp-server-names`). The variants are:
 
 - every server and GeminiCode's own (the total);
 - none (the CLI and context files);
@@ -812,7 +826,7 @@ Agent Setup measures what every model call carries in the workspace (`src/acp/co
 - each server alone;
 - GeminiCode's servers alone.
 
-Each part is the difference between two variants. The probe runs only on request, the result is kept in global state per folder, and each server's share shows beside its switch, with advice for heavy parts. Memory files show a size estimate that includes the files they import with `@`.
+The page shows each test prompt's input tokens as the CLI reported them, never a difference between two ([design rule 10](#design-rules)). The probe runs only on request, the readings are kept in global state per folder, and each server's reading shows beside its switch. A server whose reading is half as much again as the folder's alone, or context files that put the folder that far above an empty one, are pointed out in words (`heavyReadings`). Memory files show their size in characters, including the files they import with `@`.
 
 ## Gemini CLI management
 
@@ -836,7 +850,9 @@ The bundled version and its npm SHA-512 are pinned in `extensions/gemini/package
 GeminiCode's own copies (bundled and installed) get two changes. A CLI the user chose (`gemini.cliPath`, `PATH`) gets neither.
 
 - **The output cap.** In ACP mode the CLI hands a tool's whole output to the model, skipping the 40,000-character cap it applies elsewhere, so one large `git diff` could push a session past the model's input limit. `src/acp/cliPatches.ts` puts the cap back on the ACP path in three places: when the bundled copy is built, on install, and at launch for older installs. `npm run bundle-cli` fails when the patch no longer matches a new CLI.
-- **Ripgrep.** `cliRipgrep.ts` copies the app's ripgrep into `bundle/vendor/ripgrep/`, in the bundled copy when it is built and in installed copies at launch. Without it the CLI's `grep_search` falls back to `git grep`.
+- **Ripgrep.** `cliRipgrep.ts` copies the app's ripgrep into `bundle/vendor/ripgrep/`, in the bundled copy when it is built (for the building Mac's architecture only: releases are Apple silicon) and in installed copies at launch. Without it the CLI's `grep_search` falls back to `git grep`.
+
+If a turn fails anyway with "input token count exceeds the maximum", the chat moves to a new session that carries the conversation without its tool outputs (`continueAfterOverflow` in `chat/chatTurn.ts`), since retrying the same session would send the same history.
 
 ### What GeminiCode reads from the CLI
 
@@ -854,24 +870,22 @@ Besides ACP, a few features read the CLI's private formats. They are all in `src
 The agent's environment is the app's, so an app opened from the Dock gets no shell variables. `buildAgentEnv` (`src/acp/env.ts`) fills two gaps, and never overrides what the environment already sets:
 
 - **Proxy.** When no `HTTPS_PROXY`, `HTTP_PROXY` or lowercase spelling is set, the editor's `http.proxy` (an `http` or `https` address; the CLI refuses other kinds) becomes those variables, and `http.noProxy` plus `localhost` and `127.0.0.1` becomes `NO_PROXY`, so GeminiCode's own MCP servers on this Mac never go through it. Gemini CLI 0.64.0 reads exactly these: gaxios and its `setGlobalProxy` for undici read `HTTPS_PROXY`, `https_proxy`, `HTTP_PROXY`, `http_proxy`, `NO_PROXY` and `no_proxy`. Changing either setting restarts the agent. Team containers get the same variables from the app's environment, with a proxy on this Mac addressed as `host.docker.internal`.
-- **Certificates.** `NODE_USE_SYSTEM_CA=1`, unless set, makes Node trust the Mac's keychain as well as its own list, for networks that inspect TLS. The CLI runs on Electron 43.7.7's Node 24.21.0, which reads it (with it the default store grows from Node's 121 certificates by the keychain's own); an older Node on `PATH` ignores it.
+- **Certificates.** `NODE_USE_SYSTEM_CA=1`, unless set, makes Node trust the Mac's keychain as well as its own list, for networks that inspect TLS. The CLI runs on the Node in Electron 43, which reads it (with it the default store grows from Node's 121 certificates by the keychain's own); an older Node on `PATH` ignores it.
 
-`gemini.cli.registry` (policy `GeminiCliRegistry`) points installs and updates at an organisation's npm mirror; the download is still checked against the registry's SHA-512.
-
-If a turn fails anyway with "input token count exceeds the maximum", the chat moves to a new session that carries the conversation without its tool outputs (`continueAfterOverflow` in `chatController.ts`), since retrying the same session would send the same history.
+`gemini.cli.registry` points installs and updates at an organisation's npm mirror; the download is still checked against the registry's SHA-512.
 
 ### Installing and updating
 
 - **Install Latest Gemini CLI** downloads the release from the npm registry (or `gemini.cli.registry`), checks its SHA-512 checksum, and unpacks only `bundle/` and `package.json`.
-- **Install or Change Gemini CLI Version...** lists the last 30 releases, leaving out those older than `MIN_CLI_VERSION`, and pins the one picked in `gemini.cli.version` (unless policy locks it).
-- Switching versions restarts the agent once no agent is working. GeminiCode keeps only the installed copy in use (and a pinned one), so copies older than what runs, the bundled CLI included, are deleted.
+- **Install or Change Gemini CLI Version...** lists the last 30 releases, leaving out those older than `MIN_CLI_VERSION`, and pins the one picked in `gemini.cli.version`.
+- Switching versions restarts the agent once no agent is working. GeminiCode keeps only the installed copy in use and a pinned one; any other installed copy is older than the CLI that runs, bundled or installed, and is deleted.
 - Once a day, after the agent is ready, GeminiCode checks for a newer release and offers **Install**, **Skip This Version** or **Don't Check Again**. It never installs without a click, and skips the check when a version or path is pinned.
 
 ## GeminiCode updates
 
 GeminiCode does not update itself. Upstream's updater needs a server that answers per build, and a static GitHub Pages site cannot, so `product.json` has no `updateUrl`.
 
-Instead, a minute after start and then at most once a day across windows, `AppUpdateNotice` reads `latest.json` next to the download page (`geminiCodeDownloadUrl` in `product.json`). When it names a release newer than `geminiCodeVersion`, a notification says so, with **Download** (the page) and **Release Notes**. Only `https` links are opened. Dev builds, which have no `geminiCodeVersion`, never check, and admins can turn the check off with `GeminiCodeCheckForUpdates`.
+A minute after start, and then at most every six hours across windows, `AppUpdateNotice` reads `latest.json` next to the download page (`geminiCodeDownloadUrl` in `product.json`). When it names a release newer than `geminiCodeVersion`, a notification says so, with **Download** (the page) and **Release Notes**. Only `https` links are opened. Dev builds, which have no `geminiCodeVersion`, never check, and `gemini.app.checkForUpdates` turns the check off.
 
 Full auto-update would need a small update server. See [RELEASING.md](RELEASING.md) for how releases and the page are built.
 
@@ -881,8 +895,8 @@ ACP does **not** sandbox the agent. The CLI routes only its `read_file`, `write_
 
 What keeps the user in control:
 
-1. **Approval modes.** In **Default** mode the CLI asks permission before every mutating tool. **Auto Edit** and **YOLO** skip some or all of those questions. Admins can remove either mode, and YOLO is off by default.
-2. **Admin policy passed to the CLI.** GeminiCode writes a policy file and passes it with `--admin-policy`. A system policy directory on the machine overrides this file. `test/acp/realAgentPolicy.test.ts` checks all of the following against the bundled CLI.
+1. **Approval modes.** In **Default** mode the CLI asks permission before every mutating tool. **Auto Edit** and **YOLO** skip some or all of those questions. `gemini.approval.allowAutoEdit` and `gemini.approval.allowYolo` remove either mode, and YOLO is off by default.
+2. **Tool policy passed to the CLI.** GeminiCode writes a policy file from those settings (`toolPolicy.ts`) and passes it with `--admin-policy`, the CLI's highest tier, so a repository's own policy can't undo it. The CLI ignores this file when the machine's system policy directory holds policies of its own. `test/acp/realAgentPolicy.test.ts` checks all of the following against the bundled CLI.
    - When a mode is turned off, the CLI itself keeps asking in that mode.
    - When shell access is off, the CLI removes its shell tool.
    - The commands that print the environment (`env`, `printenv`, `declare -x`, `typeset -x`, `export -p`, `compgen -e`, `ps` with an environment flag, and `set`, `export`, `declare` or `typeset` alone) are refused, even inside a longer command, unless `gemini.tools.denyEnvironmentCommands` is off.
@@ -894,49 +908,13 @@ What keeps the user in control:
 6. **Team tools ask for every write.** Write tools always reach a permission card with the exact text, and the confirm class offers only Allow once and Reject, in every mode. Every write, by an agent or a page, is in the audit log with its intent, its result and who answered.
 7. **Other people's text is marked as data.** Tool results that carry text from Jira, GitLab, Figma or a page, and what a page in the browser hands over (a picked element's HTML and styles, the elements under the user's notes, the console), are wrapped in `<external source="…" ref="…">`, with any `<external>` tag inside the text escaped so it can't close the frame early (`external` in `teamTools.ts`). The servers' instructions tell the model to read it as data, never as instructions.
 8. **Tokens stay out of the agent's reach.** Team tool tokens are in the keychain (SecretStorage), never in settings or the agent's environment. The agent's environment is the editor's without any variable whose name looks like a credential (`TOKEN`, `SECRET`, `PASSWORD`, `_KEY`, `CREDENTIAL`), except the CLI's own `GEMINI_*` and `GOOGLE_*` (`withoutSecrets` in `src/acp/env.ts`); the shell steps of a team command (`!{...}`) get the same environment. A program the agent runs that needs a token gets it from the user, never from the shell that started the app. Taking over a repository's own Jira and GitLab servers moves their tokens out of the shell environment, and the environment commands are refused (2, above). The team's containers get their tokens on their input, read by a shell that then runs the image's own entrypoint (`containerSpec`), so neither `docker inspect` (which shows `-e` and `--env-file` values alike) nor the Docker client's environment holds them, and `docker` always asks.
+9. **Sites ask first.** In the browser, an agent opens other origins only after asking, per agent and site, and `gemini.browser.allowedOrigins` can pin them. The CLI's `web_fetch` refuses private hosts.
 10. **Pages are not trusted to name what runs.** Home runs only the commands it sent the page, with the same arguments; a chat runs only a shell block that is in its messages; Open Trace opens only GeminiCode's own trace files; a dropped file that may hold secrets is not attached; rendered Markdown links only to http, https and mailto (`hostAllowlists.ts`, `linkPolicy.ts`).
 11. **Project tools by server, not by name.** A project's tools, and the team tools that only read, are answered for the user only when the call's id names GeminiCode's server (`mcp_<server>_<tool>…`, `mcpToolOf`), so another server's `report` or `post` never is. Snyk's tests run the project's build tools, so they show a card and are refused while shell commands are off.
-9. **Sites ask first.** In the browser, an agent opens other origins only after asking, per agent and site, and `gemini.browser.allowedOrigins` can pin them. The CLI's `web_fetch` refuses private hosts.
 
-### Policies
+### Settings a repository can't change
 
-Each setting below can be locked through VS Code's policy system (Group Policy, macOS profiles, or Linux JSON policy). The policy names are defined in `product.json` under `extensionConfigurationPolicy`.
-
-| Setting | Policy | Default |
-| --- | --- | --- |
-| `gemini.cliPath` | `GeminiCliPath` | empty |
-| `gemini.cli.version` | `GeminiCliVersion` | empty (newest copy) |
-| `gemini.cli.checkForUpdates` | `GeminiCliCheckForUpdates` | on |
-| `gemini.cli.registry` | `GeminiCliRegistry` | empty (`https://registry.npmjs.org`) |
-| `gemini.app.checkForUpdates` | `GeminiCodeCheckForUpdates` | on |
-| `gemini.approval.allowAutoEdit` | `GeminiAllowAutoEdit` | on |
-| `gemini.approval.allowYolo` | `GeminiAllowYolo` | off |
-| `gemini.tools.allowShell` | `GeminiAllowShell` | on |
-| `gemini.inlineEdit.enabled` | `GeminiInlineEdit` | on |
-| `gemini.usageMeter.enabled` | `GeminiUsageMeter` | on |
-| `gemini.browser.enabled` | `GeminiBrowser` | on |
-| `gemini.browser.allowOtherSites` | `GeminiBrowserOtherSites` | on |
-| `gemini.browser.allowedOrigins` | `GeminiBrowserAllowedOrigins` | empty (every site) |
-| `gemini.tools.denyEnvironmentCommands` | `GeminiDenyEnvironmentCommands` | on |
-| `gemini.mcp.allowedServers` | `GeminiAllowedMcpServers` | empty (the CLI's `mcp.allowed`, plus GeminiCode's own servers) |
-| `gemini.index.enabled` | `GeminiIndex` | on |
-| `gemini.docs.enabled` | `GeminiDocs` | on |
-| `gemini.docs.allowedDomains` | `GeminiDocsAllowedDomains` | empty (every site) |
-| `gemini.chat.runCommands` | `GeminiChatRunCommands` | `askWhenRisky` (`alwaysAsk`, or `off` to remove Run) |
-| `gemini.projectId` | `GeminiProjectId` | empty (workspace, user, org default, environment) |
-| `gemini.projects.enabled` | `GeminiProjects` | on |
-| `gemini.projects.maxRunningThreads` | `GeminiProjectsMaxRunningThreads` | 4 |
-| `gemini.team.runTeamServers` | `GeminiRunTeamServers` | off |
-| `gemini.agents.worktreeSetup` | `GeminiWorktreeSetup` | empty (the repository's `.gemini/worktree-setup.sh`) |
-| `gemini.agents.allWorkspaceFolders` | `GeminiAllWorkspaceFolders` | off |
-| `gemini.agents.defaultMode` | `GeminiAgentsDefaultMode` | `default` (`autoEdit`, `plan` or `yolo`; a mode turned off by `GeminiAllowAutoEdit` or `GeminiAllowYolo` falls back to `default`) |
-| `gemini.browser.keepSignIns` | `GeminiBrowserKeepSignIns` | off |
-
-`gemini.agents.worktreeSetup` and `gemini.agents.defaultMode` are machine-scoped, so a repository's own settings can't set the command, or start agents in a mode that asks less. `gemini.projectId` stays window-scoped, since a workspace's own billing project is documented and in use; starting an agent logs a warning when a workspace's value replaces the user's or the organisation's, and a `GeminiProjectId` policy wins over both (`getProjectSettings` reads it through `get`, as `inspect` leaves policies out).
-
-An administrator sets these in a macOS configuration profile for the app's preferences domain. An array setting's policy is a JSON string.
-
-To pin a CLI version for everyone, lock `GeminiCliPath` to an empty string and `GeminiCliVersion` to the version.
+`gemini.agents.worktreeSetup` and `gemini.agents.defaultMode` are machine-scoped, so a repository's own settings can't set the command, or start agents in a mode that asks less. `gemini.projectId` is window-scoped, since a workspace's own billing project is documented and in use; starting an agent logs a warning when a workspace's value replaces the user's or the organisation default's. No `gemini.*` setting is registered with VS Code's policy system.
 
 An organisation's default Google Cloud project ID can ship in `product.json` as `geminiDefaultProjectId`. No build sets it: the release workflow stamps only `geminiCodeVersion`, so an organisation that wants a default adds it to its own build.
 
@@ -949,7 +927,7 @@ GeminiCode runs only on the Mac, with no server ([ADR 0009](adr/0009-desktop-onl
 
 | State | Kept in | After a restart |
 | --- | --- | --- |
-| Agents, workspaces, projects and threads | `<globalStorage>/records/`, one file per record (global state before, still written when a window closes) | the same list and cards |
+| Agents, workspaces, projects and threads | `<globalStorage>/records/`, one file per record, and a snapshot in global state written when a window closes ([Storage](#storage)) | the same list and cards |
 | Each conversation | one JSON file per agent in global storage (its items, and the changed files' paths and counts), the changed files' texts in a `.changes.json` beside it, written only when they change and capped at 8 MB per agent, and the CLI's own chat file | shown at once; the session reopens with `session/load` |
 | Undo and Rewind checkpoints | `<globalStorage>/checkpoints/<agent>.json`, written when a turn ends | up to the last finished turn |
 | A turn that was running | the agent process | lost; the chat shows that it was cut off, with Retry the Turn and Keep and Continue |
@@ -963,7 +941,7 @@ GeminiCode runs only on the Mac, with no server ([ADR 0009](adr/0009-desktop-onl
 
 ### Storage
 
-Everything GeminiCode keeps, for an uninstall or a full disk (`storageAreas` in `src/acp/storageUsage.ts`). What it writes about the user's work (transcripts, checkpoints, records and the audit log) is created for the user alone, mode 0600 in folders of mode 0700 (`privateWrite` in `fsUtil.ts`), whatever the umask; files from before keep their mode.
+Everything GeminiCode keeps, for an uninstall or a full disk (`storageAreas` in `src/acp/storageUsage.ts`). What it writes about the user's work (transcripts, checkpoints, records and the audit log) is created for the user alone, mode 0600 in folders of mode 0700 (`privateWrite` in `fsUtil.ts`), whatever the umask; a file that already exists keeps its mode.
 
 | Where | What |
 | --- | --- |
@@ -972,15 +950,15 @@ Everything GeminiCode keeps, for an uninstall or a full disk (`storageAreas` in 
 | `<globalStorage>/reviews/`, `flows/` | merge request review drafts, open team flows |
 | `<globalStorage>/audit/` | the audit log, a file per day |
 | `<globalStorage>/traces/`, `cli-logs/` | performance traces; the CLI's debug log, one per window's process |
-| `<globalStorage>/gemini-cli/`, `policy/`, `enhance/` | installed CLI copies, the admin policy file, Enhance prompt's empty folder |
-| `~/.geminicode/index/`, `worktrees/`, `threads/`, `projects/` | the workspace index, agents' worktrees, threads' folders, projects' folders and memory |
+| `<globalStorage>/gemini-cli/`, `policy/`, `enhance/` | installed CLI copies, the tool policy file, Enhance prompt's empty folder |
+| `~/.geminicode/index/`, `worktrees/`, `reviews/`, `threads/`, `projects/` | the workspace index, agents' worktrees, reviewers' worktrees, threads' folders, projects' folders and memory |
 | `~/.gemini/` | the CLI's own files, which GeminiCode edits only as the CLI would |
 
 How files are written (`src/acp/fsUtil.ts`):
 
-- **Atomic, per process.** Every file is written to `<file>.<pid>.<n>.tmp` and renamed over it (`writeFileAtomic`, `writeJsonAtomic`), so a crash leaves the last good copy and two windows never rename each other's half-written file into place. This includes the CLI's `~/.gemini/settings.json`, `mcp-server-enablement.json` and `trustedFolders.json`, and the admin policy file.
+- **Atomic, per process.** Every file is written to `<file>.<pid>.<n>.tmp` and renamed over it (`writeFileAtomic`, `writeJsonAtomic`), so a crash leaves the last good copy and two windows never rename each other's half-written file into place. This includes the CLI's `~/.gemini/settings.json`, `mcp-server-enablement.json` and `trustedFolders.json`, and the tool policy file.
 - **Never written over when unreadable.** A chat, checkpoints, a review or a record that can't be parsed, or that a newer version wrote, is moved aside as `<file>.broken` (`quarantine`) and the store starts empty for it.
-- **The CLI's settings keep their comments.** gemini-cli 0.64 reads settings files with strip-json-comments and writes them back with comment-json, keeping comments. GeminiCode edits them the same way, in place with `jsonc-parser`'s `modify` (`editSettingsText` in `projectSettings.ts`), and leaves alone a file that is not a JSON object with comments at most. `mcp-server-enablement.json` stays plain JSON: the CLI reads it with `JSON.parse`.
+- **The CLI's settings keep their comments.** gemini-cli 0.64 reads settings files with strip-json-comments and writes them back with comment-json, keeping comments. GeminiCode edits them the same way, in place with `jsonc-parser`'s `modify` (`editSettingsText` in `projectSettings.ts`), and leaves alone a file that is not a JSON object (comments allowed). `mcp-server-enablement.json` stays plain JSON: the CLI reads it with `JSON.parse`.
 
 **The agent list** (`src/acp/recordStore.ts`, `agentsStore.ts`). Every window has the whole list in memory, as `AgentsModel`. Each record is a file, `{ "version": 1, "order": n, "record": { ... } }`:
 
@@ -989,17 +967,17 @@ How files are written (`src/acp/fsUtil.ts`):
 - Before a record is written, its file is read again: a tombstone, or another window's copy used later (`updatedAt`), wins and goes into this window's model.
 - Each window watches the two folders and takes in the others' changes (`AgentsModel.applyExternal`); a change of its own not saved yet stays unless theirs is newer, and an agent another window removed closes here.
 - Records this version doesn't recognise (a newer version's role, a missing workspace) and fields it doesn't know are kept and saved back as they were (`AgentsModel.stored`). A file of a newer format version is never written.
-- The first start with the store moves the `gemini.agents` global state snapshot in, once (`migrated.json` marks it). The snapshot is left there, now with `version: 2`, and is written again when a window closes, so an earlier GeminiCode still finds the list. If the store can't be read, the window works from that snapshot and saves to it, as before.
+- The first start with the store moves the `gemini.agents` global state snapshot in, once (`migrated.json` marks it). The snapshot stays, with `version: 2`, and is written again when a window closes, so an earlier GeminiCode still finds the list. If the store can't be read, the window works from that snapshot and saves to it.
 
-**The CLI's debug log.** GeminiCode points the CLI's debug log (`GEMINI_DEBUG_LOG_FILE`) at `<globalStorage>/cli-logs/cli-debug-<pid>.log`, one per window's extension host, so a window starting its agent empties only its own (`McpDiagnostics.reset`). The logs of processes that have ended are removed at the next start, and the single `cli-debug.log` every window shared before goes with the housekeeping a minute after startup (`storageMaintenance.ts`).
+**The CLI's debug log.** GeminiCode points the CLI's debug log (`GEMINI_DEBUG_LOG_FILE`) at `<globalStorage>/cli-logs/cli-debug-<pid>.log`, one per window's extension host, so a window starting its agent empties only its own (`McpDiagnostics.reset`). The logs of processes that have ended are removed at the next start, and a `cli-debug.log` that older versions shared between windows goes with the housekeeping a minute after startup (`storageMaintenance.ts`).
 
 **Save failures.** A chat or checkpoints that can't be saved, such as on a full disk, is logged each time, and the window warns once: "GeminiCode couldn't save chats".
 
-**Sizes and Clean Up.** `measureStorage` gives each area's size and `cleanupPlan` lists what Clean Up would remove, each with its reason: chats and checkpoints of agents no longer in the list, merged threads' checkpoints, log days past the retention, traces, `.broken` files, ended windows' debug logs, and merged threads' worktrees whose work is all committed and merged (never one with uncommitted changes or unmerged commits). `runCleanup` removes only a plan the user agreed to, a worktree through the `removeWorktree` it is handed. Settings has no Storage section yet; these are its data.
+**Sizes and Clean Up.** `measureStorage` gives each area's size and `cleanupPlan` lists what Clean Up would remove, each with its reason: chats and checkpoints of agents no longer in the list, merged threads' checkpoints, log days past the retention, traces, `.broken` files, ended windows' debug logs, and merged threads' worktrees whose work is all committed and merged (never one with uncommitted changes or unmerged commits). `runCleanup` removes only a plan the user agreed to, a worktree through the `removeWorktree` it is handed. The Storage section of Agent Setup's Storage & Audit page (`storageSection.ts`) shows the sizes, measured when it first scrolls into view, and runs Clean Up.
 
 ## Direct requests
 
-Inline edit, commit messages and Enhance prompt don't need a whole agent turn. They skip the agent and send one request to a fast model from `src/acp/directRequest.ts`. The model is `gemini.inlineEdit.model`; by default it is the newest Flash model the installed CLI names, falling back to the previous one for accounts that can't use it yet.
+Inline edit, commit messages, Enhance prompt and side questions (`/btw`, `src/acp/sideChat.ts`) don't need a whole agent turn. They skip the agent and send one request to a fast model from `src/acp/directRequest.ts`. A side question goes with the conversation as the chat shows it, while the agent keeps working, and neither it nor its answer is added to the agent's history. The model is `gemini.inlineEdit.model`; by default it is the newest Flash model the installed CLI names, falling back to the previous one for accounts that can't use it yet.
 
 Direct requests use the sign-in the CLI saved, read only, and never change the CLI or its files:
 
@@ -1007,7 +985,7 @@ Direct requests use the sign-in the CLI saved, read only, and never change the C
 - **API key** (`gemini-api-key`): `GEMINI_API_KEY` calls the Gemini API.
 - Vertex AI, and sign-ins kept in the system keychain, are not supported; the command says so.
 
-Direct requests carry the CLI's User-Agent, `user_prompt_id` and `session_id`, as the CLI's own requests do. On a real account they answer in 2.8 s at the median, against 4.8 s through the CLI ([FINDINGS.md](FINDINGS.md#prompt-enhancement-direct-requests-or-the-cli)). `GeminiInlineEdit` turns inline edit and Enhance prompt off.
+Direct requests carry the CLI's User-Agent, `user_prompt_id` and `session_id`, as the CLI's own requests do. On a real account they answer in 2.8 s at the median, against 4.8 s through the CLI ([FINDINGS.md](FINDINGS.md#prompt-enhancement-direct-requests-or-the-cli)). `gemini.inlineEdit.enabled` turns direct requests off.
 
 ### Inline edit and commit messages
 
@@ -1015,7 +993,7 @@ Inline edit streams the answer (`:streamGenerateContent?alt=sse`). It shows the 
 
 ### Enhance prompt
 
-Enhance prompt (`promptEnhancer.ts`, `webview-src/enhance.ts`) is a direct request too (`QuickEdits.enhancePrompt`), on the inline edit model and under the same setting and policy. It streams the rewrite into the read-only composer as it arrives. The draft goes with the names of its attachments, the chat's last six messages, the folder, branch, open file and mode, never file contents. The reply is cleaned (`cleanEnhancedPrompt`) and replaces the draft as an edit, so Undo brings it back.
+Enhance prompt (`promptEnhancer.ts`, `webview-src/enhance.ts`) is a direct request too (`QuickEdits.enhancePrompt`), on the inline edit model and under the same setting. It streams the rewrite into the read-only composer as it arrives. The draft goes with the names of its attachments, the chat's last six messages, the folder, branch, open file and mode, never file contents. The reply is cleaned (`cleanEnhancedPrompt`) and replaces the draft as an edit, so Undo brings it back.
 
 When direct requests are off, cannot use the sign-in, or fail (for five minutes after a failure), the CLI makes the rewrite:
 
@@ -1027,13 +1005,13 @@ When direct requests are off, cannot use the sign-in, or fail (for five minutes 
 
 ### Usage meter
 
-The usage meter (`usageMeter.ts`) makes the same `retrieveUserQuota` request the CLI makes, with the same project, at most every 10 minutes and only while the window is in front. The Gemini status bar item's tooltip lists each model's share of today's quota and when it resets, and the item shows the percentage once a model passes 80%. API key sign-ins have no quota to read, so it shows nothing. `GeminiUsageMeter` turns it off.
+The usage meter (`usageMeter.ts`) makes the same `retrieveUserQuota` request the CLI makes, with the same project, at most every 10 minutes and only while the window is in front. The Gemini status bar item's tooltip lists each model's share of today's quota and when it resets, and the item shows the percentage once a model passes 80%. API key sign-ins have no quota to read, so it shows nothing. `gemini.usageMeter.enabled` turns it off.
 
 ### Review My Changes and Approve Plan
 
 **Review My Changes** (`reviewPrompt.ts`, `AgentsView.reviewChanges`) starts an ordinary agent whose session opens in Plan mode (`setModeOnNextSession('plan')`), so the CLI itself refuses edits. The `git diff HEAD` (cut at 100,000 characters) goes as an `uncommitted.diff` document attachment, which keeps the chat bubble short and reaches the model as an embedded resource.
 
-**Approve Plan** appears on the latest turn end when the session's mode is `plan` and the agent offers `default`. It sets the mode with `session/set_mode` and sends a short prompt. Its chevron is the CLI's own approval dialog in the CLI's words: "Yes, automatically accept edits" (Auto Edit), "Yes, manually accept edits" (Default), "Edit or comment the plan first" (Plan Review, when the turn wrote a plan file) and "Not yet"; a mode policy turns off is left out. When the CLI itself asks through `exit_plan_mode`, its request's own options show on the permission card as they arrive. A thread card's Approve Plan and the thumbs-up reaction call the same handler. `/plan [goal]` switches to Plan mode and sends the goal, `/plan copy` copies the latest plan file to the clipboard.
+**Approve Plan** appears on the latest turn end when the session's mode is `plan` and the agent offers `default`. It sets the mode with `session/set_mode` and sends a short prompt. Its chevron is the CLI's own approval dialog in the CLI's words: "Yes, automatically accept edits" (Auto Edit), "Yes, manually accept edits" (Default), "Edit or comment the plan first" (Plan Review, when the turn wrote a plan file) and "Not yet"; a mode the approval settings turn off is left out. When the CLI itself asks through `exit_plan_mode`, its request's own options show on the permission card as they arrive. A thread card's Approve Plan and the thumbs-up reaction call the same handler. `/plan [goal]` switches to Plan mode and sends the goal, `/plan copy` copies the latest plan file to the clipboard.
 
 ### Plan Review
 
@@ -1050,13 +1028,15 @@ A Plan mode turn that writes a plan file gets Review Plan beside Approve Plan, a
 
 ### The pages' shell
 
-Every page that is a tab of its own (the Audit log, Connections, Index, Agent Setup, an agent's Files, Plan Review, the Review Page and the team flows) is a `PagePanel` (`src/host/pagePanel.ts`): one HTML document (`pageHtml`: one Content-Security-Policy, the shared stylesheets `codicon.css`, `menu.css`, `panels.css` and `glass.css`, which carry the look's tokens, then the page's own, and the page's script with its strings on the script tag), one lifecycle (`post` to a page that may be gone, `onDidChangeVisibility` for a page that refreshes when it shows, `onDidDispose` once) and typed messages both ways. A page of which there is one at a time is a `SinglePage`, whose `show` reveals the open one or makes it. On the webview side `bootPage` (`webview-src/panelBoot.ts`) reads the strings, routes the host's messages to one handler and sends `ready`. A page holds only what is its own: its strings, its view and its answers to the page's messages.
+Every page that is a tab of its own (Agent Setup's four pages, an agent's Files, Plan Review, Confluence's Review Page, the team flows and Debug mode's Evidence page) is a `PagePanel` (`src/host/pagePanel.ts`): one HTML document (`pageHtml`: one Content-Security-Policy; the shared stylesheets `tokens.css`, `codicon.css`, `menu.css` and `panels.css`, then the page's own, then `glass.css`; and the page's script with its strings on the script tag), one lifecycle (`post` to a page that may be gone, `onDidChangeVisibility` for a page that refreshes when it shows, `onDidDispose` once) and typed messages both ways. A page of which there is one at a time is a `SinglePage`, whose `show` reveals the open one or makes it. On the webview side `bootPage` (`webview-src/panelBoot.ts`) reads the strings, routes the host's messages to one handler and sends `ready`. A page holds only what is its own: its strings, its view and its answers to the page's messages.
 
 ### Agent Setup
 
-Agent Setup is four pages on the shared shell drawn as one page with tabs (`agentSetupTabs.ts`; `PageShell.tabs` renders the strip, a click posts `openTab`, and the page clicked from closes once the tab's command opened its page): Loads (`settingsPage.ts`), Index & Docs (`indexPage.ts`), Connections (`connectionsPage.ts`) and Storage & Audit (`auditPage.ts`, with the Storage section, `storageSection.ts`, above the log). The Loads page (`settingsPage.ts`, `projectSettings.ts`, `skills.ts`, `hooks.ts`, `cliCommands.ts`, `memory.ts`) edits the CLI's own files rather than keeping settings of its own:
+Agent Setup, titled Settings in the app, is four pages on the shared shell drawn as one page with tabs (`agentSetupTabs.ts`; `PageShell.tabs` renders the strip, a click posts `openTab`, and the page clicked from closes once the tab's command opened its page): Loads (`settingsPage.ts`), Index & Docs (`indexPage.ts`), Connections (`connectionsPage.ts`) and Storage & Audit (`auditPage.ts`, with the Storage section, `storageSection.ts`, above the log).
 
-- `mcpServers` in the personal and workspace `settings.json`, read as JSON with comments, and only rewritten when they have none;
+The first page lists every `gemini.*` setting, built from the extension's own contributed configuration (`src/acp/settingsModel.ts`), so it never drifts from `package.json`: its sections in order with a side index and a search box, and a control per kind of setting. Below the settings is what every agent loads (`settingsPage.ts`, `projectSettings.ts`, `skills.ts`, `hooks.ts`, `cliCommands.ts`, `memory.ts`), which edits the CLI's own files rather than keeping settings of its own:
+
+- `mcpServers` in the personal and workspace `settings.json`, edited in place so their comments and layout stay (`editSettingsText`);
 - `mcp-server-enablement.json`, keyed by the lowercased server name as gemini-cli's `McpServerEnablementManager` writes it;
 - the `context.fileName` rules files.
 
@@ -1076,7 +1056,7 @@ Startup failures come from the same debug-log reader as the warnings. The page r
 
 **Sign In** on a remote MCP server runs `gemini -i "/mcp auth <name>"` in a terminal, since neither ACP nor the `gemini mcp` subcommands can run the OAuth flow. The CLI stores the tokens where every agent reads them.
 
-**Gemini CLI settings** (`src/acp/cliPreferences.ts`) read and write four keys of the user's `settings.json` through `updateSettingsFile`, which leaves a file with comments alone.
+**Gemini CLI settings** (`src/acp/cliPreferences.ts`) read and write five of the CLI's preferences in the user's `settings.json` (`general.defaultApprovalMode`, `security.enablePermanentToolApproval`, `general.plan.modelRouting`, `privacy.usageStatisticsEnabled` and `general.sessionRetention`) through `updateSettingsFile`, which keeps the file's comments and leaves alone a file that is not a JSON object.
 
 ### Team commands
 
@@ -1086,7 +1066,7 @@ Team commands with `@{path}` or `!{command}` are expanded by `src/acp/teamComman
 
 ### Report a Problem
 
-**Gemini: Report a Problem** (`src/host/reportProblem.ts`; in the palette, in Troubleshoot and in the status bar's menu) opens a report as an untitled document rather than sending anything: the GeminiCode, VS Code, CLI and OS versions, the last failed turn in the chat in front, and the Gemini log's last 300 lines, kept by `recentLog.ts` as they were written. `src/acp/redact.ts` takes out email addresses, the signed-in account and the project id, the home folder, and anything that looks like a key, token or password, by its name or its shape; the user reads the result over before pasting it anywhere. It replaced the status bar's **Report an Issue...**, which opened the tracker with a URL carrying the versions.
+**Gemini: Report a Problem** (`src/host/reportProblem.ts`; in the palette, in Troubleshoot and in the status bar's menu) opens a report as an untitled document rather than sending anything: the GeminiCode, VS Code, CLI and OS versions, the last failed turn in the chat in front, and the Gemini log's last 300 lines, kept by `recentLog.ts` as they were written. `src/acp/redact.ts` takes out email addresses, the signed-in account and the project id, the home folder, and anything that looks like a key, token or password, by its name or its shape; the user reads the result over before pasting it anywhere.
 
 ## Sign-in and errors
 
@@ -1099,6 +1079,8 @@ Team commands with `@{path}` or `!{command}` are expanded by `src/acp/teamComman
 
 The window defaults set `chat.disableAIFeatures`. That hides upstream's chat view, Copilot status item and inline chat. One `GEMINI-FORK` filter also keeps upstream's Chat commands out of the Command Palette. `product.json` keeps upstream's `defaultChatAgent`, because removing it would touch about 45 upstream files.
 
+What upstream's AI needs only to run is left out of the app. Release builds delete `extensions/copilot` before building, and packaging leaves out the Copilot SDK's platform runtime (`@github/copilot-sdk-<platform>`: a 98 MB `runtime.node`, Microsoft sign-in libraries, its own ripgrep), about 140 MB installed and a quarter of the `.dmg`. The SDK's JavaScript stays, so the agent host's imports resolve; the agent host starts only for upstream's agents, which are off. The release workflow fails if either is back.
+
 ## Design rules
 
 1. Discover model and mode IDs from the agent; never hardcode them.
@@ -1107,24 +1089,25 @@ The window defaults set `chat.disableAIFeatures`. That hides upstream's chat vie
 4. Feature-detect and degrade. Hide a control the agent does not support, and render unknown update kinds generically.
 5. Keep the wire-to-UI adapter thin (`sessionUpdates.ts`).
 6. `extensions/gemini/src/acp` never imports `vscode`. ESLint enforces this.
-7. Edit upstream files only at registration points, and mark each edit `GEMINI-FORK`.
-8. Never modify the Gemini CLI's source. The one change to GeminiCode's own copies is the output cap in `cliPatches.ts` (plus the app's ripgrep, added beside it); a CLI the user picks is never changed
+7. Edit an upstream file only to register the fork, rebrand, or do what the extension API cannot, and mark each edit `GEMINI-FORK`.
+8. Never modify the Gemini CLI's source. The one change to GeminiCode's own copies is the output cap in `cliPatches.ts` (plus the app's ripgrep, added beside it); a CLI the user picks is never changed. Speed comes from GeminiCode's own code: process reuse, prewarming, batching and caching.
 9. One place per job. A thing the user acts on shows in one place: an agent is a row in the Agents list, a setting is on the Settings page, a tool's state is in the status bar. What is a click away stays a click away; `test/perf/surface.test.ts` caps the palette, the settings, each row's menu and Home's controls, and a budget goes up only on purpose.
 10. Only numbers the CLI reports. A figure in the app (tokens, time to the first output, a context cost) is one the Gemini CLI gave in `usage`, `usage_update`, `_meta.quota` or its own replies, never an estimate or a difference the app worked out.
 11. One scale, one frame. Every page's stylesheet draws its sizes, radii, shadows and motion from `media/tokens.css` (`test/webview/designTokens.test.ts`), and every menu, popover, dialog and tooltip shares the one frame.
 12. Nothing floats unheard. Work started without being awaited goes through `background()` (`src/host/background.ts`), which logs a failure with what was running, and every store writes with `writeFileAtomic`.
-13. Tools arrive, sessions don't restart. A session opens with every GeminiCode server listed and each offering only the tools the agent needs; a server whose tools change sends `notifications/tools/list_changed`, which the CLI honours (FINDINGS.md), rather than the session being reopened.. Speed comes from GeminiCode's own code: process reuse, prewarming, batching and caching.
+13. Tools arrive, sessions don't restart. A session opens with every GeminiCode server listed and each offering only the tools the agent needs; a server whose tools change sends `notifications/tools/list_changed`, which the CLI honours (FINDINGS.md), rather than the session being reopened.
 
 ## Testing
 
 - **Unit tests** (Vitest, `extensions/gemini/test/acp`) cover the ACP client against a scripted fake agent (`test/fake-agent`), which replays streaming, permission requests, file requests, error strings and unknown update kinds. They also cover the code around it that has no `vscode` dependency:
   - CLI resolution, install and update checks, and the app update check;
-  - the admin policy, file access, session approvals, project IDs and folder trust;
+  - the tool policy, file access, session approvals, project IDs and folder trust;
   - attachments, the agents model, changes, checkpoints, transcript storage, the prompt queue and reactions;
   - the local MCP servers, the team connectors, their writes and audit records, the team's servers as children (against a scripted MCP server, `test/fake-mcp`) and the take-over;
   - the benchmark;
+  - Debug mode's editor-free modules (`test/acp/debug/`, the debugger bridge's decisions against a scripted adapter in `test/fake-dap`);
   - Projects: the hub's wake and thread rules (with several repositories too), its MCP server, how rules are linked into a coordinator's folder and a thread's worktree, project settings and memory storage, memory drafts, and multi-repository thread folders.
-- **Real CLI tests** (`test/acp/real*.test.ts`) run against the bundled CLI once `npm run bundle-cli` has placed it, or the CLI `GEMINI_CLI_PATH` names, against a fake Gemini API on localhost (`test/realCli.ts` picks the CLI; without one they are skipped locally and fail in CI). They cover the `initialize` handshake and the sign-in-required path, the admin policy (modes, shell, the environment commands and the confirm class), the model list's shape, reopening sessions by id and from the terminal with the replay count, Rewind, an MCP server that cannot start, and the contract with the CLI's private formats (`realCliContract.test.ts`). CI runs them against the bundled, `latest` and `preview` CLI.
+- **Real CLI tests** (`test/acp/real*.test.ts`) run against the bundled CLI once `npm run bundle-cli` has placed it, or the CLI `GEMINI_CLI_PATH` names, against a fake Gemini API on localhost (`test/realCli.ts` picks the CLI; without one they are skipped locally and fail in CI). They cover the `initialize` handshake and the sign-in-required path, the tool policy (modes, shell, the environment commands and the confirm class), the model list's shape, reopening sessions by id and from the terminal with the replay count, Rewind, an MCP server that cannot start, and the contract with the CLI's private formats (`realCliContract.test.ts`). CI runs them against the bundled, `latest` and `preview` CLI.
 - **Fork tests in upstream code** (`src/vs/**/test/`, such as the agents' browser file policy in `geminiAgentFiles.test.ts`) run with upstream's runner, `./scripts/test.sh --run <file>`, after `npm run compile`; Gemini CI's Compile & hygiene job runs them.
 - **Performance budgets** (`test/perf/budgets.test.ts`) time the work on the paths a user waits on (a keystroke, a streamed chunk, switching agents, Enter to the first chunk, a 500-thread project) and the bundle sizes, and fail CI when one grows past its budget. The scripts in `scripts/` measure what CI cannot ([FINDINGS.md](FINDINGS.md)):
   - `perf-real.mts`: an agent's start, sessions and first reply on a real account;
@@ -1145,7 +1128,7 @@ What was learnt the hard way, kept with the design it belongs to. [AGENTS.md](..
 
 - GeminiCode runs every agent through `gemini --acp`. In that mode the CLI hands a tool's whole output to the model: the 40,000-character cap its scheduler applies elsewhere is skipped. A single large `git diff` or log once pushed an agent past the model's 1,048,576-token limit, and every later turn failed on the same history.
 - `extensions/gemini/src/acp/cliPatches.ts` puts that cap back on the ACP path. It is applied to the bundled copy (`npm run bundle-cli`), to each copy GeminiCode installs, and at launch to older installs. When you raise `bundledCli.version` in `extensions/gemini/package.json`, run `npm run bundle-cli` in `extensions/gemini`. It fails when the patch no longer matches the CLI: update the patch rather than ship an uncapped CLI. A CLI the user picks (`gemini.cliPath`, `PATH`) is never patched.
-- When a turn fails with "input token count exceeds the maximum", the chat moves to a new session that carries the conversation without tool outputs (`chatController.ts`, `continueAfterOverflow`). Never retry the same session: every request carries the same history.
+- When a turn fails with "input token count exceeds the maximum", the chat moves to a new session that carries the conversation without tool outputs (`continueAfterOverflow` in `chat/chatTurn.ts`). Never retry the same session: every request carries the same history.
 - An agent's shell cannot sign in to fetch from GitLab (terminal prompts are off). Fetch what an agent needs in the extension first, as the merge request review does with the target branch.
 - One CLI process serves every agent of a window, started in its first folder. A new session reads its own folder's settings, but `session/load` reopens one with the settings the process read in its folder at launch (still so in 0.65 and the 0.67 nightly). `AgentRuntime` reopens a session whose folder's project settings differ on a process started in that folder, made on first need and ended when its sessions are gone (`folderProcess`, `needsOwnProcess` in `agentService.ts`). `test/acp/realAgentFolders.test.ts` shows the CLI's behaviour: when a CLI release fixes it, that test fails and the folder processes can go.
 - Never ask an agent for a whole diff or log in one command. Give it the file list and have it read a few files at a time, as `reviewPrompt` in `src/acp/teamFlowLogic.ts` does.
@@ -1165,8 +1148,8 @@ What was learnt the hard way, kept with the design it belongs to. [AGENTS.md](..
 
 - Use themed tooltips (`setTip` from `webview-src/tooltip.ts`), not `title`. Native tooltips are slow to appear and unthemed. The themed one is a top-layer popover, so it also shows over a modal dialog.
 - A `Menu` that stays open while its data changes must be redrawn (`menu.render()`) when a new view arrives. Otherwise its switches show the old state, and the next click sends the same value again.
-- Size budgets in `extensions/gemini/test/perf/budgets.test.ts` are enforced: `media/home.js` 30 KB, `dist/extension.js` 1.2 MB. A heavy dependency goes in a chunk loaded on first use (`draftMarkdown.js`, `commentBox.js`, through a `data-` attribute on the page's script tag), never in the startup script or the extension host. On the host side, pages opened on request and rarely used tools load from bundles of their own (`dist/pages.js`, `dist/onDemand.js`, through `LazyFeature` in `src/host/lazyFeature.ts`); such a bundle has its own copy of every module it imports, so module state reaches it through constructors, which `test/perf/chunks.test.ts` checks. `dist/extension.js` is at about 1.20 MB, a few KB under its budget: new host features go in one of those bundles unless they are needed at startup.
-- `esbuild.mts` keeps only zod's English messages: its fifty locales were a third of the extension bundle. To measure the bundle again, build with esbuild's `metafile` and group `bytesInOutput` by package.
+- Size budgets in `extensions/gemini/test/perf/budgets.test.ts` are enforced: `media/home.js` 30 KB, `dist/extension.js` 1.01 MB. A heavy dependency goes in a chunk loaded on first use (`draftMarkdown.js`, `commentBox.js`, through a `data-` attribute on the page's script tag), never in the startup script or the extension host. On the host side, pages opened on request and rarely used tools load from bundles of their own (`dist/pages.js`, `dist/onDemand.js`, `dist/confluence.js`, `dist/debug.js`, through `LazyFeature` in `src/host/lazyFeature.ts`), and the ACP SDK with zod from `dist/connection.js` when the first agent process starts. Such a bundle has its own copy of every module it imports, so module state reaches it through constructors, which `test/perf/chunks.test.ts` checks. `dist/extension.js` sits close to its budget: new host features go in one of those bundles unless they are needed at startup.
+- `esbuild.mts` keeps only zod's English messages: its fifty locales were a third of the bundle that carries zod. To measure a bundle again, build with esbuild's `metafile` and group `bytesInOutput` by package.
 - User-visible strings come from the extension host (`HomeStrings`, `vscode.l10n.t`), are never joined from pieces, and use `{0}` placeholders.
 
 ### Jira and GitLab from GeminiCode's pages

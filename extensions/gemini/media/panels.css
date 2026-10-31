@@ -1062,7 +1062,7 @@ button.option-button .codicon-chevron-down {
 	border-top: 1px solid var(--gemini-border);
 }
 
-/* A setting's row: its name and key, help that wraps, a note when it is locked or workspace-saved, the control, and Reset. */
+/* A setting's row: its name and key, help that wraps, a note when it is workspace-saved or invalid, the control, and Reset. */
 .settings .row.setting {
 	align-items: flex-start;
 }
@@ -1091,10 +1091,6 @@ button.option-button .codicon-chevron-down {
 	margin-top: var(--gc-space-1);
 	color: var(--gemini-faint);
 	font-size: var(--gc-text-sm);
-}
-
-.settings .row.locked .row-note {
-	color: var(--gemini-muted);
 }
 
 .settings .setting-control {

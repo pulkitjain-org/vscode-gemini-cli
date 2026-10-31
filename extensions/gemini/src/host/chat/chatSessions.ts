@@ -356,7 +356,7 @@ export function chatCommand(): SlashCommand {
 	return { name: 'chat', description: vscode.l10n.t("The same as /resume"), source: 'app' };
 }
 
-/** How long the CLI keeps saved chats, from the user's own settings (Agent Setup changes it). */
+/** How long the CLI keeps saved chats, from the user's own settings (Settings changes it). */
 async function retentionNote(): Promise<string> {
 	const { keepChats } = readCliPreferences(await readSettingsFile(path.join(geminiDir(), 'settings.json')));
 	if (keepChats === keepChatsForever) {
@@ -371,7 +371,7 @@ async function retentionNote(): Promise<string> {
 		: unit === 'd' ? (count === 1 ? vscode.l10n.t("1 day") : vscode.l10n.t("{0} days", count))
 			: unit === 'w' ? (count === 1 ? vscode.l10n.t("1 week") : vscode.l10n.t("{0} weeks", count))
 				: count === 1 ? vscode.l10n.t("1 month") : vscode.l10n.t("{0} months", count);
-	return vscode.l10n.t("The Gemini CLI deletes them after {0}; Agent Setup can change that.", text);
+	return vscode.l10n.t("The Gemini CLI deletes them after {0}; Settings can change that.", text);
 }
 
 /** "3 prompts · 2h" */

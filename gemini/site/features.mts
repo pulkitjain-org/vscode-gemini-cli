@@ -261,7 +261,7 @@ export const featurePages: readonly FeaturePage[] = [
 		],
 		notes: [
 			'**Let Gemini Use This Page** hands one of your own tabs to an agent.',
-			'Sign-ins are kept per workspace, and an administrator can limit the sites agents may open.',
+			'Sign-ins are kept per workspace, and you can limit the sites agents may open.',
 		],
 		docs: [
 			{ href: 'browser.html', label: 'Browser' },

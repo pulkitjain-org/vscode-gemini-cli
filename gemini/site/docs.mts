@@ -47,7 +47,7 @@ export const docGroups: readonly { readonly name: string; readonly pages: readon
 	{
 		name: 'Set up and fix', pages: [
 			{ slug: 'helpers', title: 'Agent Setup', icon: 'blocks', summary: 'Four tabs: what agents load, the index and docs, connections, and storage with the audit log.', description: 'GeminiCode\'s Agent Setup: what agents load and what each model call costs, the workspace index and docs, your connections, and storage with the audit log.', topics: ['Loads', 'Index & Docs', 'Connections', 'Storage & Audit'] },
-			{ slug: 'settings', title: 'Settings', icon: 'settings', summary: 'Every GeminiCode setting by area, and the ones an administrator can lock.', description: 'Every GeminiCode setting, grouped by area with its default, and the settings an administrator can lock with a policy.', topics: ['Chat', 'Agents', 'Browser', 'Team tools', 'Policies'] },
+			{ slug: 'settings', title: 'Settings', icon: 'settings', summary: 'Every GeminiCode setting by area.', description: 'Every GeminiCode setting, grouped by area with its default, and when a change applies.', topics: ['Chat', 'Agents', 'Browser', 'Team tools', 'Safety'] },
 			{ slug: 'shortcuts', title: 'Keyboard shortcuts', icon: 'keyboard', summary: 'Every shortcut in one table, by area.', description: 'Every GeminiCode keyboard shortcut in one place: agents and layout, the chat, the editor, the terminal and the browser.', topics: ['Agents', 'Chat', 'Editor', 'Browser'] },
 			{ slug: 'troubleshooting', title: 'Troubleshooting', icon: 'life-buoy', summary: 'Common problems, a performance trace, and how to report a bug well.', description: 'Fix common GeminiCode problems: sign-in, the Gemini CLI, folder trust, the index, slow agents, and how to report a bug.', topics: ['Common problems', 'Trace', 'Report'] },
 		],
@@ -126,7 +126,7 @@ export const featureIndex: readonly { readonly name: string; readonly items: rea
 			{ icon: 'mouse-pointer', title: 'Add to Gemini', body: 'Put an element, a screenshot or the console into your prompt.', href: 'browser.html#point-at-what-to-change' },
 			{ icon: 'sticky-note', title: 'Notes on the page', body: 'Pin a change on each element and send them as one list.', href: 'browser.html#leave-notes-on-the-page' },
 			{ icon: 'activity', title: 'Console and network', body: 'Agents read the console and failed requests.', href: 'browser.html#console-and-network' },
-			{ icon: 'cookie', title: 'Sign in once', body: 'Keep sign-ins per workspace; admins can limit sites.', href: 'browser.html#sign-in-once' },
+			{ icon: 'cookie', title: 'Sign in once', body: 'Keep sign-ins per workspace, and limit the sites agents open.', href: 'browser.html#sign-in-once' },
 		],
 	},
 	{
@@ -144,7 +144,7 @@ export const featureIndex: readonly { readonly name: string; readonly items: rea
 		name: 'Set up', items: [
 			{ icon: 'blocks', title: 'Agent Setup', body: 'Loads, Index & Docs, Connections, and Storage & Audit, in one page with tabs.', href: 'helpers.html' },
 			{ icon: 'terminal', title: 'Gemini CLI inside', body: 'Your terminal\'s gemini and GeminiCode share settings and chats.', href: 'getting-started.html#set-up' },
-			{ icon: 'settings', title: 'Settings', body: 'Every setting by area, and what an administrator can lock.', href: 'settings.html' },
+			{ icon: 'settings', title: 'Settings', body: 'Every setting by area, and when a change applies.', href: 'settings.html' },
 			{ icon: 'sparkles', title: 'Make it yours', body: 'Theme, code font and file icons.', href: 'getting-started.html#make-it-yours' },
 			{ icon: 'download', title: 'Updates', body: 'Check for Updates, and a notice when a new build is out.', href: 'getting-started.html#updates' },
 		],

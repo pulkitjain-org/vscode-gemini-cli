@@ -4,7 +4,7 @@
 
 ## Context
 
-Sign-in, the Gemini Code Assist license and billing by project ID live in the CLI. The Gemini API SDK cannot use a Code Assist license. Patching the CLI would make every CLI release a merge.
+Sign-in, the Gemini Code Assist licence and billing by project ID live in the CLI. The Gemini API SDK cannot use a Code Assist licence. Patching the CLI would make every CLI release a merge.
 
 ## Decision
 
@@ -19,7 +19,7 @@ Sign-in, the Gemini Code Assist license and billing by project ID live in the CL
 
 ## Evidence
 
-`extensions/gemini/package.json` pins `bundledCli` 0.64.0 with its npm SHA-512, and the real-CLI tests pass against it. [FINDINGS.md](../FINDINGS.md#prompt-enhancement-direct-requests-or-the-cli): direct requests carrying the CLI's headers answered 12 of 12 on a real account, in 2.8 s at the median against 4.8 s through the CLI.
+`extensions/gemini/package.json` pins `bundledCli` with its npm SHA-512 (0.64.0 when this was accepted, 0.66.0 today), and the real-CLI tests run against it. [FINDINGS.md](../FINDINGS.md#prompt-enhancement-direct-requests-or-the-cli): direct requests carrying the CLI's headers answered 12 of 12 on a real account, in 2.8 s at the median against 4.8 s through the CLI.
 
 ## Amendment
 

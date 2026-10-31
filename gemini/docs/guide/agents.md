@@ -23,15 +23,17 @@ While Projects are on, the chevron beside **On a branch** offers **On its own br
 
 The bar under the composer shows the folder, the approval mode and the model the agent starts with, and **From your tools...** lists your tickets and merge requests to start from one. The folder picker marks each folder **Trusted**, **Trusted by parent** or **Needs trust**, and **Open Folder...** adds a folder for agents without adding it to the window. **On a branch**, alone or in a project, needs a trusted folder: in one that isn't, Home says so in place, with **Trust...**. See [Folder trust](review.md#folder-trust).
 
-Below the composer:
+The composer's **+** menu holds **Files** and the actions for this folder: **Review**, and **Run checks...** once Snyk or SonarQube is connected.
 
-- The **+** menu holds **Files** and the actions for this folder: **Review**, and **Run checks...** once Snyk or SonarQube is connected.
-- The gear at the top right holds **Refresh**, **Settings** ([Settings](helpers.md)) and which cards show.
-- Cards follow: **Pending on you** and **Your tickets** once you connect your team's tools, and **Agents**; a quality card and Gemini's usage can be turned on from the gear. See [Team tools](team-tools.md#home). A card's filter is its title's tooltip.
+Cards follow the composer:
 
-Each card names the query that fills it, so you can check its numbers against the tool. **Customize** hides and reorders cards.
+- **Pending on you** and **Your tickets**: your merge requests and Jira tickets once you connect GitLab and Jira; until then each card offers to connect. See [Team tools](team-tools.md#home).
+- **Agents**: the agents at work, with **Review** on one whose changes are ready, and your projects. **Show all** lists earlier agents too.
+- **Gemini**: how much of today's quota you have used, the GeminiCode and Gemini CLI versions, and a link to the audit log.
 
-If GeminiCode quit while something was running, two cards come first. **Unfinished when GeminiCode last quit** lists the flows to reopen and any write whose result never came back. **What came back, and when** stays for a few minutes and says what is already back and what is still starting. In the chat, a turn that was cut off shows a card with **Retry the Turn**.
+A card's title shows, as its tooltip, the query that fills it, so you can check its numbers against the tool. **Customize**, the gear at the top right, holds **Refresh** and **Settings** ([Settings](helpers.md)), and turns cards on and off and reorders them. The **Quality** card is off until you turn it on there.
+
+If GeminiCode quit while something was running, **Unfinished when GeminiCode last quit** comes first, listing the flows to reopen and any write whose result never came back. In the chat, a turn that was cut off shows a card with **Retry the Turn**.
 
 To get back to Home, click the house at the start of the title bar, press <kbd>⇧⌘H</kbd> (outside the editor, where it is Replace in Files), or run **Gemini: Home**. To stop it opening at start-up, turn off `gemini.home.openOnStartup`.
 
@@ -89,7 +91,7 @@ Files outside the agent's folder, and files that may hold secrets, such as `.env
 
 Two agents in the same folder can trip over each other's edits. To keep them apart, give an agent its own branch: choose **New Agent on Its Own Branch** (the branch icon next to **+** on a workspace in a Git repository) and enter a branch name. The agent gets its own copy of the repository, on that new branch, in `~/.geminicode/worktrees/<repository>/`. It reads, edits and runs commands there, so your folder and other agents are untouched.
 
-When the work is done, **Try in Workspace** (the icon on the agent's row, its right-click menu, the Changes panel or the agent's card on Home) copies the agent's changes into your checkout of the repository as unstaged files, so your local server and tests run with them. Nothing is committed, staged or merged: your branch, its index and HEAD stay as they are. Each time the agent finishes a turn, your workspace updates with what it changed. The status bar shows **Trying:** and the agent's name, and in Source Control the tried files carry a **T**.
+When the work is done, **Try in Workspace** (the beaker icon on the agent's row, under **More** in its right-click menu, or in the Changes panel) copies the agent's changes into your checkout of the repository as unstaged files, so your local server and tests run with them. Nothing is committed, staged or merged: your branch, its index and HEAD stay as they are. Each time the agent finishes a turn, your workspace updates with what it changed. The status bar shows **Trying:** and the agent's name, and in Source Control the tried files carry a **T**.
 
 ![An agent's changes tried in the workspace: Source Control lists them unstaged with a T, the diff of one is open, and the status bar says Trying](../../site/media/try-scm-dark.webp)
 
@@ -100,7 +102,10 @@ While you try it, the Changes panel offers **Keep Changes** and **Take Back**:
 
 Edits you make to the tried files stay through every update. To hand them to the agent, tick **Include your edits to** the files above its message box: they are copied into its folder before your message, so it builds on them. When you and the agent changed the same lines, the file gets conflict markers, and updating waits until you resolve them. A file with unsaved edits updates when you save it. One agent's work is tried in a workspace at a time. Removing an agent whose work you are trying asks first: **Keep Changes and Remove** or **Take Back and Remove**.
 
-The chevron beside **Try in Workspace** offers the other ways to take the work, and remembers your pick for the repository, so the button then does that: **Merge Back** commits anything the agent left uncommitted, with a message written from its diff, and merges its branch into the branch your folder has checked out (if the merge conflicts, it stops so you can finish it in Source Control; after a clean merge, it offers to remove the agent with its branch and folder); **Open Merge Request**, with GitLab connected, pushes the branch and opens a merge request. The agent's row in the Agents pane lists Try in Workspace and Merge Back in its menu too.
+The chevron beside **Try in Workspace** in the Changes panel offers the other ways to take the work. It remembers your pick for the repository, and the button then does that:
+
+- **Merge Back** commits anything the agent left uncommitted, with a message written from its diff, and merges its branch into the branch your folder has checked out. If the merge conflicts, it stops so you can finish it in Source Control; after a clean merge, it offers to remove the agent with its branch and folder. Merge Back is also under **More** in the agent's right-click menu.
+- **Open Merge Request**, with GitLab connected, pushes the branch and opens a merge request. See [Team tools](team-tools.md#the-open-merge-request-page).
 
 A new copy has no `node_modules` or build output. To get it ready before the agent starts, set **Gemini › Agents: Worktree Setup** in your user settings to a command such as `npm ci` (a repository's own settings can't set it), or commit a `.gemini/worktree-setup.sh` to the repository. Before a repository's script runs the first time, GeminiCode shows it and asks: **Don't Run**, **Run Once** or **Run and Remember**. It asks again whenever the script changes, and runs none in a workspace you haven't trusted. The command can use `GEMINI_SOURCE_REPOSITORY`, the repository the copy came from, to copy files Git doesn't carry, such as `.env`. If setup fails, the agent starts anyway, and the output is in the **Gemini Worktree Setup** output channel.
 
@@ -115,24 +120,22 @@ There are two ways to fork:
 - **Fork Agent** forks the conversation as it is. It is the split-arrows icon on an agent's row (on hover), in the row's right-click menu and in the composer's **+** menu, and you can type `/fork`.
 - **Fork**, beside Retry at the end of any reply, forks the conversation as it was at the end of that reply.
 
-![The Fork dialog with Whole session, Compacted and Conversation only, and a new branch or the same folder](../../site/media/fork-dialog-dark.webp)
+![The Fork dialog with Whole session, Compressed and Conversation only, and a new branch or the same folder](../../site/media/fork-dialog-dark.webp)
 
-The Fork dialog asks three things.
-
-**What the fork takes with it.** Each choice shows about how many tokens it sends with every request.
+In the Fork dialog, **Context** is what the fork takes with it. Each choice shows about how many tokens it sends with every request.
 
 - **Whole session** is an exact copy of the agent's session, tool output included.
 - **Compressed** has Gemini summarise the older work first and keeps the latest messages as they were. It is much smaller, and waits for the agent to finish its turn. Large sessions start on this choice.
 - **Conversation only** has your messages and the agent's replies, without tool output.
 
-**Where it works.**
+**Where it works** is one of:
 
-- On a **new branch** off the agent's branch, in its own copy of the repository, with the agent's uncommitted changes copied in. The agent's own folder is left as it is.
-- In the **same folder** as the agent. This suits questions, reviews and plans, but both agents change the same files.
+- A **new branch** off the agent's branch, in its own copy of the repository, with the agent's uncommitted changes copied in. The agent's own folder is left as it is.
+- The **same folder** as the agent. This suits questions, reviews and plans, but both agents change the same files.
 
-**A name, a model and a first message.** The model is the agent's own unless you pick another, and the first message is optional.
+The dialog also asks for a name, a model (the agent's own unless you pick another) and an optional first message.
 
-A fork is listed under the agent it came from, and the agent's chat gets a card for it with **Open** and **Try in Workspace**, which tries the fork's work in your checkout as for any agent on its own branch. With **Merge Back** remembered for the repository, the card offers it, and when the agent itself works on its own branch, it asks whether to merge the fork into the agent's branch or into the branch your folder has checked out. Removing an agent that has forks asks whether to remove them too; forks you keep stay as agents of their own.
+A fork is listed under the agent it came from, and the agent's chat gets a card for it with **Open** and, for a fork on its own branch, **Try in Workspace**. That button does what the Try button does for the repository: it tries the fork's work in your checkout, or merges it back when you picked **Merge Back**. When the agent itself works on its own branch, Merge Back asks whether to merge the fork into the agent's branch or into the branch your folder has checked out. Removing an agent that has forks asks whether to remove them too; forks you keep stay as agents of their own.
 
 ![A fork listed under its agent in the Agents pane, and the fork's card in the agent's chat with Open and Try in Workspace](../../site/media/fork-list-dark.webp)
 
@@ -142,7 +145,7 @@ GeminiCode keeps an index of the code in each workspace, and of any documentatio
 
 ![The Index page with two indexed workspaces and attached documentation](../../site/media/index-page-dark.webp)
 
-The index is Settings' **Index & Docs** tab: open it with **Gemini: Manage Index**, from the **Gemini** status bar item's menu, or from the Settings page's side index. The status bar shows "Indexing N%" while a folder is indexed.
+The index is Settings' **Index & Docs** tab: open it with **Gemini: Manage Index**, from the **Gemini** status bar item's menu, or from the Settings page's side index.
 
 ### Index tools for agents
 
@@ -161,7 +164,7 @@ Every agent's session gets the `geminicode-index` tools for the folder it works 
 
 GeminiCode is an editor, so its language servers are running already: agents ask them through the same tools. `find_symbol` with references lists the exact uses of a symbol, through imports and aliases, where a language server covers the file, instead of every line that shares its name. Where none answers (a language with no extension, a server still loading, or an agent's own branch outside the workspace), the index answers alone and the result says so. When a turn changes files and the language servers report errors in the folder's changed files, a notice under the turn lists them, with **Fix**, which asks the agent to fix them and check again. Agents only reach files in their own folder that are neither secret nor ignored by git.
 
-Each session also starts with a short outline of the folder, so the agent knows its way around before its first search. Once the index is built, the session's first prompt asks the agent to use these tools before searching file by file. Results rank the code above its tests, unless you ask about tests, and say when they are complete, so the agent reads only what they point to. In the chat, the calls read as "Search code for …", "Look up …" and so on.
+Each session also starts with a short outline of the folder, so the agent knows its way around before its first search. Once the index is built, the session's first prompt asks the agent to use these tools before searching file by file. Results rank the code above its tests, unless you ask about tests, and say when they are complete, so the agent reads only what they point to. In the chat, the calls read as "Search code for ...", "Look up ..." and so on.
 
 GeminiCode also gives the Gemini CLI the app's own ripgrep, so the agent's plain text searches are fast too, with or without an index.
 
@@ -229,11 +232,13 @@ Each source is refreshed daily unless its own row says otherwise. A page that ha
 | `gemini.docs.enabled` | on | Allow attaching documentation from the web. |
 | `gemini.docs.allowedDomains` | empty | The only sites docs may come from, such as `react.dev` or `*.example.com`. Empty allows any site. |
 
-An administrator can lock `gemini.index.enabled`, `gemini.docs.enabled` and `gemini.docs.allowedDomains` as policies. See [Settings](settings.md#settings-your-administrator-can-lock).
+See [Settings](settings.md) for the rest.
 
 ## Pick up a Gemini CLI session
 
-A new, empty agent lists the three sessions the Gemini CLI saved most recently for its folder, including ones you started with `gemini` in a terminal, with a link to show them all. Pick one to continue it: its conversation appears in the chat, and the agent takes the session's title. Type `/resume` (or `/chat`, as the CLI also calls it) in the composer to open the session browser at any time: each session's first prompt, how many prompts it has and when it was last used, newest first; type to search them, and the trash icon on a row deletes the session's files, as the CLI's `--delete-session` does. GeminiCode opens sessions on the folder's real path, as a terminal does, so the two share one list.
+A new, empty agent lists the three sessions the Gemini CLI saved most recently for its folder, including ones you started with `gemini` in a terminal, with a link to show them all. Pick one to continue it: its conversation appears in the chat, and the agent takes the session's title.
+
+Type `/resume` (or `/chat`, as the CLI also calls it) in the composer to open the session browser at any time. It lists each session's first prompt, how many prompts it has and when it was last used, newest first; type to search them. The trash icon on a row deletes the session's files, as the CLI's `--delete-session` does. GeminiCode opens sessions on the folder's real path, as a terminal does, so the two share one list.
 
 The CLI deletes saved sessions after 30 days. The list says when each one goes, and **Keep saved chats for** in [Settings](helpers.md#gemini-cli-settings) changes how long they are kept.
 

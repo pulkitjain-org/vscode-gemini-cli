@@ -7,7 +7,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { buildAdminPolicy, isModeAllowed, policyFileName, prepareAdminPolicy, takesAway } from '../../src/acp/adminPolicy';
+import { buildToolPolicy, isModeAllowed, policyFileName, prepareToolPolicy, takesAway } from '../../src/acp/toolPolicy';
 import { filterModes } from '../../src/acp/sessionSettings';
 
 const allowAll = { allowAutoEdit: true, allowYolo: true, allowShell: true };
@@ -35,18 +35,18 @@ describe('takesAway', () => {
 	});
 });
 
-describe('buildAdminPolicy', () => {
+describe('buildToolPolicy', () => {
 	it('writes nothing when everything is allowed', async () => {
-		expect(buildAdminPolicy(allowAll)).toBeUndefined();
+		expect(buildToolPolicy(allowAll)).toBeUndefined();
 	});
 
 	it('makes every tool ask in the modes that are turned off', async () => {
-		expect(buildAdminPolicy(defaults)).toContain('toolName = "*"\ndecision = "ask_user"\npriority = 900\nmodes = ["yolo"]');
-		expect(buildAdminPolicy({ ...defaults, allowAutoEdit: false })).toContain('modes = ["autoEdit", "yolo"]');
+		expect(buildToolPolicy(defaults)).toContain('toolName = "*"\ndecision = "ask_user"\npriority = 900\nmodes = ["yolo"]');
+		expect(buildToolPolicy({ ...defaults, allowAutoEdit: false })).toContain('modes = ["autoEdit", "yolo"]');
 	});
 
 	it('refuses the commands that print the environment, and asks for the confirm class in every mode', async () => {
-		const policy = buildAdminPolicy({ ...allowAll, denyEnvironmentCommands: true, confirmTools: [{ server: 'geminicode-tools', tools: ['jira_transition', 'gitlab_merge'] }] }) ?? '';
+		const policy = buildToolPolicy({ ...allowAll, denyEnvironmentCommands: true, confirmTools: [{ server: 'geminicode-tools', tools: ['jira_transition', 'gitlab_merge'] }] }) ?? '';
 		const rules = policy.split('\n\n').filter(block => block.includes('[[rule]]')).map(block => block.trim().split('\n').filter(line => !line.startsWith('#') && !line.startsWith('denyMessage')).join('\n'));
 		expect(rules).toEqual([
 			'[[rule]]\ntoolName = "run_shell_command"\ncommandPrefix = ["env", "printenv", "declare -x", "declare -p", "typeset -x", "typeset -p", "export -p", "compgen -e", "compgen -v"]\ndecision = "deny"\npriority = 960',
@@ -57,33 +57,33 @@ describe('buildAdminPolicy', () => {
 	});
 
 	it('never suggests printing a variable instead', async () => {
-		expect(buildAdminPolicy({ ...allowAll, denyEnvironmentCommands: true })).not.toContain('echo');
+		expect(buildToolPolicy({ ...allowAll, denyEnvironmentCommands: true })).not.toContain('echo');
 	});
 
 	it('leaves the environment rules out when the shell is off anyway', async () => {
-		expect(buildAdminPolicy({ ...allowAll, allowShell: false, denyEnvironmentCommands: true })).not.toContain('commandPrefix');
+		expect(buildToolPolicy({ ...allowAll, allowShell: false, denyEnvironmentCommands: true })).not.toContain('commandPrefix');
 	});
 
 	it('denies the shell tool when shell is turned off', async () => {
-		const policy = buildAdminPolicy({ ...allowAll, allowShell: false });
+		const policy = buildToolPolicy({ ...allowAll, allowShell: false });
 		expect(policy).toContain('toolName = "run_shell_command"\ndecision = "deny"');
 		expect(policy).not.toContain('ask_user');
 	});
 });
 
-describe('prepareAdminPolicy', () => {
+describe('prepareToolPolicy', () => {
 	let dir: string | undefined;
 	afterEach(() => dir && fs.rmSync(dir, { recursive: true, force: true }));
 
 	it('writes the file and returns the flag, and removes it when nothing is restricted', async () => {
 		dir = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'gemini-policy-')), 'policy');
-		expect(await prepareAdminPolicy(dir, defaults)).toEqual(['--admin-policy', dir]);
+		expect(await prepareToolPolicy(dir, defaults)).toEqual(['--admin-policy', dir]);
 		const file = path.join(dir, policyFileName);
-		expect(fs.readFileSync(file, 'utf8')).toBe(buildAdminPolicy(defaults));
+		expect(fs.readFileSync(file, 'utf8')).toBe(buildToolPolicy(defaults));
 		const written = fs.statSync(file).mtimeMs;
-		await prepareAdminPolicy(dir, defaults);
+		await prepareToolPolicy(dir, defaults);
 		expect(fs.statSync(file).mtimeMs).toBe(written);
-		expect(await prepareAdminPolicy(dir, allowAll)).toEqual([]);
+		expect(await prepareToolPolicy(dir, allowAll)).toEqual([]);
 		expect(fs.existsSync(file)).toBe(false);
 	});
 });

@@ -5,7 +5,7 @@
 
 import * as path from 'node:path';
 import * as vscode from 'vscode';
-import { isModeAllowed, takesAway } from '../acp/adminPolicy';
+import { isModeAllowed, takesAway } from '../acp/toolPolicy';
 import { AgentClient, AgentClientState, WaitAbortedError } from '../acp/agentClient';
 import { AgentCommand, includeDirectoryArgs } from '../acp/agentProcess';
 import { AgentRuntime, AgentRuntimeState } from '../acp/agentRuntime';

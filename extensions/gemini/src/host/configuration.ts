@@ -7,7 +7,7 @@ import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
-import { ApprovalPolicy, prepareAdminPolicy } from '../acp/adminPolicy';
+import { ApprovalPolicy, prepareToolPolicy } from '../acp/toolPolicy';
 import { AgentCommand, cliHeapSizeMb, includeDirectoryArgs, resolveAgentCommand } from '../acp/agentProcess';
 import { CliResolution, resolveCli } from '../acp/cliResolution';
 import { AgentNetwork, buildAgentEnv } from '../acp/env';
@@ -62,10 +62,7 @@ export function getProjectSettings(): ProjectSettings {
 	const config = vscode.workspace.getConfiguration(configSection);
 	const inspected = config.inspect<string>('projectId');
 	const workspace = inspected?.workspaceFolderValue ?? inspected?.workspaceValue;
-	// `inspect` leaves out a policy's value; `get` returns it ahead of every setting.
-	const effective = config.get<string>('projectId');
-	const policy = effective?.trim() && effective !== (workspace ?? inspected?.globalValue ?? inspected?.defaultValue) ? effective : undefined;
-	const inputs = { policy, workspace, user: inspected?.globalValue, orgDefault: productInfo.defaultProjectId, env: process.env };
+	const inputs = { workspace, user: inspected?.globalValue, orgDefault: productInfo.defaultProjectId, env: process.env };
 	const resolved = resolveProjectId(inputs);
 	const overrides = workspaceOverride(inputs);
 	return resolved ? { resolved, problem: validateProjectId(resolved.projectId), ...overrides ? { overrides } : {} } : { resolved, problem: undefined };
@@ -77,16 +74,16 @@ export function getWorkspaceCwd(): string {
 
 let managedCliDir: string | undefined;
 let bundledCliDir: string | undefined;
-let adminPolicyDir: string | undefined;
+let toolPolicyDir: string | undefined;
 
 /** Where GeminiCode keeps its own CLI copies, the copy shipped with the app, and the policy file it passes to the CLI; set once on activation. */
-export function setStorageDirs(dirs: { readonly managedCli: string; readonly bundledCli: string; readonly adminPolicy: string }): void {
+export function setStorageDirs(dirs: { readonly managedCli: string; readonly bundledCli: string; readonly toolPolicy: string }): void {
 	managedCliDir = dirs.managedCli;
 	bundledCliDir = dirs.bundledCli;
-	adminPolicyDir = dirs.adminPolicy;
+	toolPolicyDir = dirs.toolPolicy;
 }
 
-/** The approval settings, which an admin can lock through policy. */
+/** The approval and shell settings, which the tool policy passes to the CLI. */
 export function getApprovalPolicy(): ApprovalPolicy {
 	const config = vscode.workspace.getConfiguration(configSection);
 	return {
@@ -147,7 +144,7 @@ export async function getAgentCommand(options: { interactive?: boolean; cli?: Cl
 	const [cli, settings, policyArgs, mcpArgs] = await Promise.all([
 		options.cli ?? getCliResolution(),
 		readCliSettings(),
-		adminPolicyDir && !options.subcommand ? prepareAdminPolicy(adminPolicyDir, getApprovalPolicy()) : [],
+		toolPolicyDir && !options.subcommand ? prepareToolPolicy(toolPolicyDir, getApprovalPolicy()) : [],
 		// `allowedMcpServers` replaces the usual list, for measuring what each server costs (contextCost.ts).
 		options.subcommand ? [] : options.allowedMcpServers ? ['--allowed-mcp-server-names', options.allowedMcpServers.join(',')] : allowedMcpServerArgs(),
 	]);

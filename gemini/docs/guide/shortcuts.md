@@ -2,7 +2,7 @@
 
 Every GeminiCode shortcut in one place. ⌘ is Command, ⌥ is Option, ⌃ is Control, ⇧ is Shift, ↩ is Return and ⌫ is Delete. On Windows and Linux, Ctrl takes the place of ⌘ (and Ctrl+Alt of ⌃⌘). VS Code's own shortcuts work as usual: the review keys stay off ⌘↩, ⌘⌫ and ⌥[ ⌥], which edit text.
 
-Stop Agent, Focus Chat, Cycle Approval Mode, Toggle YOLO and Switch Model are also in the Command Palette, under **Gemini**.
+Focus Chat is also in the Command Palette, under **Gemini**, and so are Stop Agent, Cycle Approval Mode, Toggle YOLO, Switch Model and Ask a Side Question while an agent's tab is in front.
 
 ## Agents and layout
 
@@ -29,18 +29,20 @@ Stop Agent, Focus Chat, Cycle Approval Mode, Toggle YOLO and Switch Model are al
 | <kbd>esc</kbd> <kbd>esc</kbd> (chat input, agent working) | Stop the agent |
 | <kbd>⌘esc</kbd> (agent's tab; Alt+Backspace on Windows) | Stop the agent at once |
 | <kbd>⇧Tab</kbd> or <kbd>⌘.</kbd> (agent's tab) | Next approval mode: Default, Auto Edit, Plan, as the CLI's <kbd>⇧Tab</kbd> steps; never YOLO, and not Plan while a turn runs |
-| <kbd>Tab</kbd> (message box, while the agent works) | Queue the message for after this turn, as in the CLI |
-| <kbd>⌘Y</kbd> (agent's tab) | YOLO on, or back to the mode before it, as the CLI's <kbd>Ctrl+Y</kbd>; only where your admin allows YOLO |
+| <kbd>Tab</kbd> (chat input, agent working) | Queue the message for after this turn, as in the CLI |
+| <kbd>⌘Y</kbd> (agent's tab) | YOLO on, or back to the mode before it, as the CLI's <kbd>Ctrl+Y</kbd>; only when `gemini.approval.allowYolo` is on |
 | <kbd>⌥⌘.</kbd> (agent's tab) | Switch the agent's model |
-| <kbd>esc</kbd> (chat input) | Cancel Enhance prompt |
+| <kbd>⌥⌘;</kbd> (agent's tab) | Ask a side question |
+| <kbd>esc</kbd> (chat input, prompt being enhanced) | Cancel Enhance prompt |
 | <kbd>esc</kbd> <kbd>esc</kbd> (empty chat input) | Rewind to before one of your messages |
-| <kbd>⌘N</kbd> (chat) | New chat |
-| <kbd>⌘L</kbd> | Add the selection to the agent in front, or to a new agent |
+| <kbd>⌘L</kbd> (editor, with a selection) | Add the selection to the agent in front, else to a running agent, else to a new agent |
 | <kbd>⌥⌘E</kbd> | Enhance prompt |
 | <kbd>↑</kbd> / <kbd>↓</kbd> (empty chat input) | Bring back an earlier prompt, once no message is queued |
 | <kbd>⌥⌘↑</kbd> / <kbd>⌥⌘↓</kbd> (chat) | Jump to your previous or next prompt |
 | <kbd>⌘B</kbd> / <kbd>⌘E</kbd> (chat input) | Make the selection bold, or code |
 | <kbd>⇧⌘V</kbd> (chat input) | Switch between Write and Preview |
+
+With `gemini.chat.sendWith` set to ⌘Return, <kbd>⌘↩</kbd> sends, <kbd>↩</kbd> starts a new line and <kbd>⇧⌘↩</kbd> queues.
 
 ## Editor
 

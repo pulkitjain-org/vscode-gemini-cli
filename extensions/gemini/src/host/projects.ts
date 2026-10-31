@@ -423,7 +423,7 @@ export class Projects implements vscode.Disposable {
 			const after = await projectToolsBlock({ folder, server: projectServerName });
 			const failed = this.agents.mcpProblem(projectServerName);
 			this.agents.log(`The coordinator of ${record.title} still has no project tools after a restart (contacted: ${server.wasContacted(caller)}, block: ${after ? JSON.stringify(after) : 'none found'}, MCP problem: ${failed ?? 'none'})`);
-			throw new Error(after ? blockMessage(after) : failed ? vscode.l10n.t("The Gemini CLI couldn't connect to the project's tools: {0}", failed) : vscode.l10n.t("The project's tools still didn't load, and nothing in the Gemini CLI's settings explains why. The Gemini log (Output, Gemini) has the details."));
+			throw new Error(after ? blockMessage(after) : failed ? vscode.l10n.t("The Gemini CLI couldn't connect to the project's tools: {0}", failed) : vscode.l10n.t("The project's tools still didn't load, and nothing GeminiCode checks explains why. The Gemini log (Output, Gemini) has the details."));
 		}
 		coordinator.addNotice(vscode.l10n.t("The project's tools loaded."));
 	}
@@ -1272,8 +1272,6 @@ function blockMessage(block: ProjectToolsBlock): string {
 			return vscode.l10n.t("The Gemini CLI doesn't trust {0}, so it loads no project tools there. Trust the project's folders to start threads.", tildify(block.folder));
 		case 'excluded':
 			return vscode.l10n.t("Your Gemini settings ({0}) leave out {1} in mcp.excluded. Remove it there to start threads.", tildify(block.file), projectServerName);
-		case 'adminOff':
-			return vscode.l10n.t("MCP servers are turned off in {0}, so the project's tools can't load.", tildify(block.file));
 		case 'disabled':
 			return vscode.l10n.t("{0} is turned off for the Gemini CLI. Run \"gemini mcp enable {0}\" in a terminal, then send your message again.", projectServerName);
 		case 'enablementUnreadable':

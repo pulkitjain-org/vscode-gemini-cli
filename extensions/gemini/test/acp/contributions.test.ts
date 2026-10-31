@@ -85,7 +85,7 @@ describe('package.json', () => {
 				{ title: 'Gemini: Browser', order: 4, settings: 3 },
 				{ title: 'Gemini: Workspace Index and Docs', order: 5, settings: 5 },
 				{ title: 'Gemini: Team Tools', order: 6, settings: 3 },
-				{ title: 'Gemini: Administration', order: 7, settings: 10 },
+				{ title: 'Gemini: Safety and Limits', order: 7, settings: 10 },
 				{ title: 'Gemini: Developer', order: 8, settings: 1 },
 			],
 			deprecated: ['gemini.agent.startEarly', 'gemini.notifications.enabled', 'gemini.agents.mergeBack', 'gemini.storage.keepLogsDays'],

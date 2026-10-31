@@ -19,6 +19,7 @@ import { errorMessage } from '../../acp/errors';
 import { compactedMessages, compactSplit, estimateTokens, messagesBefore } from '../../acp/sessionSnapshot';
 import type { SlashCommand } from '../../acp/slashCommands';
 import type { ForkRequest, ForkView, FromWebview, ToWebview } from '../chatProtocol';
+import type { TryChoice } from '../panelProtocol';
 import type { ChatCompact } from './chatCompact';
 import type { ChatControllerOptions, ChatHost } from './chatOptions';
 import type { ChatSessions } from './chatSessions';
@@ -62,6 +63,11 @@ export class ChatFork {
 	/** Whether this chat can fork. */
 	get available(): boolean {
 		return !!this.options.fork;
+	}
+
+	/** What a fork card's second button does, or undefined when this chat can't fork. */
+	get cardChoice(): TryChoice | undefined {
+		return this.options.fork?.tryChoice();
 	}
 
 	onMessage(message: ForkMessage): void {

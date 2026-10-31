@@ -31,7 +31,7 @@ import { agentSetupTabs, agentSetupTabsLabel, agentSetupTitle, openAgentSetupTab
 import { ContextCost, heavyReadings, measureCalls } from '../acp/contextCost';
 import type { ContextMeasures } from './chat/chatContext';
 import { showError } from './errorNotice';
-import { ContributedSection, isPolicyLocked, parseSettingValue, resolveNls, sameValue, sectionId, sectionTitle, SettingRow, settingSections, settingTarget } from '../acp/settingsModel';
+import { ContributedSection, parseSettingValue, resolveNls, sameValue, sectionId, sectionTitle, SettingRow, settingSections, settingTarget } from '../acp/settingsModel';
 
 const viewType = 'gemini.projectSettings';
 /** The extension's own id, whose `packageJSON` holds the contributed settings. */
@@ -96,7 +96,7 @@ export class SettingsPage implements vscode.Disposable {
 		this.disposables.push(
 			// A measure started here or from a chat's usage popover.
 			...contextCost ? [contextCost.onDidChange(folder => folder === this.measuredFolder() && void this.update())] : [],
-			// A setting changed here, in the editor's own Settings or by a policy: every row shows its value in effect.
+			// A setting changed here, or in the editor's own Settings: every row shows its value in effect.
 			vscode.workspace.onDidChangeConfiguration(e => e.affectsConfiguration(configSection) && void this.update()),
 			vscode.commands.registerCommand('gemini.projectSettings', () => this.show()),
 			vscode.commands.registerCommand('gemini.newSkill', () => this.newSkill()),
@@ -303,7 +303,7 @@ export class SettingsPage implements vscode.Disposable {
 		})();
 	}
 
-	/** Every contributed setting with its value in effect, where a change goes, and whether a policy locks it. */
+	/** Every contributed setting with its value in effect, and where a change goes. */
 	private async settingsView(): Promise<SettingSectionView[]> {
 		const sections = await this.contributedSettings();
 		const config = vscode.workspace.getConfiguration();
@@ -324,7 +324,6 @@ export class SettingsPage implements vscode.Disposable {
 					...setting.minimum !== undefined ? { minimum: setting.minimum } : {},
 					...setting.maximum !== undefined ? { maximum: setting.maximum } : {},
 					target: settingTarget(setting.scope, workspaceOpen),
-					locked: isPolicyLocked(value, config.inspect(setting.key)),
 					modified: !sameValue(value, setting.default),
 					advanced: setting.advanced,
 					...setting.deprecated ? { deprecated: setting.deprecated } : {},
@@ -333,16 +332,13 @@ export class SettingsPage implements vscode.Disposable {
 		}));
 	}
 
-	/** A row's control changed: the value, checked against the contribution, goes to the user's or the workspace's settings; a locked setting is left alone. */
+	/** A row's control changed: the value, checked against the contribution, goes to the user's or the workspace's settings. */
 	private async setSetting(key: string, value: unknown): Promise<void> {
 		const setting = (await this.contributedSettings()).flatMap(section => section.settings).find(each => each.key === key);
 		if (!setting) {
 			return;
 		}
 		const config = vscode.workspace.getConfiguration();
-		if (isPolicyLocked(config.get(key), config.inspect(key))) {
-			return;
-		}
 		const parsed = parseSettingValue(setting, value);
 		if (!parsed) {
 			return;
@@ -355,10 +351,10 @@ export class SettingsPage implements vscode.Disposable {
 	/** Reset: the setting leaves the user's settings and the workspace's, so the default applies again. */
 	private async resetSetting(key: string): Promise<void> {
 		const setting = (await this.contributedSettings()).flatMap(section => section.settings).find(each => each.key === key);
-		const config = vscode.workspace.getConfiguration();
-		if (!setting || isPolicyLocked(config.get(key), config.inspect(key))) {
+		if (!setting) {
 			return;
 		}
+		const config = vscode.workspace.getConfiguration();
 		await config.update(key, undefined, vscode.ConfigurationTarget.Global);
 		if (vscode.workspace.workspaceFolders?.length && config.inspect(key)?.workspaceValue !== undefined) {
 			await config.update(key, undefined, vscode.ConfigurationTarget.Workspace);
@@ -849,7 +845,7 @@ export class SettingsPage implements vscode.Disposable {
 		this.offerRestart(reply.trim() || name);
 	}
 
-	private async runInTerminal(name: string, args: readonly string[], message = vscode.l10n.t("Answer the Gemini CLI's questions here. Agent Setup updates when it finishes; restart the agent to use the change.")): Promise<void> {
+	private async runInTerminal(name: string, args: readonly string[], message = vscode.l10n.t("Answer the Gemini CLI's questions here. Settings updates when it finishes; restart the agent to use the change.")): Promise<void> {
 		const command = await this.host.getAgentCommand({ subcommand: args });
 		this.terminal?.dispose();
 		this.terminal = vscode.window.createTerminal({
@@ -979,7 +975,6 @@ export function settingsPageStrings(): SettingsPageStrings {
 		sideIndex: vscode.l10n.t("Settings sections"),
 		loads: tabs.find(tab => tab.id === 'loads')?.label ?? '',
 		otherPages: tabs.filter(tab => tab.id !== 'loads').map(tab => ({ id: tab.id, label: tab.label })),
-		lockedByAdmin: vscode.l10n.t("Set by your administrator"),
 		savedInWorkspace: vscode.l10n.t("Saved for this workspace"),
 		reset: vscode.l10n.t("Reset to default"),
 		advanced: vscode.l10n.t("Advanced"),

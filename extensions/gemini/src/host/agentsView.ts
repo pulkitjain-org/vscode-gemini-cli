@@ -29,7 +29,7 @@ import { configSection, getApprovalPolicy } from './configuration';
 import { readCliPreferences } from '../acp/cliPreferences';
 import { geminiDir } from '../acp/directRequest';
 import { readSettingsFile } from '../acp/projectSettings';
-import { isModeAllowed } from '../acp/adminPolicy';
+import { isModeAllowed } from '../acp/toolPolicy';
 import type { ChatContextCost } from './chat/chatOptions';
 import { Projects, projectsEnabled } from './projects';
 export { relativeTime } from './displayText';
@@ -293,6 +293,7 @@ export class AgentsView implements vscode.Disposable {
 			pickModel: (id, model) => this.starter.pickModel(id, model),
 			archive: id => this.removal.archiveAgent(id),
 			// A forked thread's card merges it as a thread, so it is resolved once merged.
+			tryChoice: id => this.model.agent(id)?.project?.role === 'thread' ? 'merge' : this.tryChoiceOf(id),
 			mergeBack: async id => {
 				if (this.model.agent(id)?.project?.role !== 'thread') {
 					return this.mergeBack(id);

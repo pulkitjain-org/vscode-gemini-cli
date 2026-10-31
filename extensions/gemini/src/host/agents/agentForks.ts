@@ -34,6 +34,7 @@ import type { ForkContext } from '../../acp/chatTranscript';
 import type { ChatController } from '../chatController';
 import type { AgentService } from '../agentService';
 import type { ChatForker, ForkStart } from '../chat/chatOptions';
+import type { TryChoice } from '../panelProtocol';
 import type { AgentSession } from '../agentSession';
 import type { AgentWorktrees } from './agentWorktrees';
 import { showError } from '../errorNotice';
@@ -55,6 +56,8 @@ export interface ForksHost {
 	ensureLive(id: string): ForkingAgent | undefined;
 	pickModel(id: string, model: string): void;
 	mergeBack(id: string): Promise<boolean>;
+	/** What `mergeBack` does for agent `id`'s forks. */
+	tryChoice(id: string): TryChoice;
 	/** Remove's Archive: the agent leaves the list for Archived, keeping its chat and branch. */
 	archive(id: string): void;
 	/** Links the repository's ignored rules into a thread's new folder, as a new thread gets them. */
@@ -82,6 +85,7 @@ export class AgentForks {
 			place: () => this.place(id),
 			start: start => this.start(id, start),
 			action: (agent, action) => this.action(agent, action),
+			tryChoice: () => this.host.tryChoice(id),
 		};
 	}
 
