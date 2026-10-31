@@ -125,17 +125,22 @@ async function mergeBase(repository: string, a: string, b: string): Promise<stri
 }
 
 /**
- * The commit `branch` was made from: where its reflog starts, when that is
- * its creation; else where it and `from` (the branch it was made from) last
- * met; else where it and the checkout's HEAD did. Not the user's HEAD first,
- * which may be an older branch than the agent started from.
+ * The commit `branch` was made from: where its reflog last set it from a
+ * branch, when it was created or reset to one since (a review branch is
+ * reset to the merge request's newer head, whose commits aren't the
+ * agent's work); else where it and `from` (the branch it was made from)
+ * last met; else where it and the checkout's HEAD did. Not the user's HEAD
+ * first, which may be an older branch than the agent started from. A reset
+ * to a commit (Discard, a restored snapshot) doesn't move the start.
  */
 export async function startOf(repository: string, branch: string, from?: string): Promise<string | undefined> {
 	const log = await text(repository, ['reflog', 'show', '--format=%H %gs', `refs/heads/${branch}`, '--']).catch(() => '');
-	const first = log.trim().split('\n').pop() ?? '';
-	const created = /^([0-9a-f]+) branch: Created from /.exec(first)?.[1];
-	if (created && await contains(repository, created, branch)) {
-		return created;
+	// Newest first.
+	for (const line of log.trim().split('\n')) {
+		const set = /^([0-9a-f]+) (?:branch: Created from |reset: moving to (?!HEAD\b)(?![0-9a-f]{7,40}$))/.exec(line)?.[1];
+		if (set && await contains(repository, set, branch)) {
+			return set;
+		}
 	}
 	return (from ? await mergeBase(repository, from, branch) : undefined) ?? mergeBase(repository, 'HEAD', branch);
 }

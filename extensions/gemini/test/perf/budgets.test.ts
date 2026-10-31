@@ -11,6 +11,8 @@
 // or the bundle growing by a library. The agent start, which runs the real CLI,
 // is timed by scripts/perf-first-reply.mts.
 
+// @vitest-environment happy-dom
+
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -25,6 +27,7 @@ import { TextDeltas } from '../../src/acp/textDeltas';
 import { matchCommands, mentionAt, slashQuery } from '../../webview-src/chatLogic';
 import { scanStreaming } from '../../webview-src/streaming';
 import { fakeAgentCommand, waitFor } from '../helpers';
+import { page, sendToPage, showChatPage, startScript } from '../webview/pages';
 
 /**
  * Bundle size budgets in bytes, minified: every script in media/ and dist/ has one. KaTeX and the
@@ -40,15 +43,15 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// settings panel moved to a chunk of its own (media/projectSettings.js), taking it to about 249 KB.
 	'media/chat.js': 260_000,
 	// Home's startup script, about 26 KB: Preview's renderer, the menus and the popups are files of their own.
-	// The dashboard (cards, Needs you, banners), the composer and the themed tooltips take most of it.
+	// The dashboard (cards, banners), the composer and the themed tooltips take most of it.
 	'media/home.js': 30_000,
 	// The Changes panel, about 12 KB.
 	'media/changes.js': 16_000,
 	// The team flows, about 32 KB: Open Merge Request, Move Ticket and Log Time, Review and Checks, with the
 	// review's comments, threads and suggested changes. Loaded only with a flow's page.
 	'media/teamFlow.js': 36_000,
-	// Agent Setup, about 19.4 KB: the Storage section added about 1.4 KB, the CLI's default approval mode as a select about 1 KB.
-	'media/settings.js': 20_500,
+	// Settings, about 19.4 KB before 1.8; every contributed setting on the page, with its control, search and the side index, added about 7 KB.
+	'media/settings.js': 28_000,
 	// Connections, about 17.5 KB: the Jira sites after the first and Confluence's per-site Connect dialog added about 4 KB.
 	'media/connections.js': 20_000,
 	// The Review Page for Confluence drafts, about 27 KB: the in-place editor, its floating toolbar, the marked changes
@@ -79,16 +82,22 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// Add Figma Design, about 11 KB with its copy of the link parser, loaded the first time a chat opens it from the + menu
 	// or a design's chip.
 	'media/figmaDesign.js': 13_000,
-	// A project thread's card, with its try steps, ⋯ menu and first-try guide, about 5 KB, loaded the first time a
-	// project chat shows a card.
-	'media/threadCard.js': 7_000,
+	// A project thread's card, with its try steps, ⋯ menu, Try chevron menu and first-try guide, about 7 KB, loaded the
+	// first time a project chat shows a card. The Try chevron's menu (tryChoiceMenu.ts) added about 1 KB.
+	'media/threadCard.js': 8_000,
 	// Project settings, about 12 KB with their own copy of the settings logic, loaded the first time a project chat opens them.
 	'media/projectSettings.js': 13_000,
 	// The side question panel (/btw), about 4 KB, loaded the first time a side question is asked.
 	'media/sideChat.js': 5_000,
-	// Home's menus (+, folder, mode, From Your Tools, a row's "...") with the menu class, about 7.6 KB, loaded once
-	// Home has settled or on the first click on a menu's button.
-	'media/homeMenus.js': 9_500,
+	// Debug mode's bar and its reproduce, verify, rounds and clean-up cards, about 5 KB, loaded the first time a chat enters Debug mode.
+	'media/debugCard.js': 7_000,
+	// Debug mode's Evidence page, about 11 KB: its table and filters, about 4 KB, and the themed select menus with the menu class.
+	'media/evidence.js': 13_000,
+	// Home's menus (+, folder, mode, From Your Tools, a row's "...", an agent card's Try chevron) with the menu class,
+	// about 10 KB, loaded once Home has settled or on the first click on a menu's button. The Try chevron's menu added about 1 KB.
+	'media/homeMenus.js': 11_000,
+	// The Changes panel's Try chevron menu with the menu class, about 6 KB, loaded on the first click on the chevron.
+	'media/changesMenu.js': 7_500,
 	// The emoji picker, about 97 KB, loaded the first time a reaction button is hovered or focused: about 88 KB
 	// of emoji data (1,923 emoji with their names and three search words each) and its own code.
 	'media/emojiPicker.js': 105_000,
@@ -116,11 +125,18 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// Sync Design System on Figma's row in Connections added about 0.4 KB. The Index page with its docs suggestions
 	// (indexPage.ts, docs/suggest.ts), about 21 KB, moved here from dist/extension.js.
 	// The Storage section's host (storageSection.ts) moved to dist/onDemand.js with the audit page, about 10 KB.
-	'dist/pages.js': 160_000,
+	// 1.8's Settings page, every contributed setting with its control and the model that reads them (settingsModel.ts),
+	// took it to about 160.3 KB.
+	'dist/pages.js': 162_000,
 	// Confluence, about 27 KB, loaded the first time an agent or a page uses it (src/confluence.ts): its client, the
 	// agents' calls, the drafts and the Review Page's host, with publishing only the changes kept (draftReview.ts,
 	// blockMerge.ts) and the page's localized strings.
 	'dist/confluence.js': 29_000,
+	// Debug mode, about 115 KB, loaded the first time one of its commands runs or a start finds a Debug mode that did not end
+	// (src/debug.ts): the debugger bridge and its logic, marked lines, one agent's Debug mode with its record, the endpoint,
+	// the picked log file, the Evidence page's host, and the geminicode-debug server's tools; its own copies of the pure
+	// modules they share with the extension. Only its commands and route (debugEntry.ts, under 1 KB) are in dist/extension.js.
+	'dist/debug.js': 125_000,
 	// The audit log, Run Benchmark and the trace recorder, about 31 KB, loaded the first time
 	// one of their commands runs (src/onDemand.ts). Finding or cloning a merge request's repository (reviewClone.ts,
 	// cloneSearch.ts) moved here from dist/extension.js: about 44 KB. Merge Back and Try in Workspace (agentMerge.ts,
@@ -265,6 +281,30 @@ describe('agent switch', () => {
 			JSON.stringify(transcript.items);
 		});
 		expect(ms).toBeLessThan(25);
+	});
+
+	it('opens a 300-turn chat in the view drawing only its latest items', async () => {
+		// The chat's real page under happy-dom: the view draws the latest 60 items and a slot per older turn
+		// (webview-src/virtualBlocks.ts), so opening costs the same however long the chat is. Before the slots,
+		// the view drew 30 items at once (about 12 ms here) and the other 1,170 in idle time, about 490 ms more.
+		await showChatPage();
+		await startScript('chat');
+		const items: TranscriptItem[] = [];
+		for (let turn = 0; turn < 300; turn++) {
+			items.push({ id: `u${turn}`, kind: 'user', text: `Question ${turn}` });
+			items.push({ id: `t${turn}`, kind: 'toolCall', title: 'Read file', toolKind: 'read', status: 'completed', locations: [], details: [] });
+			items.push({ id: `a${turn}`, kind: 'agent', text: 'An answer of moderate length, with `code` and **bold**. '.repeat(40) });
+			items.push({ id: `e${turn}`, kind: 'turnEnd', durationMs: 4000 });
+		}
+		const transcript = page.document.getElementById('transcript')!;
+		const reset = () => sendToPage({ type: 'reset', items, busy: false, status: { phase: 'ready', text: '' }, settings: {} });
+		// Drawing the latest 60 items: about 30 ms on a laptop and about 112 ms on CI's runner, with happy-dom's DOM. The count
+		// below is what holds the view to its latest items on any machine; the time catches only a return to drawing all 1,200.
+		const ms = median(11, reset);
+		expect(ms).toBeLessThan(300);
+		const drawn = [...transcript.children].filter(child => !child.classList.contains('turn-slot'));
+		expect(drawn.length).toBeLessThanOrEqual(80);
+		expect(transcript.querySelectorAll('.turn-slot').length).toBe(285);
 	});
 });
 

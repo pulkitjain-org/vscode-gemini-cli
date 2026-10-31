@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 // What Home's dashboard shows, worked out from the team tools' last answers
-// and the agents: the "Needs you" strip, sprint progress, card order. Pure,
+// and the agents: the order of reviews, sprint progress, card order. Pure,
 // so the host only localizes it; nothing here calls a tool.
 
 import type { GitLabMr, GitLabMrSummary } from './gitlab';
@@ -12,21 +12,32 @@ import type { JiraIssueSummary, JiraMyTicket, JiraSprint } from './jira';
 
 export type DashboardCardId = 'unfinished' | 'startup' | 'agents' | 'tickets' | 'mergeRequests' | 'quality' | 'gemini';
 
-export const dashboardCards: readonly DashboardCardId[] = ['unfinished', 'startup', 'agents', 'tickets', 'mergeRequests', 'quality', 'gemini'];
+/** What needs the user first (Pending on you), then their tickets, then the agents. */
+export const dashboardCards: readonly DashboardCardId[] = ['unfinished', 'startup', 'mergeRequests', 'tickets', 'agents', 'quality', 'gemini'];
+
+/** Cards off until the user turns them on in the gear menu. */
+const defaultHidden: readonly DashboardCardId[] = ['quality'];
 
 /** The user's card layout: the order, and which are hidden. */
 export interface DashboardLayout {
 	readonly order?: readonly string[];
+	/** The cards turned off; the default set (`defaultHidden`) until the user turns one on or off. */
 	readonly hidden?: readonly string[];
 	/** The release branch Quality looks at; the newest release branch when unset. */
 	readonly qualityBranch?: string;
+}
+
+/** The cards turned off: the user's set once they have one, else the default. */
+export function hiddenCards(layout: DashboardLayout | undefined): readonly string[] {
+	return layout?.hidden ?? defaultHidden;
 }
 
 /** The cards to show, in the user's order; cards they never placed go at the end in the default order. */
 export function cardOrder(layout: DashboardLayout | undefined): DashboardCardId[] {
 	const known = (layout?.order ?? []).filter((id): id is DashboardCardId => dashboardCards.includes(id as DashboardCardId));
 	const order = [...new Set([...known, ...dashboardCards])];
-	return order.filter(id => !layout?.hidden?.includes(id));
+	const hidden = hiddenCards(layout);
+	return order.filter(id => !hidden.includes(id));
 }
 
 /** `layout` with `card` moved by `delta` places among all cards (hidden ones keep their place). */
@@ -41,7 +52,7 @@ export function moveCard(layout: DashboardLayout | undefined, card: DashboardCar
 }
 
 export function toggleCard(layout: DashboardLayout | undefined, card: DashboardCardId, visible: boolean): DashboardLayout {
-	const hidden = new Set(layout?.hidden ?? []);
+	const hidden = new Set(hiddenCards(layout));
 	if (visible) {
 		hidden.delete(card);
 	} else {
@@ -96,67 +107,17 @@ export function isClosed(issue: JiraIssueSummary): boolean {
 	return issue.statusCategory === 'done' && /^closed?$/i.test(issue.status.trim());
 }
 
-/** A thing waiting on the user, with its one action. `moreReviews` stands for the reviews left out. */
-export type NeedItem =
-	| { readonly kind: 'agentWaiting'; readonly agentId: string; readonly title: string; readonly status: string }
-	| { readonly kind: 'reply'; readonly mr: GitLabMrSummary }
-	| { readonly kind: 'tryReady'; readonly agentId: string; readonly title: string }
-	| { readonly kind: 'review'; readonly mr: GitLabMrSummary }
-	| { readonly kind: 'pipelineFailed'; readonly mr: GitLabMr }
-	| { readonly kind: 'readyToMerge'; readonly mr: GitLabMr }
-	| { readonly kind: 'reopened'; readonly issue: JiraIssueSummary }
-	| { readonly kind: 'moreReviews'; readonly count: number; readonly oldest?: string };
-
-export interface NeedsInput {
-	readonly agents: readonly {
-		readonly id: string; readonly title: string; readonly state: string; readonly status: string;
-		/** Finished on a branch of its own with changes that aren't tried in the workspace yet. */
-		readonly tryReady?: boolean;
-	}[];
+/** What ranking the reviews asked of the user looks at. */
+export interface ReviewsInput {
 	readonly reviews?: readonly GitLabMrSummary[];
-	readonly mine?: readonly GitLabMr[];
-	readonly tickets?: readonly JiraIssueSummary[];
 	/** Reviews the user started in GeminiCode, as `project!iid`: they come first. */
 	readonly reviewing?: ReadonlySet<string>;
 	/** The user's GitLab username, to tell when they are an MR's only reviewer. */
 	readonly me?: string;
 }
 
-/** Reviews the strip shows at most; the rest are one "more reviews" row. */
-export const shownReviews = 2;
-
 /** States in which the user's part in a review is done until GitLab asks again. */
 const reviewDone: ReadonlySet<string> = new Set(['approved', 'reviewed', 'requested_changes']);
-
-/**
- * The few things waiting on the user across agents and tools, most urgent
- * first: agents asking, replies owed on their own MRs, failed pipelines,
- * MRs ready to merge, agents' work ready to try, reviews asked of them,
- * reopened tickets. At most `max`, of which at most `shownReviews` are
- * reviews: a team's many reviews would otherwise fill the strip. Reviews
- * left out (and drafts, and ones the user already approved or reviewed) are
- * not shown; the ones left out are counted in a last `moreReviews` row.
- */
-export function needsYou(input: NeedsInput, max = 5): NeedItem[] {
-	const reviews = rankReviews(input);
-	const shown = reviews.slice(0, shownReviews);
-	const items: NeedItem[] = [
-		...input.agents.filter(a => a.state === 'waiting').map((a): NeedItem => ({ kind: 'agentWaiting', agentId: a.id, title: a.title, status: a.status })),
-		...(input.mine ?? []).filter(mr => mr.unresolved && !mr.draft).map((mr): NeedItem => ({ kind: 'reply', mr })),
-		...(input.mine ?? []).filter(mr => mr.pipeline?.status === 'failed').map((mr): NeedItem => ({ kind: 'pipelineFailed', mr })),
-		...(input.mine ?? []).filter(isReadyToMerge).map((mr): NeedItem => ({ kind: 'readyToMerge', mr })),
-		...input.agents.filter(a => a.tryReady).map((a): NeedItem => ({ kind: 'tryReady', agentId: a.id, title: a.title })),
-		...shown.map((mr): NeedItem => ({ kind: 'review', mr })),
-		...(input.tickets ?? []).filter(isReopened).map((issue): NeedItem => ({ kind: 'reopened', issue })),
-	];
-	const kept = items.slice(0, max);
-	const left = reviews.filter(mr => !kept.some(item => item.kind === 'review' && item.mr === mr));
-	if (left.length) {
-		const oldest = left.map(mr => mr.updatedAt).filter(Boolean).sort()[0];
-		kept.push({ kind: 'moreReviews', count: left.length, ...oldest ? { oldest } : {} });
-	}
-	return kept;
-}
 
 /**
  * The reviews asked of the user that still need them, most pressing first:
@@ -164,7 +125,7 @@ export function needsYou(input: NeedsInput, max = 5): NeedItem[] {
  * longest waiting. Drafts and reviews they already gave are left out; ones
  * the author must fix first (conflicts, failing CI) go last.
  */
-export function rankReviews(input: NeedsInput): GitLabMrSummary[] {
+export function rankReviews(input: ReviewsInput): GitLabMrSummary[] {
 	const open = (input.reviews ?? []).filter(mr => !mr.draft && !(mr.myReview && reviewDone.has(mr.myReview)));
 	const blocked = (mr: GitLabMrSummary) => mr.mergeStatus === 'conflict' || mr.mergeStatus === 'ci_must_pass' || mr.mergeStatus === 'broken_status';
 	const rank = (mr: GitLabMrSummary) => [

@@ -284,8 +284,8 @@ export const featurePages: readonly FeaturePage[] = [
 		sections: [
 			{
 				title: 'Home',
-				body: ['**Needs you** lists what waits on you across the tools, most urgent first: an agent asking permission, a reply you owe, a failed pipeline, a merge request that can merge, a review request. Below it, your tickets by sprint, one group per Jira site, and your merge requests with their pipelines and approvals.'],
-				media: { name: 'home', alt: 'Home with the Start Agent composer, Needs you, My tickets and Merge requests' },
+				body: ['Your agents, your tickets by sprint, one group per Jira site, and your merge requests with their pipelines and approvals: the reviews that need you most first, and a reply you owe on your own.'],
+				media: { name: 'home', alt: 'Home with the Start Agent composer, My tickets and Merge requests' },
 			},
 			{
 				title: 'Review a merge request',

@@ -193,7 +193,34 @@ describe('index tool results', () => {
 	it('numbers snippet lines from the chunk\'s start, from just before the first match', () => {
 		const text = Array.from({ length: 60 }, (_, i) => i === 20 ? 'const discount = 1;' : `line ${i}`).join('\n');
 		const lines = snippet(text, 100, ['discount']).split('\n');
-		expect([lines.slice(0, 3), lines.length, lines.at(-1)]).toEqual([['118  line 18', '119  line 19', '120  const discount = 1;'], 15, '     …']);
+		expect([lines.slice(0, 3), lines.length, lines.at(-1)]).toEqual([['118  line 18', '119  line 19', '120  const discount = 1;'], 31, '     …']);
+		expect(snippet(text, 100, ['discount'], 6).split('\n')).toHaveLength(7);
+	});
+
+	it('shows each hit in full, and shares a full result among its hits down to a few lines each', () => {
+		const chunk = (n: number) => Array.from({ length: 40 }, (_, i) => `${'x'.repeat(60)} discount ${n}-${i}`).join('\n');
+		const one = formatSearch('discount', { hits: [{ path: 'a.ts', startLine: 1, endLine: 40, text: chunk(1) }], total: 1, terms: ['discount'] });
+		expect(one.split('\n').filter(line => /^ *\d+  x/.test(line))).toHaveLength(30);
+		const hits = Array.from({ length: 8 }, (_, n) => ({ path: `${n}.ts`, startLine: 1, endLine: 40, text: chunk(n) }));
+		const many = formatSearch('discount', { hits, total: 8, terms: ['discount'] });
+		expect(many.length).toBeLessThanOrEqual(8_000);
+		expect(hits.map(hit => many.includes(`. ${hit.path}:1-40`))).toEqual(hits.map(() => true));
+		expect(many.split('\n').filter(line => /^ *\d+  x/.test(line)).length).toBeGreaterThanOrEqual(8 * 6);
+	});
+
+	it('shows the first definition\'s body under its signature', () => {
+		const first = { name: 'applyDiscount', kind: 'function', path: 'a.ts', line: 10, endLine: 13, exported: true, signature: 'export function applyDiscount(total: number): number {', body: '\tconst rate = 0.1;\n\treturn total * (1 - rate);\n}' };
+		const second = { ...first, path: 'b.ts', body: undefined };
+		const text = formatSymbol('applyDiscount', { definitions: [first, second], similar: [], references: [], referenceTotal: 0 });
+		expect(text.split('\n').slice(1, 7)).toEqual([
+			'  function applyDiscount · a.ts:10-13 (public)',
+			'    export function applyDiscount(total: number): number {',
+			'    11  \tconst rate = 0.1;',
+			'    12  \treturn total * (1 - rate);',
+			'    13  }',
+			'  function applyDiscount · b.ts:10-13 (public)',
+		]);
+		expect(text).toContain('The first definition is shown in full above');
 	});
 
 	it('says when results come from plain search while the index builds', () => {

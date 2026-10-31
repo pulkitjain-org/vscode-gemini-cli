@@ -10,7 +10,7 @@ import {
 	acceptsEnhanceReply, coalesceUpdates, HeldUpdates, attachmentIcon, carriesFiles, codeLanguage, composerHeightLimit, currentActivity, currentPrompt, promptStep, replyPreview, formatClock, turnStart, draggedHeight, emptyFence, enhanceButtonPlacement, enhanceOriginal, type EnhancePhase, enhancePhaseAfterInput, enhanceShortcutLabel, enhanceText, fileReference, fileUris, folderOf, format, formatDuration, formatSentAt, isEnhanceShortcut, isQueueShortcut,
 	groupCommands, imageName, indexOfItem, isNearBottom, matchCommands, mentionAt, mentionInsertion, permissionChoices, planIcon, cardKey, waitingPermission, replyBefore, restoredHeight,
 	formatTokens, resetsIn, sameAttachment, slashQuery, thoughtSeconds, toolKindIcon, withAppended, withoutMention, wrapIndex,
-	contextParts, enterAction, mentionGroup, symbolIcon,
+	enterAction, mentionGroup, symbolIcon,
 } from '../../webview-src/chatLogic';
 
 describe('format', () => {
@@ -589,25 +589,6 @@ describe('enterAction', () => {
 			enterMac: ['now', 'newLine', 'queue', 'newLine', 'now', undefined, undefined],
 			cmdEnterMac: ['newLine', 'newLine', 'now', 'queue', undefined, undefined, undefined],
 			cmdEnterOther: ['newLine', 'newLine', undefined, undefined, 'now', undefined, undefined],
-		});
-	});
-});
-
-describe('contextParts', () => {
-	it('splits what each turn carries into the conversation and the measured parts, largest first, without empty ones', () => {
-		const parts = { cli: 9_000, rules: 18_000, geminicode: 11_000, servers: 3, serverTokens: 61_000, total: 99_000 };
-		expect({
-			withConversation: contextParts(parts, 2, 306_000),
-			beforeAReply: contextParts({ ...parts, geminicode: 0 }, 2).map(part => part.part),
-		}).toEqual({
-			withConversation: [
-				{ part: 'conversation', tokens: 207_000 },
-				{ part: 'servers', tokens: 61_000, count: 3 },
-				{ part: 'rules', tokens: 18_000, count: 2 },
-				{ part: 'geminicode', tokens: 11_000 },
-				{ part: 'cli', tokens: 9_000 },
-			],
-			beforeAReply: ['servers', 'rules', 'cli'],
 		});
 	});
 });

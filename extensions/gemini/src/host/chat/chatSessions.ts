@@ -40,6 +40,10 @@ export interface SessionsHost {
 	clearConversation(): void;
 	/** Saved session `title` was reopened here. */
 	restored(title: string): void;
+	/** The Agents pane hears of the chat's state again. */
+	fireActivity(): void;
+	/** The plain-words notice for a session that failed to start, from the error it failed with. */
+	turnError(err: unknown): { readonly text: string };
 }
 
 export class ChatSessions implements vscode.Disposable {
@@ -123,6 +127,29 @@ export class ChatSessions implements vscode.Disposable {
 	forgetConversation(): void {
 		this.carried = undefined;
 		this.replaying = false;
+	}
+
+	/** Clears the conversation and, when the agent runs, starts a fresh session so it forgets it too. */
+	async newChat(): Promise<void> {
+		if (this.host.isBusy()) {
+			return;
+		}
+		this.host.clearConversation();
+		if (this.service.client.state.kind !== 'ready') {
+			// The next prompt starts the agent, and with it a new session.
+			this.service.client.forgetSession();
+			this.host.fireActivity();
+			return;
+		}
+		this.host.setBusy(true);
+		try {
+			await this.service.client.newSession();
+		} catch (err) {
+			// The chat is cleared either way; the next prompt opens a new session (the old one is never reopened).
+			this.transcript.addNotice(vscode.l10n.t("A new session could not start: {0}", this.host.turnError(err).text), 'error');
+		} finally {
+			this.host.setBusy(false);
+		}
 	}
 
 	onMessage(message: SessionsMessage): void {

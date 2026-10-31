@@ -1,0 +1,82 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Pulkit Jain. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+/*
+ * One scale for every GeminiCode page (the chat, Home, Settings and the other
+ * panels), loaded before each page's own stylesheet. Type, spacing, radius,
+ * control heights, the focus ring, the one elevation and the one motion: a
+ * page writes var(--gc-...) and never a size of its own, which
+ * test/webview/designTokens.test.ts checks. Colours stay the theme's, named by
+ * role in each page's --gemini-* variables.
+ */
+
+:root {
+	/* Type: five sizes, three weights, three line heights. */
+	--gc-text-xs: 11px;
+	--gc-text-sm: 12px;
+	--gc-text-md: 13px;
+	--gc-text-lg: 15px;
+	--gc-text-xl: 20px;
+	--gc-weight-regular: 400;
+	--gc-weight-medium: 500;
+	--gc-weight-semibold: 600;
+	--gc-leading-body: 1.5;
+	--gc-leading-row: 1.35;
+	--gc-leading-heading: 1.25;
+	--gc-font: var(--vscode-font-family, system-ui, sans-serif);
+	--gc-font-mono: var(--vscode-editor-font-family, ui-monospace, Menlo, monospace);
+
+	/* Spacing: 4, 8, 12, 16, 24, 32. */
+	--gc-space-1: 4px;
+	--gc-space-2: 8px;
+	--gc-space-3: 12px;
+	--gc-space-4: 16px;
+	--gc-space-5: 24px;
+	--gc-space-6: 32px;
+
+	/* Radius: controls, cards and inputs, menus and dialogs, panels, pills. */
+	--gc-radius-sm: 4px;
+	--gc-radius-md: 6px;
+	--gc-radius-overlay: 8px;
+	--gc-radius-lg: 10px;
+	--gc-radius-pill: 999px;
+
+	/* Heights: a control, a control on Home, a list row, a menu row. */
+	--gc-control: 26px;
+	--gc-control-lg: 28px;
+	--gc-row: 32px;
+	--gc-menu-row: 26px;
+
+	/* The focus ring, the hairline, the one shadow a floating surface gets. */
+	--gc-focus-ring: 0 0 0 2px var(--vscode-focusBorder);
+	--gc-focus-offset: 1px;
+	--gc-hairline: 1px solid var(--gemini-border, var(--vscode-widget-border, var(--vscode-panel-border, rgba(128, 128, 128, 0.35))));
+	--gc-shadow: 0 8px 24px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.24));
+
+	/* Motion: one duration and curve; none for people who asked for less. */
+	--gc-motion: 120ms ease-out;
+
+	/* The radii the pages wrote before 1.8, on the scale. */
+	--gemini-radius-small: var(--gc-radius-md);
+	--gemini-radius: var(--gc-radius-lg);
+	--gemini-radius-large: var(--gc-radius-lg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	:root {
+		--gc-motion: 0s linear;
+	}
+}
+
+/* Counts, times and token figures line up when the digits share a width. */
+.gc-tabular {
+	font-variant-numeric: tabular-nums;
+}
+
+/* One focus ring everywhere, drawn only for keyboard focus. */
+:where(button, [role="button"], [role="switch"], [role="tab"], [role="menuitem"], [role="option"], a[href], input, select, textarea, [tabindex]):focus-visible {
+	outline: none;
+	box-shadow: var(--gc-focus-ring);
+}

@@ -80,7 +80,7 @@ export class ChatProjectView {
 		const project = this.options.project;
 		switch (message.type) {
 			case 'threadAction':
-				project?.threadAction(message.thread, message.action, message.repo);
+				project?.threadAction(message.thread, message.action, message.repo, message.choice);
 				break;
 			case 'prepareThread':
 				project?.prepareThread(message.thread);

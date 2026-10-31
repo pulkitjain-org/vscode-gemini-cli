@@ -11,6 +11,7 @@ import type { ChangesPanelStrings } from '../src/host/panelStrings';
 import { button, el, format, icon, pageStrings } from './panelDom';
 import { renderTeam } from './mrPanel';
 import { setTip } from './tooltip';
+import type { TryChoiceMenu } from './tryChoiceMenu';
 
 declare function acquireVsCodeApi(): { postMessage(message: FromChangesPanel): void; getState(): unknown; setState(state: unknown): void };
 
@@ -20,6 +21,11 @@ const bar = document.getElementById('bar')!;
 const list = document.getElementById('files')!;
 /** Files the user folded, by path; kept across updates and reloads. */
 const folded = new Set<string>(Array.isArray(vscode.getState()) ? vscode.getState() as string[] : []);
+
+type ChangesMenuModule = typeof import('./changesMenu');
+const changesMenuUrl = document.querySelector<HTMLScriptElement>('script[data-changes-menu]')?.dataset.changesMenu;
+/** The Try chevron's menu, a chunk of its own loaded on the first click. */
+let tryMenu: Promise<TryChoiceMenu> | undefined;
 
 function post(message: FromChangesPanel): void {
 	vscode.postMessage(message);
@@ -62,7 +68,12 @@ function render(view: ChangesPanelView): void {
 	} else if (view.agent.branch) {
 		const choice = view.agent.tryChoice;
 		const [label, hint, iconName] = choice === 'merge' ? [strings.mergeBack, strings.mergeBackTip, 'git-merge'] : choice === 'mr' ? [strings.openMr, strings.openMrTip, 'git-pull-request'] : [strings.tryIn, strings.tryInTip, 'beaker'];
-		const menu = button('primary try-menu', '', () => post({ type: 'tryMenu' }), 'chevron-down');
+		const agent = view.agent;
+		const menu = button('primary try-menu', '', () => {
+			// eslint-disable-next-line no-restricted-syntax
+			tryMenu ??= (changesMenuUrl ? import(/* webpackIgnore: true */ changesMenuUrl) as Promise<ChangesMenuModule> : Promise.reject(new Error('no menu'))).then(module => module.createChangesMenu(strings.tryChoices, setTip));
+			void tryMenu.then(loaded => loaded.toggle(menu, agent.tryChoice ?? 'try', !!agent.mergeRequests, choice => post({ type: 'tryChoice', choice })));
+		}, 'chevron-down');
 		menu.setAttribute('aria-label', strings.tryMenu);
 		actions.append(tip(button('primary', label, () => post({ type: 'mergeBack' }), iconName), hint), tip(menu, strings.tryMenuTip));
 	} else {

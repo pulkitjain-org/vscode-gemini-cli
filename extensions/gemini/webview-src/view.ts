@@ -139,6 +139,10 @@ export const state = {
 	reactions: document.querySelector<HTMLScriptElement>('script[data-strings]')?.dataset.reactions === 'true',
 	/** Whether a side question can read the code (read-only workers in the folder): every chat but a project's. */
 	research: document.querySelector<HTMLScriptElement>('script[data-strings]')?.dataset.research === 'true',
+	/** Whether the developer's figures show (`gemini.developer.showTools`): a reply's time to its first output. */
+	developer: document.querySelector<HTMLScriptElement>('script[data-strings]')?.dataset.developer === 'true',
+	/** The team tools for this agent: none connected, on offer in the + menu, or on. */
+	teamTools: 'none' as 'none' | 'available' | 'on',
 	/** The picker's Recent row, newest first. */
 	recents: [] as readonly string[],
 	/** The meanings people gave emoji in `gemini.chat.reactions.meanings`. */

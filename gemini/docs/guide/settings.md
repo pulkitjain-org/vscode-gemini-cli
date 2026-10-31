@@ -1,6 +1,6 @@
 # Settings
 
-Every GeminiCode setting, by area, as the Settings editor lists them (<kbd>⌘,</kbd>, then type `gemini`). The Gemini CLI's own settings are in [Agent Setup](helpers.md#gemini-cli-settings).
+Every GeminiCode setting, by area, as the [Settings page](helpers.md) lists them with a switch, a picker or a field for each (**Gemini: Settings**; VS Code's own Settings editor lists them too under `gemini`). The Gemini CLI's own settings are in [Settings](helpers.md#gemini-cli-settings).
 
 A setting in a workspace's settings applies only to that folder, and is shared with everyone who opens it when the folder's `.vscode/settings.json` is checked in. Settings marked *machine* are set per Mac, never by a workspace.
 
@@ -15,7 +15,7 @@ A setting in a workspace's settings applies only to that folder, and is shared w
 | `gemini.cli.version` *(machine)* | empty | Which of GeminiCode's own Gemini CLI copies to run, such as `0.66.0`; empty runs the newest. Changing this restarts the agent. |
 | `gemini.cli.checkForUpdates` *(machine)* | on | Once a day, check the npm registry for a newer Gemini CLI and offer to install it. Nothing installs without your click. |
 | `gemini.app.checkForUpdates` *(machine)* | on | Every few hours, check the GeminiCode download page for a newer GeminiCode and say so. GeminiCode downloads nothing itself. |
-| `gemini.agents.startEarly` *(machine)* | on | Start the Gemini CLI a few seconds after GeminiCode opens, once you have signed in, so the first prompt does not wait for it. It uses about 230 MB of memory before the first chat. |
+| `gemini.agents.startEarly` *(machine)* | on | Start the Gemini CLI as soon as GeminiCode opens, once you have signed in, so the first prompt does not wait for it. It uses about 230 MB of memory before the first chat. |
 | `gemini.cli.registry` *(machine)* | empty | The npm registry GeminiCode installs its Gemini CLI copies from, such as your organisation's mirror; empty uses the public registry. It must be an `https` address without credentials, and downloads are still checked against the registry's SHA-512 checksum. |
 
 ## Agents
@@ -28,9 +28,11 @@ A setting in a workspace's settings applies only to that folder, and is shared w
 | `gemini.agents.allWorkspaceFolders` | off | Let every agent read and edit all folders of a multi-root window, not only the folder it works in. Changing this restarts the agent. |
 | `gemini.projects.enabled` *(machine)* | on | Projects: a project chat whose coordinator splits work into threads, each an agent on its own branch, shown as cards you can open, try in your workspace and keep. Off, New Project and the Projects section are hidden. |
 | `gemini.projects.maxRunningThreads` *(machine)* | `4` | How many of a project's threads may work at once; a thread started beyond it waits for a running one to finish. Above 90% of today's Gemini quota, new threads wait too, until the reset or **Start Anyway**. |
+| `gemini.debugMode.enabled` | off | Let agents enter Debug mode: they collect evidence from the running program (logpoints, breakpoints that take a snapshot and continue, and marked lines GeminiCode writes and removes) before they fix anything, and edits wait until the evidence confirms a cause. Debug with Gemini is then in an agent's More menu and the chat's + menu, and Ask Gemini why on a failed test in the Testing view. |
 | `gemini.notifications` | Every finish and every wait (`all`) | System notifications while GeminiCode is in the background: when an agent needs your permission, and also when one finishes. The Dock icon counts the agents waiting either way. Choices: Every finish and every wait (`all`), Only when an agent needs you (`needsYou`), Off (`off`). On macOS, GeminiCode asks the system for permission the first time. |
 | `gemini.keepAwake` *(machine)* | on | Keep the Mac from sleeping while any agent is working; the display can still sleep. Ends as soon as no agent is working. |
 | `gemini.home.openOnStartup` *(machine)* | on | Open Home in front of your restored tabs every time GeminiCode starts. Off, Home shows when no tab is open in the Agents layout, or from the Agents pane. |
+| `gemini.layout.showAgentsInNewWorkspaces` *(machine)* | on | Show the Agents pane, with the agent's Changes below it, the first time a workspace opens. Afterwards the layout you arrange is kept. |
 | `gemini.agents.branchDefaults` | empty | Defaults for every agent started on a branch, by New Agent on a Branch, Fork and New thread: `prefix` for the branch name (`gemini/` unless set), `model`, and `planFirst`. A project's own defaults override it for its threads. A project's settings page sets the same three for its threads. |
 
 ## Chat
@@ -84,14 +86,13 @@ A setting in a workspace's settings applies only to that folder, and is shared w
 | `gemini.browser.allowedOrigins` *(machine)* | empty | The only sites agents may open in the GeminiCode browser, such as `http://localhost:*` or `https://*.example.com` (`*` allows all); empty allows every site the other browser settings allow. You can still open any site yourself. |
 | `gemini.docs.allowedDomains` *(machine)* | empty | The only sites documentation may be fetched from, such as `react.dev` or `*.example.com`. Empty allows every site. |
 | `gemini.index.maxFileSizeKb` *(machine)* | `1024` | Files larger than this, in KB, are left out of the index. ``gemini.index.include`` can still add one, up to 16 MB. |
-| `gemini.audit.keepDays` *(machine)* | `90` | How many days of the audit log to keep; older days are removed in the background after GeminiCode starts. At least 7 days are kept, and `0` keeps everything. The Storage section of Agent Setup's Storage & Audit tab sets it too. |
+| `gemini.audit.keepDays` *(machine)* | `90` | How many days of the audit log to keep; older days are removed in the background after GeminiCode starts. At least 7 days are kept, and `0` keeps everything. The Storage section of Settings' Storage & Audit tab sets it too. |
 
 ## Developer
 
 | Setting | Default | What it does |
 | --- | --- | --- |
-| `gemini.developer.showTools` *(machine)* | off | Show GeminiCode's developer tools: Run Benchmark, Record Performance Trace, Show Status Menu, New Skill, Check Agent Connection, Sync Design System and installing a CLI version in the Command Palette, the status bar menu's trace and benchmark entries, Agent Setup's Measure buttons and Home's startup card. They are for working on GeminiCode itself. |
-| `gemini.layout.showAgentsInNewWorkspaces` *(machine)* | on | Show the Agents pane, with the agent's Changes below it, the first time a workspace opens. Afterwards the layout you arrange is kept. |
+| `gemini.developer.showTools` *(machine)* | off | Show GeminiCode's developer tools: Run Benchmark, Record Performance Trace, Show Status Menu, New Skill, Check Agent Connection, Sync Design System and installing a CLI version in the Command Palette, the status bar menu's trace and benchmark entries, Settings' Measure buttons and Home's startup card. They are for working on GeminiCode itself. |
 
 ## Renamed and removed
 

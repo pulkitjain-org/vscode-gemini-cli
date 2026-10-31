@@ -26,6 +26,9 @@ import { ConfluenceAccount, ConfluenceTools, isConfirmToolCall, TeamConnectors, 
 import { TeamToolsMcpServer } from '../acp/teamToolsMcp';
 import { repositoryRoot } from '../acp/worktrees';
 import { configSection, getApprovalPolicy } from './configuration';
+import { background } from './background';
+import { findToolRefs } from '../acp/toolLinks';
+import type { Attachment } from '../acp/attachments';
 
 /** Runs the tools' own MCP servers as children of the team tools; set by Take Over Both Servers in Connections. */
 export const runTeamServersSetting = 'team.runTeamServers';
@@ -99,6 +102,8 @@ export class TeamConnections implements vscode.Disposable {
 	/** Folders whose agents' team tools only read: a review's worktree, marked before its reviewer's session opens. */
 	private readonly readOnlyFolders = new Set<string>();
 	private readOnlyWhen: ((agent: string) => boolean) | undefined;
+	/** Agents whose task needs the team tools; the others' sessions list none (`enabledFor`). */
+	private readonly enabledAgents = new Set<string>();
 
 	constructor(private readonly context: vscode.ExtensionContext, version: string, private readonly log: vscode.LogOutputChannel) {
 		this.audit = new AuditLog(vscode.Uri.joinPath(context.globalStorageUri, 'audit').fsPath);
@@ -112,6 +117,7 @@ export class TeamConnections implements vscode.Disposable {
 			defaults: folder => this.defaults(folder),
 			children: () => this.children,
 			readOnly: agent => this.isReadOnly(agent),
+			enabledFor: agent => !!agent && this.enabledAgents.has(agent),
 			childUnavailable: (server, reason) => this.log.warn(`The ${server} server didn't start, so the call went to ${server === 'jira' ? 'Jira' : 'GitLab'} directly: ${reason}`),
 			allowShell: () => getApprovalPolicy().allowShell,
 			confluence: () => this.confluence(),
@@ -134,7 +140,7 @@ export class TeamConnections implements vscode.Disposable {
 		}
 		this.disposables.push(
 			this.onDidChangeEmitter,
-			context.secrets.onDidChange(e => e.key.startsWith(secretPrefix) && void this.load().then(() => this.onDidChangeEmitter.fire())),
+			context.secrets.onDidChange(e => e.key.startsWith(secretPrefix) && background('Reloading the team tools', this.load().then(() => this.onDidChangeEmitter.fire()))),
 			teamReachability.onDidChange(change => this.reachabilityChanged(change)),
 			vscode.workspace.onDidChangeConfiguration(e => {
 				if (e.affectsConfiguration(`${configSection}.${runTeamServersSetting}`)) {
@@ -143,12 +149,12 @@ export class TeamConnections implements vscode.Disposable {
 				}
 			}),
 		);
-		void this.load().then(() => {
+		background('Loading the team tools', this.load().then(() => {
 			this.onDidChangeEmitter.fire();
 			if (this.connectedSet.size) {
 				void this.server.start().catch(err => this.log.warn(`The team tools server didn't start: ${err}`));
 			}
-		});
+		}));
 	}
 
 	/**
@@ -479,23 +485,66 @@ export class TeamConnections implements vscode.Disposable {
 		return accounts;
 	}
 
-	/** The `mcpServers` for an agent's session: the team tools, once any is connected and the server listens. */
+	/**
+	 * The `mcpServers` for an agent's session: the team tools' server, once
+	 * any tool is connected and it listens. It lists no tool until
+	 * `enableTeamTools(agent)`, so the session carries their definitions only
+	 * when its task needs them.
+	 */
 	mcpServersFor(agent: string, folder?: string): acp.McpServer[] {
 		if (folder) {
 			this.folders.set(agent, folder);
 		}
 		const config = this.connectedSet.size ? this.server.configFor(agent) : undefined;
-		if (config) {
-			// The team's Jira and GitLab servers start while the agent reads the prompt, not on its first call.
-			this.children.jira?.warm();
-			this.children.gitlab?.warm();
+		if (config && this.enabledAgents.has(agent)) {
+			this.warmChildren();
 		}
 		return config ? [config] : [];
 	}
 
-	/** Forgets a removed agent: its folder and the spare session's slot bound to it. */
+	/** Whether `agent`'s sessions list the team tools. */
+	teamToolsEnabled(agent: string): boolean {
+		return this.enabledAgents.has(agent);
+	}
+
+	/**
+	 * Gives `agent`'s sessions the team tools from now on: a task on a ticket or
+	 * merge request, a flow, or the user's choice. A running session hears
+	 * through `tools/list_changed` and declares them on its next prompt;
+	 * returns whether it was a change.
+	 */
+	enableTeamTools(agent: string): boolean {
+		if (this.enabledAgents.has(agent)) {
+			return false;
+		}
+		this.enabledAgents.add(agent);
+		if (this.connectedSet.size) {
+			this.warmChildren();
+			const heard = this.server.notifyToolsChanged(agent);
+			this.log.info(`Team tools on for agent ${agent}; ${heard} session stream${heard === 1 ? '' : 's'} told`);
+		}
+		return true;
+	}
+
+	/** Whether a prompt's text or attachments refer to a ticket, merge request, page or design of a connected tool. */
+	promptNeedsTools(text: string, attachments: readonly Attachment[]): boolean {
+		if (!this.connectedSet.size) {
+			return false;
+		}
+		return attachments.some(attachment => attachment.kind === 'document' && !!attachment.tool && this.connectedSet.has(attachment.tool))
+			|| findToolRefs(text, { connected: [...this.connectedSet] }).length > 0;
+	}
+
+	/** The team's Jira and GitLab servers start while the agent reads the prompt, not on its first call. */
+	private warmChildren(): void {
+		this.children.jira?.warm();
+		this.children.gitlab?.warm();
+	}
+
+	/** Forgets a removed agent: its folder, whether it had the team tools, and the spare session's slot bound to it. */
 	forgetAgent(agent: string): void {
 		this.folders.delete(agent);
+		this.enabledAgents.delete(agent);
 		this.server.unbind(agent);
 	}
 
@@ -543,8 +592,10 @@ export class TeamConnections implements vscode.Disposable {
 		const tokens = new Map<TeamToolId, string>();
 		const siteTokens = new Map<string, string>();
 		const keys: Record<string, string> = {};
-		for (const tool of teamToolIds) {
-			const token = await this.context.secrets.get(secretKey(tool));
+		// The keychain answers each read in tens of ms; all at once, not one after another.
+		const toolTokens = await Promise.all(teamToolIds.map(tool => this.context.secrets.get(secretKey(tool))));
+		for (const [i, tool] of teamToolIds.entries()) {
+			const token = toolTokens[i];
 			if (!token) {
 				continue;
 			}
@@ -558,8 +609,10 @@ export class TeamConnections implements vscode.Disposable {
 			const more: JiraSite[] = [];
 			// A site with the first's host, or another's, is left out: one site, one client.
 			const hosts = new Set([hostOf(clients.jira.site)]);
-			for (const site of this.jiraSiteList()) {
-				const token = await this.context.secrets.get(siteSecretKey(site.id));
+			const sites = this.jiraSiteList();
+			const siteTokenList = await Promise.all(sites.map(site => this.context.secrets.get(siteSecretKey(site.id))));
+			for (const [i, site] of sites.entries()) {
+				const token = siteTokenList[i];
 				if (token && !hosts.has(hostOf(site.url))) {
 					hosts.add(hostOf(site.url));
 					siteTokens.set(site.id, token);

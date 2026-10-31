@@ -123,6 +123,8 @@ function sections(): MenuSection[] {
 	result.push({
 		rows: [
 			{ icon: 'files', name: strings.menuFiles, detail: strings.menuFilesDetail, tooltip: strings.attachFiles, run: () => { closePlusMenu(); vscode.postMessage({ type: 'pickFiles' }); } },
+			// Offered while a team tool is connected and this agent doesn't have them yet.
+			...state.teamTools === 'available' ? [{ icon: 'plug', name: strings.menuTeamTools, detail: strings.menuTeamToolsDetail, run: () => { closePlusMenu(); vscode.postMessage({ type: 'useTeamTools' }); } }] : [],
 			{ icon: 'mention', name: strings.menuContext, detail: strings.menuContextDetail, run: () => { closePlusMenu(false); startMention(); } },
 			{
 				icon: 'eye', name: strings.menuFollow, detail: strings.menuFollowDetail, switchOn: state.following,
@@ -130,6 +132,7 @@ function sections(): MenuSection[] {
 				run: () => vscode.postMessage({ type: 'setFollow', on: !state.following }),
 			},
 			...hasTerminal() ? [{ icon: 'terminal', name: strings.run.openTerminal, detail: strings.run.openTerminalDetail, run: () => { closePlusMenu(false); vscode.postMessage({ type: 'command', command: 'gemini.agents.openTerminal' }); } }] : [],
+			...strings.debugStart ? [{ icon: 'debug-alt', name: strings.debugStart[0], detail: strings.debugStart[1], run: () => { closePlusMenu(); vscode.postMessage({ type: 'debugAction', action: 'start' }); } }] : [],
 		],
 	});
 	// Not in a project's coordinator chat, which runs in an empty folder with no branch.

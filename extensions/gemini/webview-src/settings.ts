@@ -3,10 +3,15 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// The Project Helpers page (src/host/settingsPage.ts).
+// The Settings page (src/host/settingsPage.ts): every gemini.* setting from
+// the extension's contribution, in its sections, with a side index and a
+// search box; below them, what every agent loads. The frame is built once;
+// each view from the host patches the settings rows in place and redraws the
+// Loads sections, so a change never loses the search or the focused control.
 
-import type { CliReport, ContextCostView, ExtensionView, FromSettingsPage, HookView, McpServerView, MemoryFileView, PreferencesView, RulesFileView, SettingsPageView, SkillView, ToSettingsPage, TrustRowView, TrustView } from '../src/host/panelProtocol';
+import type { CliReport, ContextCostView, ExtensionView, FromSettingsPage, HookView, McpServerView, MemoryFileView, PreferencesView, RulesFileView, SettingRowView, SettingSectionView, SettingsPageView, SkillView, ToSettingsPage, TrustRowView, TrustView } from '../src/host/panelProtocol';
 import type { SettingsPageStrings } from '../src/host/panelStrings';
+import { filterSettings, helpSegments, sameValue } from '../src/acp/settingsModel';
 import { button, el, format, icon } from './panelDom';
 import { bootPage } from './panelBoot';
 import { selectMenu, type SelectMenu } from './selectMenu';
@@ -26,18 +31,24 @@ function section(title: string, hint: string, action?: HTMLElement): HTMLElement
 	return node;
 }
 
+/** Shows `on` on a switch made by `switchButton`. */
+function setSwitch(toggle: HTMLButtonElement, on: boolean): void {
+	toggle.classList.toggle('on', on);
+	toggle.setAttribute('aria-checked', String(on));
+}
+
 /** An on/off switch; `onChange` gets the new state. */
 function switchButton(on: boolean, label: string, title: string, onChange: (on: boolean) => void): HTMLButtonElement {
-	const toggle = el('button', `switch${on ? ' on' : ''}`);
+	const toggle = el('button', 'switch');
 	toggle.type = 'button';
 	toggle.setAttribute('role', 'switch');
-	toggle.setAttribute('aria-checked', String(on));
 	toggle.setAttribute('aria-label', label);
 	toggle.title = title;
+	setSwitch(toggle, on);
 	toggle.addEventListener('click', () => {
-		toggle.classList.toggle('on');
-		toggle.setAttribute('aria-checked', String(!on));
-		onChange(!on);
+		const next = !toggle.classList.contains('on');
+		setSwitch(toggle, next);
+		onChange(next);
 	});
 	return toggle;
 }
@@ -48,9 +59,6 @@ function serverRow(server: McpServerView): HTMLElement {
 	const main = el('div', 'row-main');
 	const title = el('div', 'row-title');
 	title.append(el('span', 'name', server.name), el('span', 'tag', server.scope), el('span', 'tag subtle', server.transport));
-	if (server.tokens !== undefined) {
-		title.append(el('span', `tag tokens${server.tokens >= 5000 ? ' heavy' : ''}`, format(strings.tokensPerCall, server.tokens.toLocaleString())));
-	}
 	main.append(title, el('div', 'row-detail mono', server.target));
 	if (server.problem) {
 		const problem = el('div', 'row-problem');
@@ -163,13 +171,16 @@ function extensionRow(extension: ExtensionView): HTMLElement {
 	return row;
 }
 
+/** A context file this large is worth trimming: every model call carries it (contextCost.ts `largeRuleFileBytes`). */
+const largeRuleFileCharacters = 20 * 1024;
+
 function memoryRow(file: MemoryFileView): HTMLElement {
 	const row = el('div', 'row memory');
 	const main = el('div', 'row-main');
 	const title = el('div', 'row-title');
 	title.append(icon('book'), el('span', 'name mono', file.display));
-	if (file.tokens) {
-		title.append(el('span', `tag tokens${file.tokens >= 15000 ? ' heavy' : ''}`, format(strings.tokensPerCall, file.tokens.toLocaleString())));
+	if (file.characters) {
+		title.append(el('span', `tag tokens${file.characters > largeRuleFileCharacters ? ' heavy' : ''}`, format(strings.characters, file.characters.toLocaleString())));
 	}
 	main.append(title, el('div', 'row-detail', file.preview ?? ''));
 	row.append(main, button('icon-button', '', () => post({ type: 'openFile', path: file.path }), 'go-to-file', strings.open));
@@ -259,7 +270,7 @@ function trustSection(trust: TrustView): HTMLElement {
 
 let contextFolderMenu: SelectMenu | undefined;
 
-/** Context per model call: the total, a bar of its parts, each part, and advice for the heavy ones; in a multi-root window, for the folder picked. */
+/** Context per model call: the total, one row per test prompt as the CLI reported it, and what accounts for much of it; in a multi-root window, for the folder picked. */
 function contextSection(cost: ContextCostView, developer: boolean): HTMLElement {
 	const measuring = cost.state === 'measuring';
 	const measure = button('secondary', measuring ? strings.measuring : cost.total === undefined ? strings.measure : strings.measureAgain, () => post({ type: 'measureContext' }), measuring ? 'loading' : 'pulse');
@@ -295,24 +306,14 @@ function contextSection(cost: ContextCostView, developer: boolean): HTMLElement 
 	if (cost.total !== undefined) {
 		const head = el('div', 'row context-total');
 		const main = el('div', 'row-main');
-		main.append(el('div', 'row-title name', format(strings.contextTotal, cost.total.toLocaleString())));
-		const bar = el('div', 'context-bar');
-		for (const part of cost.parts) {
-			if (part.tokens > 0) {
-				const segment = el('i', `context-${part.kind}`);
-				segment.style.flexGrow = String(part.tokens);
-				bar.append(segment);
-			}
-		}
-		main.append(bar, el('div', 'row-detail', cost.measured ?? ''));
+		main.append(el('div', 'row-title name', format(strings.contextTotal, cost.total.toLocaleString())), el('div', 'row-detail', cost.measured ?? ''));
 		head.append(main);
 		list.append(head);
-		for (const part of cost.parts) {
+		for (const reading of cost.readings) {
 			const row = el('div', 'row context-part');
-			const swatch = el('i', `context-swatch context-${part.kind}`);
 			const main2 = el('div', 'row-main');
-			main2.append(el('div', 'row-title', part.label));
-			row.append(swatch, main2, el('span', 'mono', part.tokens.toLocaleString()));
+			main2.append(el('div', 'row-title', reading.label));
+			row.append(main2, el('span', 'mono', reading.tokens.toLocaleString()));
 			list.append(row);
 		}
 		for (const tip of cost.tips) {
@@ -332,12 +333,417 @@ function contextSection(cost: ContextCostView, developer: boolean): HTMLElement 
 	return node;
 }
 
-function render(view: SettingsPageView): void {
+/** A setting's control: the element to put in the row, and how a new value from the host shows in it. */
+interface RowControl {
+	readonly element: HTMLElement;
+	set(value: unknown): void;
+	setDisabled(disabled: boolean): void;
+}
+
+/** A text or number field; the value goes to the host when it is committed (change), not on every keystroke. */
+function fieldControl(row: SettingRowView): RowControl {
+	const input = el('input', 'setting-field');
+	input.type = row.control === 'number' ? 'number' : 'text';
+	input.setAttribute('aria-label', row.label);
+	if (row.control === 'number') {
+		if (row.minimum !== undefined) {
+			input.min = String(row.minimum);
+		}
+		if (row.maximum !== undefined) {
+			input.max = String(row.maximum);
+		}
+		input.step = Number.isInteger(row.default) ? '1' : 'any';
+	}
+	input.addEventListener('change', () => {
+		if (row.control === 'number') {
+			const number = Number(input.value);
+			if (input.value.trim() && Number.isFinite(number)) {
+				post({ type: 'setSetting', key: row.key, value: number });
+			}
+		} else {
+			post({ type: 'setSetting', key: row.key, value: input.value });
+		}
+	});
+	return {
+		element: input,
+		set: value => {
+			// Never under the user's typing: the host's value comes back once the change is saved.
+			if (document.activeElement !== input) {
+				input.value = value === undefined || value === null ? '' : String(value);
+			}
+		},
+		setDisabled: disabled => input.disabled = disabled,
+	};
+}
+
+/** An enum setting as a themed select; a choice's help is its title. */
+function pickerControl(row: SettingRowView): RowControl {
+	const select = el('select', 'select');
+	select.setAttribute('aria-label', row.label);
+	const choices = row.choices ?? [];
+	choices.forEach((choice, i) => {
+		const option = el('option', undefined, choice.label);
+		option.value = String(i);
+		if (choice.help) {
+			option.title = choice.help;
+		}
+		select.append(option);
+	});
+	select.addEventListener('change', () => {
+		const choice = choices[Number(select.value)];
+		if (choice) {
+			post({ type: 'setSetting', key: row.key, value: choice.value });
+		}
+	});
+	const menu = selectMenu(select, row.label);
+	return {
+		element: menu.element,
+		set: value => {
+			const index = choices.findIndex(choice => sameValue(choice.value, value));
+			select.value = index >= 0 ? String(index) : '';
+			menu.element.title = choices[index]?.help ?? '';
+			menu.sync();
+		},
+		setDisabled: disabled => {
+			select.disabled = disabled;
+			menu.sync();
+		},
+	};
+}
+
+/** An array of strings as one line per entry, each removable, and Add. */
+function listControl(row: SettingRowView): RowControl {
+	const list = el('div', 'setting-list');
+	const entries = el('div', 'setting-entries');
+	const add = button('secondary', strings.addEntry, () => {
+		entries.append(entry(''));
+		entries.querySelector<HTMLInputElement>('.entry:last-child input')?.focus();
+	}, 'add');
+	list.append(entries, add);
+	let shown: string[] = [];
+	let disabled = false;
+	const values = () => [...entries.querySelectorAll('input')].map(input => input.value.trim()).filter(Boolean);
+	const send = () => post({ type: 'setSetting', key: row.key, value: values() });
+	function entry(value: string): HTMLElement {
+		const line = el('div', 'entry');
+		const input = el('input');
+		input.type = 'text';
+		input.value = value;
+		input.placeholder = strings.entryPlaceholder;
+		input.setAttribute('aria-label', row.label);
+		input.disabled = disabled;
+		input.addEventListener('change', send);
+		const remove = button('icon-button', '', () => {
+			line.remove();
+			send();
+		}, 'close', strings.removeEntry);
+		remove.disabled = disabled;
+		line.append(input, remove);
+		return line;
+	}
+	return {
+		element: list,
+		set: value => {
+			const next = Array.isArray(value) ? value.map(String) : [];
+			if (list.contains(document.activeElement) || sameValue(next, shown)) {
+				return;
+			}
+			shown = next;
+			entries.replaceChildren(...next.map(entry));
+		},
+		setDisabled: off => {
+			disabled = off;
+			add.disabled = off;
+			for (const control of entries.querySelectorAll('input, button')) {
+				(control as HTMLInputElement | HTMLButtonElement).disabled = off;
+			}
+		},
+	};
+}
+
+/** An object setting as JSON in a textarea; text that does not parse is marked and not sent. */
+function jsonControl(row: SettingRowView, note: (text: string | undefined) => void): RowControl {
+	const area = el('textarea', 'setting-json mono');
+	area.setAttribute('aria-label', row.label);
+	area.rows = 4;
+	area.spellcheck = false;
+	area.addEventListener('change', () => {
+		try {
+			const value = JSON.parse(area.value) as unknown;
+			area.classList.remove('invalid');
+			note(undefined);
+			post({ type: 'setSetting', key: row.key, value });
+		} catch {
+			area.classList.add('invalid');
+			note(strings.invalidJson);
+		}
+	});
+	return {
+		element: area,
+		set: value => {
+			if (document.activeElement !== area) {
+				area.value = JSON.stringify(value ?? {}, null, 2);
+				area.classList.remove('invalid');
+			}
+		},
+		setDisabled: disabled => area.disabled = disabled,
+	};
+}
+
+interface SettingRowNode {
+	readonly node: HTMLElement;
+	/** Shows the row as the host last sent it, touching only what changed. */
+	apply(row: SettingRowView): void;
+}
+
+/** One gemini.* setting: its name and key, its help, a note when it is locked or saved for the workspace, its control and Reset. */
+function settingRow(first: SettingRowView): SettingRowNode {
+	const node = el('div', `row setting ${first.control}`);
+	node.dataset.key = first.key;
+	const main = el('div', 'row-main');
+	const title = el('div', 'row-title');
+	title.append(el('span', 'name', first.label), el('span', 'tag subtle mono', first.key));
+	if (first.advanced) {
+		title.append(el('span', 'tag', strings.advanced));
+	}
+	if (first.deprecated) {
+		title.append(el('span', 'tag', strings.deprecated));
+	}
+	const help = el('div', 'row-detail setting-help');
+	for (const segment of helpSegments(first.deprecated ?? first.help)) {
+		help.append(el(segment.code ? 'code' : 'span', undefined, segment.text));
+	}
+	const note = el('div', 'row-note');
+	const noteIcon = icon('lock');
+	const noteText = el('span');
+	note.append(noteIcon, noteText);
+	main.append(title, help, note);
+	let problem: string | undefined;
+	const setNote = (locked: boolean, target: SettingRowView['target']) => {
+		const text = problem ?? (locked ? strings.lockedByAdmin : target === 'workspace' ? strings.savedInWorkspace : '');
+		noteText.textContent = text;
+		noteIcon.className = `codicon codicon-${problem ? 'warning' : locked ? 'lock' : 'root-folder'}`;
+		note.hidden = !text;
+	};
+	let shown = first;
+	const control: RowControl = first.control === 'toggle'
+		? (() => {
+			const toggle = switchButton(false, first.label, first.label, on => post({ type: 'setSetting', key: first.key, value: on }));
+			return { element: toggle, set: value => setSwitch(toggle, value === true), setDisabled: disabled => toggle.disabled = disabled };
+		})()
+		: first.control === 'picker' ? pickerControl(first)
+			: first.control === 'list' ? listControl(first)
+				: first.control === 'json' ? jsonControl(first, text => {
+					problem = text;
+					setNote(shown.locked, shown.target);
+				})
+					: fieldControl(first);
+	const reset = button('icon-button reset', '', () => post({ type: 'resetSetting', key: first.key }), 'discard', strings.reset);
+	const side = el('div', 'setting-control');
+	side.append(control.element);
+	if (first.control === 'toggle') {
+		node.append(control.element, main, reset);
+	} else {
+		node.append(main, side, reset);
+	}
+	return {
+		node,
+		apply: row => {
+			shown = row;
+			control.set(row.value);
+			control.setDisabled(row.locked);
+			node.classList.toggle('locked', row.locked);
+			reset.hidden = !row.modified || row.locked;
+			setNote(row.locked, row.target);
+		},
+	};
+}
+
+/** The page's frame, built once: the header with the search box, the side index, the settings sections and the Loads sections. */
+interface Frame {
+	readonly search: HTMLInputElement;
+	readonly index: HTMLElement;
+	readonly sections: HTMLElement;
+	readonly noMatches: HTMLElement;
+	readonly loads: HTMLElement;
+}
+
+let frame: Frame | undefined;
+/** The settings as the host last sent them, which the search filters. */
+let lastSettings: readonly SettingSectionView[] = [];
+const sectionNodes = new Map<string, HTMLElement>();
+const rowNodes = new Map<string, SettingRowNode>();
+/** The side index's links to sections on this page, by the section's id (`loads` for the Loads group). */
+const indexLinks = new Map<string, HTMLButtonElement>();
+
+function buildFrame(): Frame {
 	const header = el('header', 'settings-header');
 	const text = el('div');
 	text.append(el('h1', undefined, strings.title), el('p', 'hint', strings.subtitle));
-	header.append(text, button('secondary', strings.restart, () => post({ type: 'restart' }), 'debug-restart'));
+	const actions = el('div', 'section-actions');
+	const search = el('input', 'settings-search');
+	search.type = 'search';
+	search.placeholder = strings.search;
+	search.setAttribute('aria-label', strings.search);
+	search.addEventListener('input', applyFilter);
+	search.addEventListener('keydown', event => {
+		if (event.key === 'Escape' && search.value) {
+			search.value = '';
+			applyFilter();
+		}
+	});
+	actions.append(search, button('secondary', strings.restart, () => post({ type: 'restart' }), 'debug-restart'));
+	header.append(text, actions);
+	const layout = el('div', 'settings-layout');
+	const index = el('nav', 'settings-index');
+	index.setAttribute('aria-label', strings.sideIndex);
+	const content = el('div', 'settings-content');
+	const sections = el('div', 'settings-sections');
+	const noMatches = el('p', 'empty settings-no-matches');
+	noMatches.hidden = true;
+	const loads = el('div', 'settings-loads');
+	loads.id = 'section-loads';
+	content.append(sections, noMatches, loads);
+	layout.append(index, content);
+	page.replaceChildren(header, layout);
+	return { search, index, sections, noMatches, loads };
+}
 
+/** Scrolls to a section of this page and marks its link. */
+function goTo(id: string): void {
+	const target = id === 'loads' ? frame?.loads : sectionNodes.get(id);
+	target?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+	markIndex(id);
+}
+
+function markIndex(id: string): void {
+	for (const [each, link] of indexLinks) {
+		link.classList.toggle('active', each === id);
+		link.setAttribute('aria-current', each === id ? 'true' : 'false');
+	}
+}
+
+/** The side index: the contributed sections, Loads, then the other Agent Setup pages. */
+function buildIndex(index: HTMLElement, sections: readonly SettingSectionView[]): void {
+	indexLinks.clear();
+	const link = (id: string, label: string) => {
+		const node = button('index-link', label, () => goTo(id));
+		node.dataset.section = id;
+		indexLinks.set(id, node);
+		return node;
+	};
+	index.replaceChildren(
+		...sections.map(section => link(section.id, section.title)),
+		link('loads', strings.loads),
+		...strings.otherPages.map(tab => {
+			const node = button('index-link other', tab.label, () => post({ type: 'openTab', tab: tab.id }), 'link-external');
+			node.dataset.tab = tab.id;
+			return node;
+		}),
+	);
+	markIndex(sections[0]?.id ?? 'loads');
+}
+
+/** The settings sections as the host sent them: rows patched in place, new ones made, gone ones removed. */
+function patchSettings(sections: readonly SettingSectionView[]): void {
+	const f = frame!;
+	if (sections.map(section => section.id).join() !== lastSettings.map(section => section.id).join()) {
+		buildIndex(f.index, sections);
+	}
+	lastSettings = sections;
+	const keep = new Set<string>();
+	sections.forEach((section, i) => {
+		let node = sectionNodes.get(section.id);
+		if (!node) {
+			node = el('section', 'settings-section');
+			node.id = `section-${section.id}`;
+			const header = el('div', 'section-header');
+			header.append(el('h2', undefined, section.title));
+			node.append(header, el('div', 'rows'));
+			sectionNodes.set(section.id, node);
+		}
+		if (f.sections.children[i] !== node) {
+			f.sections.insertBefore(node, f.sections.children[i] ?? null);
+		}
+		const rows = node.querySelector('.rows')!;
+		section.settings.forEach((row, j) => {
+			keep.add(row.key);
+			let entry = rowNodes.get(row.key);
+			if (!entry) {
+				entry = settingRow(row);
+				rowNodes.set(row.key, entry);
+			}
+			if (rows.children[j] !== entry.node) {
+				rows.insertBefore(entry.node, rows.children[j] ?? null);
+			}
+			entry.apply(row);
+		});
+	});
+	for (const [key, entry] of rowNodes) {
+		if (!keep.has(key)) {
+			entry.node.remove();
+			rowNodes.delete(key);
+		}
+	}
+	const ids = new Set(sections.map(section => section.id));
+	for (const [id, node] of sectionNodes) {
+		if (!ids.has(id)) {
+			node.remove();
+			sectionNodes.delete(id);
+		}
+	}
+	applyFilter();
+}
+
+/** Shows only what the search box matches: every section without its advanced and deprecated settings when it is empty. */
+function applyFilter(): void {
+	const f = frame;
+	if (!f) {
+		return;
+	}
+	const query = f.search.value.trim();
+	const shown = filterSettings(lastSettings, query);
+	const rows = new Set(shown.flatMap(section => section.settings.map(setting => setting.key)));
+	const sections = new Set(shown.map(section => section.id));
+	for (const [key, entry] of rowNodes) {
+		entry.node.hidden = !rows.has(key);
+	}
+	for (const [id, node] of sectionNodes) {
+		node.hidden = !sections.has(id);
+	}
+	for (const [id, link] of indexLinks) {
+		link.hidden = id === 'loads' ? !!query : !sections.has(id);
+	}
+	for (const link of f.index.querySelectorAll<HTMLElement>('.index-link.other')) {
+		link.hidden = !!query;
+	}
+	f.loads.hidden = !!query;
+	f.noMatches.hidden = !query || shown.length > 0;
+	f.noMatches.textContent = format(strings.noMatches, query);
+}
+
+/** Marks the section at the top of the view as the page scrolls. */
+function followScroll(): void {
+	const top = window.scrollY + 80;
+	let current: string | undefined;
+	for (const [id, node] of sectionNodes) {
+		if (!node.hidden && node.offsetTop <= top) {
+			current = id;
+		}
+	}
+	if (frame && !frame.loads.hidden && frame.loads.offsetTop <= top) {
+		current = 'loads';
+	}
+	if (current) {
+		markIndex(current);
+	}
+}
+
+window.addEventListener('scroll', followScroll, { passive: true });
+
+/** The Loads sections, drawn again with each view: rules, skills, MCP servers, Measure and the rest, as before the settings joined the page. */
+function drawLoads(view: SettingsPageView): void {
+	const loads = frame!.loads;
 	// Jira, GitLab, SonarQube, Snyk and Figma are connected on their own page, not added as servers.
 	const serverActions = el('div', 'section-actions');
 	serverActions.append(button('secondary', strings.connections, () => post({ type: 'connections' }), 'plug'), button('primary', strings.addServer, () => post({ type: 'addServer' }), 'add'));
@@ -365,12 +771,21 @@ function render(view: SettingsPageView): void {
 	rulesList.append(...view.rules.map(rulesRow));
 	rules.append(rulesList);
 
-	// Re-rendering replaces every element; keep keyboard focus on the same control.
-	const focused = document.activeElement instanceof HTMLElement && page.contains(document.activeElement) ? document.activeElement.getAttribute('aria-label') ?? document.activeElement.textContent : undefined;
-	page.replaceChildren(header, contextSection(view.contextCost, view.developer), servers, skills, hooks, extensions, memory, rules, trustSection(view.trust), preferencesSection(view.preferences));
+	const heading = el('div', 'section-header settings-loads-header');
+	heading.append(el('h2', undefined, strings.loads));
+
+	// Re-drawing replaces every element of the group; keep keyboard focus on the same control.
+	const focused = document.activeElement instanceof HTMLElement && loads.contains(document.activeElement) ? document.activeElement.getAttribute('aria-label') ?? document.activeElement.textContent : undefined;
+	loads.replaceChildren(heading, contextSection(view.contextCost, view.developer), servers, skills, hooks, extensions, memory, rules, trustSection(view.trust), preferencesSection(view.preferences));
 	if (focused) {
-		[...page.querySelectorAll<HTMLElement>('button')].find(b => (b.getAttribute('aria-label') ?? b.textContent) === focused)?.focus();
+		[...loads.querySelectorAll<HTMLElement>('button')].find(b => (b.getAttribute('aria-label') ?? b.textContent) === focused)?.focus();
 	}
+}
+
+function render(view: SettingsPageView): void {
+	frame ??= buildFrame();
+	patchSettings(view.settings);
+	drawLoads(view);
 }
 
 start(message => {

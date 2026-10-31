@@ -22,6 +22,8 @@ run({
 		'connection': path.join(srcDir, 'connection.ts'),
 		// Confluence: its client, agents' calls, drafts and the Review Page, loaded the first time Confluence is used.
 		'confluence': path.join(srcDir, 'confluence.ts'),
+		// Debug mode: the debugger bridge, marked lines, the endpoint and the Evidence page, loaded with its first command.
+		'debug': path.join(srcDir, 'debug.ts'),
 	},
 	srcDir,
 	outdir: outDir,

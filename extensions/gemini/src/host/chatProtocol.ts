@@ -17,12 +17,16 @@ import type { AgentPhase } from '../acp/status';
 import type { TokenColors } from '../acp/tokenColors';
 import type { ContextBreakdown } from '../acp/contextCost';
 import type { PendingPromptView } from '../acp/promptQueue';
+import type { TryChoice } from './panelProtocol';
+import type { DebugAction, DebugBarView } from './debug/debugProtocol';
 
 /**
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 49;
+export const chatProtocolVersion = 54;
+/** The hash of the messages below (sourceHash.ts); test/acp/chatProtocolHash.test.ts fails when they change without a bump, and names the new value. */
+export const chatProtocolHash = 'b33406811d90';
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.signIn', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog', 'gemini.agents.openTerminal', 'gemini.designSystem.sync'] as const;
@@ -49,8 +53,8 @@ export type ProjectSettingsAction = 'pickRepository' | 'addFiles' | 'newFile' | 
 /**
  * `startAnyway`: the side panel's Start Anyway, which starts the threads
  * today's quota holds. `merge` is Merge Back's merge commit; `tryMenu` is
- * the chevron beside the Try button, which picks what it does and remembers
- * it for the repository; the rest of the try actions are `TryAction`s.
+ * a pick (`choice`) from the menu of the chevron beside the Try button,
+ * which runs it and remembers it for the repository; the rest of the try actions are `TryAction`s.
  * `guide` shows the first-try guide, `dismissGuide` hides it.
  */
 export type ThreadAction = 'open' | 'stop' | 'merge' | 'review' | 'remove' | 'approve' | 'retry' | 'startAnyway' | TryAction | 'tryMenu' | 'guide' | 'dismissGuide' | 'terminal' | 'checks';
@@ -321,6 +325,10 @@ export type FromWebview =
 	| { readonly type: 'ready'; readonly protocol?: number }
 	/** The transcript from `reset` is on screen. */
 	| { readonly type: 'shown' }
+	/** A turn ended: how long the view spent rendering its live updates (streamed chunks, steps), for the turn's log line. */
+	| { readonly type: 'turnRendered'; readonly turnEnd: string; readonly renderMs: number; readonly updates: number }
+	/** The + menu's Use team tools: the agent's sessions list them from now on. */
+	| { readonly type: 'useTeamTools' }
 	/** `when` matters only while the agent works: `now` steers the running turn, `queue` waits for it to end. */
 	/** `includeEdits`: the message box's "Include your edits", sending the user's edits to tried files to the agent first. */
 	| { readonly type: 'prompt'; readonly text: string; readonly attachments: readonly Attachment[]; readonly when?: 'now' | 'queue'; readonly includeEdits?: boolean }
@@ -397,7 +405,7 @@ export type FromWebview =
 	/** A Folders, Symbols or Workspace row of the @ picker: the extension answers with `attach`. */
 	| { readonly type: 'attachMention'; readonly mention: ViewMention }
 	/** A project chat's thread card button. */
-	| { readonly type: 'threadAction'; readonly thread: string; readonly action: ThreadAction; readonly repo?: string }
+	| { readonly type: 'threadAction'; readonly thread: string; readonly action: ThreadAction; readonly repo?: string; readonly choice?: TryChoice }
 	/** The New thread dialog: start a thread directly; the coordinator hears afterwards. */
 	| { readonly type: 'startThread'; readonly thread: NewThread }
 	| { readonly type: 'openParentProject' }
@@ -454,7 +462,9 @@ export type FromWebview =
 	/** A failed Run's Send Output to Gemini: the command and its output go to the composer. */
 	| { readonly type: 'sendRunOutput'; readonly text: string }
 	/** "Get higher limits" in the usage popover, shown when a model's quota runs low. */
-	| { readonly type: 'openUpgrade' };
+	| { readonly type: 'openUpgrade' }
+	/** A debug bar or card button, or the + menu's Debug with Gemini (`start`); `arg` names a point or region. */
+	| { readonly type: 'debugAction'; readonly action: DebugAction; readonly arg?: string };
 
 export type ToWebview =
 	/** The chat's tab came to the front: the message box takes the focus. */
@@ -496,6 +506,8 @@ export type ToWebview =
 	| { readonly type: 'attach'; readonly attachments: readonly Attachment[] }
 	/** The connected team tools and Jira projects, for finding tickets and links in the composer. */
 	| { readonly type: 'toolRefs'; readonly context: ToolRefContext }
+	/** Whether the team tools can be turned on for this agent (`available`), are on, or none is connected. */
+	| { readonly type: 'teamTools'; readonly state: 'none' | 'available' | 'on' }
 	/** A tool chip's title and content; replaces the chip whose `ref` matches. */
 	| { readonly type: 'toolRefResolved'; readonly attachment: Attachment }
 	/** Adds a chip for an item the user picked from the + menu. */
@@ -553,4 +565,6 @@ export type ToWebview =
 	/** How Run on shell blocks behaves, and where it runs. */
 	| { readonly type: 'run'; readonly run: RunView }
 	/** A shell block's Run, by the block's text. */
-	| { readonly type: 'runState'; readonly text: string; readonly state: RunState };
+	| { readonly type: 'runState'; readonly text: string; readonly state: RunState }
+	/** Debug mode's bar and cards (webview-src/debugCard.ts); undefined takes them away. */
+	| { readonly type: 'debug'; readonly view: DebugBarView | undefined };

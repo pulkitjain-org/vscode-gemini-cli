@@ -8,7 +8,7 @@
 // own any more; this keeps the heading its old save_memory tool wrote under.
 
 import { promises as fs } from 'node:fs';
-import * as path from 'node:path';
+import { writeFileAtomic } from './fsUtil';
 
 /** The heading memories go under, as the CLI's memory tool wrote them. */
 const memoryHeading = '## Gemini Added Memories';
@@ -29,6 +29,5 @@ export async function appendMemory(file: string, text: string): Promise<void> {
 		const section = current.slice(0, end).replace(/\s*$/, '');
 		next = `${section}\n${bullet}\n${current.slice(end).replace(/^\s*/, end < current.length ? '\n' : '')}`;
 	}
-	await fs.mkdir(path.dirname(file), { recursive: true });
-	await fs.writeFile(file, next, 'utf8');
+	await writeFileAtomic(file, next);
 }

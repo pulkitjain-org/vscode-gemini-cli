@@ -7,32 +7,34 @@
 
 // Home gets a new view every moment while agents work. It patches what
 // changed in place, so the pointer's hover and the keyboard's focus stay put.
+// The Agents card is the one agent list on Home.
 
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { HTMLElement } from 'happy-dom';
-import type { HomeAgent, HomeCard, HomeView } from '../../src/host/panelProtocol';
-import { page, sendToPage, showHomePage, startScript } from './pages';
+import type { HomeCard, HomeRow, HomeView } from '../../src/host/panelProtocol';
+import { page, posted, sendToPage, showHomePage, startScript } from './pages';
 
 const { document } = page;
 
-const working: HomeAgent = { id: 'a1', title: 'Fix the cart', workspace: 'shop', state: 'working', status: 'Reading files', updated: 'now', buttons: [{ do: 'stop', label: 'Stop', icon: 'debug-stop' }, { do: 'open', label: 'Open', primary: true }] };
-const done: HomeAgent = { id: 'a2', title: 'Add a test', workspace: 'shop', state: 'done', status: 'Done', branch: 'gemini/test', changes: '+12 -3 in 2 files', updated: '5m', buttons: [{ do: 'review', label: 'Review', icon: 'diff' }, { do: 'mergeBack', label: 'Try in Workspace', icon: 'beaker' }, { do: 'tryMenu', label: '', icon: 'chevron-down' }, { do: 'open', label: 'Open', primary: true }] };
-const tickets: HomeCard = { id: 'tickets', title: 'Tickets', tool: 'jira', rows: [{ key: 'SHOP-1', title: 'Cart total is wrong', button: { label: 'Start', action: { kind: 'command', command: 'gemini.start' } } }] };
+const working: HomeRow = { icon: 'circle-filled', title: 'Fix the cart', pill: { text: 'working', tone: 'info' }, open: { kind: 'agent', id: 'a1', do: 'open' } };
+const done: HomeRow = { icon: 'circle-filled', title: 'Add a test', pill: { text: 'ready to review', tone: 'ok' }, open: { kind: 'agent', id: 'a2', do: 'open' }, button: { label: 'Review', action: { kind: 'agent', id: 'a2', do: 'review' } } };
+const tickets: HomeCard = { id: 'tickets', title: 'Your tickets', tool: 'jira', rows: [{ key: 'SHOP-1', title: 'Cart total is wrong', button: { label: 'Start', action: { kind: 'command', command: 'gemini.start' } } }] };
 
-function view(active: readonly HomeAgent[], cards: readonly HomeCard[] = [tickets]): HomeView {
+function agents(rows: readonly HomeRow[]): HomeCard {
+	return { id: 'agents', title: 'Agents', tool: 'gemini', rows, ...rows.length ? {} : { note: 'No agents at work. Describe a task above to start one.' } };
+}
+
+function view(cards: readonly HomeCard[]): HomeView {
 	return {
 		workspaces: [{ name: 'shop', description: '~/work', folder: '/work/shop', git: true }],
-		active,
-		earlier: [],
 		ownBranch: false,
 		modes: [{ id: 'default', name: 'Default', description: 'Asks before edits' }],
-		dashboard: { greeting: 'Good morning', context: 'shop', tools: [], quickActions: [], needs: [], needsQuery: '', cards, layout: [], releaseBranches: [], refreshing: false },
+		dashboard: { greeting: 'Good morning', context: 'shop', quickActions: [], cards, layout: [], releaseBranches: [], refreshing: false },
 	};
 }
 
-function cardOf(id: string): HTMLElement {
-	const title = [...document.querySelectorAll('.card .title')].find(node => node.textContent === (id === 'a1' ? working.title : done.title));
-	return title!.closest('.card') as HTMLElement;
+function card(id: string): HTMLElement {
+	return document.querySelector(`[data-card="${id}"]`) as HTMLElement;
 }
 
 function buttonIn(node: HTMLElement, label: string): HTMLElement {
@@ -45,42 +47,40 @@ beforeAll(async () => {
 });
 
 describe('Home', () => {
-	it('patches an agent\'s card in place, keeping focus on its button', () => {
-		sendToPage({ type: 'view', view: view([working, done]) });
-		const card = cardOf('a1');
-		const stop = buttonIn(card, 'Stop');
-		stop.focus();
-		sendToPage({ type: 'view', view: view([{ ...working, status: 'Editing cart.ts', updated: '1m' }, done]) });
-		expect({
-			same: cardOf('a1') === card,
-			status: card.querySelector('.card-status')?.textContent,
-			updated: card.querySelector('.card-head .muted')?.textContent,
-			button: buttonIn(card, 'Stop') === stop,
-			focused: document.activeElement === stop,
-		}).toEqual({ same: true, status: 'Editing cart.ts', updated: '1m', button: true, focused: true });
-	});
-
-	it('keeps focus on the button drawn in place of the focused one when the card\'s buttons change', () => {
-		sendToPage({ type: 'view', view: view([working, done]) });
-		const card = cardOf('a1');
-		buttonIn(card, 'Open').focus();
-		sendToPage({ type: 'view', view: view([{ ...working, state: 'done', status: 'Done', changes: '+1 -0 in 1 file', branch: 'gemini/cart', buttons: done.buttons }, done]) });
-		expect({ same: cardOf('a1') === card, buttons: [...card.querySelectorAll('button')].map(button => button.textContent || button.getAttribute('aria-label')), focused: document.activeElement === buttonIn(card, 'Open') })
-			.toEqual({ same: true, buttons: ['Review', 'Try in Workspace', 'Other ways to take the work', 'Open'], focused: true });
-	});
-
-	it('keeps an unchanged dashboard card as it is, and drops an agent that is gone', () => {
-		sendToPage({ type: 'view', view: view([working, done]) });
-		const card = document.querySelector('[data-card="tickets"]');
-		const start = buttonIn(card as HTMLElement, 'Start');
+	it('keeps an unchanged card as it is, with focus on its button, while another card changes', () => {
+		sendToPage({ type: 'view', view: view([tickets, agents([working, done])]) });
+		const ticketsCard = card('tickets');
+		const start = buttonIn(ticketsCard, 'Start');
 		start.focus();
-		sendToPage({ type: 'view', view: view([done]) });
-		expect({ same: document.querySelector('[data-card="tickets"]') === card, focused: document.activeElement === start, agents: document.querySelectorAll('#active .card').length })
-			.toEqual({ same: true, focused: true, agents: 1 });
+		sendToPage({ type: 'view', view: view([tickets, agents([{ ...working, pill: { text: 'needs you', tone: 'warn' } }, done])]) });
+		expect({
+			same: card('tickets') === ticketsCard,
+			focused: document.activeElement === start,
+			pills: [...card('agents').querySelectorAll('.dash-pill')].map(pill => pill.textContent),
+		}).toEqual({ same: true, focused: true, pills: ['needs you', 'ready to review'] });
 	});
 
-	it('opens an agent from the card\'s Open button, not a focusable card around it', () => {
-		const card = cardOf('a2');
-		expect({ tabIndex: card.getAttribute('tabindex'), open: !!buttonIn(card, 'Open') }).toEqual({ tabIndex: null, open: true });
+	it('drops an agent that is gone, and lists the agents nowhere but the Agents card', () => {
+		sendToPage({ type: 'view', view: view([tickets, agents([done])]) });
+		expect({
+			rows: [...card('agents').querySelectorAll('.dash-row-title')].map(row => row.textContent),
+			elsewhere: document.querySelectorAll('.card, #active, #earlier').length,
+		}).toEqual({ rows: ['Add a test'], elsewhere: 0 });
+	});
+
+	it('opens an agent from its row\'s title, and its changes from Review', () => {
+		posted.length = 0;
+		const row = card('agents');
+		(row.querySelector('.dash-row-title') as HTMLElement).click();
+		buttonIn(row, 'Review').click();
+		expect(posted).toEqual([
+			{ type: 'action', action: { kind: 'agent', id: 'a2', do: 'open' } },
+			{ type: 'action', action: { kind: 'agent', id: 'a2', do: 'review' } },
+		]);
+	});
+
+	it('says so on the Agents card when there are no agents', () => {
+		sendToPage({ type: 'view', view: view([agents([])]) });
+		expect(card('agents').querySelector('.dash-note')?.textContent).toBe('No agents at work. Describe a task above to start one.');
 	});
 });

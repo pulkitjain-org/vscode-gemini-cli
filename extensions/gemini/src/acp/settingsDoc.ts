@@ -41,7 +41,7 @@ const more: Readonly<Record<string, string>> = {
 	'gemini.index.enabled': 'The tools are `code_search`, `find_symbol`, `related_files`, `repo_map` and `docs_search`; see [Workspace index and docs](agents.md#workspace-index-and-docs).',
 	'gemini.index.include': '**Index Anyway** on the Index & Docs tab adds a file here for you.',
 	'gemini.team.runTeamServers': 'Jira\'s and GitLab\'s servers start when an agent\'s session opens, the others on their first call.',
-	'gemini.audit.keepDays': 'The Storage section of Agent Setup\'s Storage & Audit tab sets it too.',
+	'gemini.audit.keepDays': 'The Storage section of Settings\' Storage & Audit tab sets it too.',
 	'gemini.chat.runCommands': 'See [Running commands from a reply](chat.md#replies).',
 	'gemini.notifications': 'On macOS, GeminiCode asks the system for permission the first time.',
 };
@@ -50,7 +50,7 @@ const more: Readonly<Record<string, string>> = {
 const intro = [
 	'# Settings',
 	'',
-	'Every GeminiCode setting, by area, as the Settings editor lists them (<kbd>⌘,</kbd>, then type `gemini`). The Gemini CLI\'s own settings are in [Agent Setup](helpers.md#gemini-cli-settings).',
+	'Every GeminiCode setting, by area, as the [Settings page](helpers.md) lists them with a switch, a picker or a field for each (**Gemini: Settings**; VS Code\'s own Settings editor lists them too under `gemini`). The Gemini CLI\'s own settings are in [Settings](helpers.md#gemini-cli-settings).',
 	'',
 	'A setting in a workspace\'s settings applies only to that folder, and is shared with everyone who opens it when the folder\'s `.vscode/settings.json` is checked in. Settings marked *machine* are set per Mac, never by a workspace.',
 	'',

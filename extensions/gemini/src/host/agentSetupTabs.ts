@@ -37,12 +37,12 @@ export function agentSetupTabs(active: AgentSetupTab): PageTab[] {
 }
 
 export function agentSetupTabsLabel(): string {
-	return vscode.l10n.t("Agent Setup");
+	return vscode.l10n.t("Settings");
 }
 
-/** The editor tab's title: "Agent Setup: Loads". */
+/** The editor tab's title: "Settings: Loads". */
 export function agentSetupTitle(tab: AgentSetupTab): string {
-	return vscode.l10n.t("Agent Setup: {0}", labels()[tab]);
+	return vscode.l10n.t("Settings: {0}", labels()[tab]);
 }
 
 /** Opens the tab's page; resolves once its command ran. */

@@ -10,6 +10,7 @@ The **+** menu at the bottom left of the composer holds:
 
 - **Mode**: Default, Auto Edit, Plan and, if your admin allows it, YOLO. See [Approval modes](review.md#approval-modes). In a trusted folder that is a Git repository with at least one commit, Auto Edit is tagged **Recommended here**: its edits apply at once and you review them with Keep and Undo, while commands still ask. The tag never switches the mode for you. `gemini.agents.defaultMode` sets the mode new agents start in.
 - **Files** and **Context**: attach files from anywhere, or workspace files with `@`.
+- **Use team tools**, while a team tool is connected and this agent doesn't have them yet: gives the agent Jira, GitLab and the other connected tools for good. A ticket, merge request, page or design in a message or an attachment does this by itself; until then the agent's model calls carry none of their definitions. See [Team tools](team-tools.md#in-chat).
 - **Follow the agent**: open each file the agent reads or edits.
 - **Model**: the models the terminal's `/model` shows, in the same order. The model you pick is used for every new or reopened agent. **Set as Default for the CLI**, the menu's last row, saves it as the model the Gemini CLI itself starts on (`model.name` in `~/.gemini/settings.json`), as the terminal's `/model` dialog does, so a `gemini` started in a terminal uses it too.
 - **Fork**: start a new agent from this conversation. See [Fork an agent](agents.md#fork-an-agent).
@@ -70,7 +71,7 @@ In **Plan** mode the agent reads and proposes a plan without changing anything. 
 
 ![An agent in Plan mode writing a plan that ends with Approve Plan and Review Plan](../../site/media/showcase-plan-dark.webp "clip")
 
-With the model on Auto, Gemini plans with Pro and builds with Flash. Turn off **Plan with Pro, build with Flash** in [Agent Setup](helpers.md#gemini-cli-settings) to keep one model throughout.
+With the model on Auto, Gemini plans with Pro and builds with Flash. Turn off **Plan with Pro, build with Flash** in [Settings](helpers.md#gemini-cli-settings) to keep one model throughout.
 
 ### Review the plan
 
@@ -202,7 +203,7 @@ The composers underline misspelt words; right-click a word for suggestions or **
 
 The ring at the bottom right of the composer shows how full this chat's context window is. It turns amber at 50%, where Gemini starts summarising older messages, and red at 90%. Click it, or choose **Usage and quota** in the **+** menu, for:
 
-- **Context window**: the tokens in the latest request out of the model's limit, and what they are: the conversation, the MCP servers' tools, the rule files (`GEMINI.md` and the files it imports), GeminiCode's own tools and the CLI's own prompt. The parts are measured with one short request each on the lightest model, in the background, at most once a day per folder; **Measure Again** measures now. The rule files are listed as the CLI loaded them, with their sizes, and one over 20 KB gets a warning, since every turn carries it. Typing `/context` opens the same view. Agent Setup's **Context cost** shares the measure.
+- **Context window**: the tokens in the latest request out of the model's limit, and what they are: the conversation, the MCP servers' tools, the rule files (`GEMINI.md` and the files it imports), GeminiCode's own tools and the CLI's own prompt. The parts are measured with one short request each on the lightest model, in the background, at most once a day per folder; **Measure Again** measures now. The rule files are listed as the CLI loaded them, with their sizes, and one over 20 KB gets a warning, since every turn carries it. Typing `/context` opens the same view. Settings' **Context cost** shares the measure.
 - **Today's quota**: how much of today's quota each model has used for your account, and when it resets. **All models** shows the rest.
 - **This chat**: input, cached and output tokens over the chat's replies, with **Details by model**.
 

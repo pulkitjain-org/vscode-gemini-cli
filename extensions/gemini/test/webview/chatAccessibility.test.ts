@@ -24,6 +24,8 @@ const permission: TranscriptItem = {
 
 beforeAll(async () => {
 	await showChatPage();
+	// The time to the first output is a developer's figure, shown with developer tools on.
+	(document.querySelector('script[data-strings]') as unknown as { dataset: Record<string, string> }).dataset.developer = 'true';
 	await startScript('chat');
 	sendToPage({ type: 'reset', items: [prompt], busy: true, status: { phase: 'ready', text: '' }, settings: {} });
 });

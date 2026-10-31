@@ -79,6 +79,13 @@ export interface TeamToolContext {
 	allowShell?(): boolean;
 	/** Whether `agent` may only read, such as a merge request's reviewer: it is offered no write tool, and any it asks for is refused. */
 	readOnly?(agent: string): boolean;
+	/**
+	 * Whether `agent` needs the team tools: a task on a ticket or merge
+	 * request, a flow, or the user's choice. Until then its session lists
+	 * none, since their definitions were half of every model call on a team
+	 * repository (FINDINGS.md); unset offers them to every agent.
+	 */
+	enabledFor?(agent: string | undefined): boolean;
 	/** Confluence's calls, its bundle loaded now if it was not yet; undefined when Confluence isn't connected. */
 	confluence?(): ConfluenceTools | undefined;
 	/** Whether Figma looks up Code Connect mappings in design reads when the repository's defaults file does not say (`designSystem`); off, Figma answers faster and never asks about them. */

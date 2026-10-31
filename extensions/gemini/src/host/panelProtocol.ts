@@ -11,6 +11,7 @@ import type { ChangeTotals } from '../acp/agentChanges';
 import type { Attachment } from '../acp/attachments';
 import type { JiraCommentVisibility } from '../acp/jira';
 import type { AdfDocument } from '../acp/jiraAdf';
+import type { SettingControl, SettingTarget } from '../acp/settingsModel';
 import type { ChangesTeamView, FromChangesTeam } from './teamFlowProtocol';
 
 /** Where an agent is at, for the title bar, Agent Home and the Changes panel. */
@@ -43,6 +44,9 @@ export interface ChangedFileView {
 	readonly hunks?: readonly HunkView[];
 }
 
+/** What the Try button does with the work of an agent on its own branch (`agents/tryChoices.ts`). */
+export type TryChoice = 'try' | 'merge' | 'mr';
+
 export interface ChangesPanelView {
 	readonly agent?: {
 		readonly title: string;
@@ -54,6 +58,8 @@ export interface ChangesPanelView {
 		readonly trying?: boolean;
 		/** What the Try button does, when not Try in Workspace. */
 		readonly tryChoice?: 'merge' | 'mr';
+		/** GitLab is connected: the chevron's menu offers Open Merge Request. */
+		readonly mergeRequests?: boolean;
 	};
 	readonly totals: ChangeTotals;
 	readonly files: readonly ChangedFileView[];
@@ -67,36 +73,12 @@ export type FromChangesPanel =
 	| { readonly type: 'ready' }
 	| { readonly type: 'keep' | 'undo'; readonly path: string; readonly index: number }
 	| { readonly type: 'keepFile' | 'undoFile' | 'openFile'; readonly path: string }
-	| { readonly type: 'keepAll' | 'undoAll' | 'openAll' | 'commit' | 'mergeBack' | 'tryMenu' | 'keepTried' | 'takeBack' }
+	| { readonly type: 'keepAll' | 'undoAll' | 'openAll' | 'commit' | 'mergeBack' | 'keepTried' | 'takeBack' }
+	/** A pick from the Try button's chevron menu. */
+	| { readonly type: 'tryChoice'; readonly choice: TryChoice }
 	| FromChangesTeam;
 
 // --- Agent Home
-
-export interface HomeAgent {
-	readonly id: string;
-	readonly title: string;
-	readonly workspace: string;
-	readonly state: AgentStateKind;
-	readonly status: string;
-	/** "+12 -3 in 2 files" */
-	readonly changes?: string;
-	readonly branch?: string;
-	/** Its work is being tried in the user's checkout: Merge Back's button offers Keep Changes and Take Back. */
-	readonly trying?: boolean;
-	/** What its Try button does, when not Try in Workspace. */
-	readonly tryChoice?: 'merge' | 'mr';
-	/** "5m" */
-	readonly updated: string;
-	/** The card's buttons, from the one action set (`branchAgentActions`), with the host's labels. */
-	readonly buttons: readonly HomeAgentButton[];
-}
-
-export interface HomeAgentButton {
-	readonly do: 'stop' | 'review' | 'mergeBack' | 'tryMenu' | 'open';
-	readonly label: string;
-	readonly icon?: string;
-	readonly primary?: boolean;
-}
 
 /** A project on Agent Home: its coordinator's chat, and how many threads it has. */
 export interface HomeProject {
@@ -116,25 +98,13 @@ export interface HomeWorkspace {
 	readonly name: string;
 	readonly description: string;
 	readonly git: boolean;
-	/** The folder's index, for the icon beside the workspace; unset while indexing is off. */
-	readonly index?: HomeIndex;
 	/** Whether agents here run trusted by the Gemini CLI, by the folder's own entry or a parent's; unset while folder trust is off. */
 	readonly trust?: 'trusted' | 'parent' | 'untrusted';
 }
 
-export interface HomeIndex {
-	readonly state: 'ready' | 'building' | 'none';
-	/** The tooltip: whether it is indexed, and what a click does. */
-	readonly label: string;
-}
-
 export interface HomeView {
 	readonly workspaces: readonly HomeWorkspace[];
-	/** Agents working, waiting, done or with changes to review. */
-	readonly active: readonly HomeAgent[];
-	/** The rest, newest first, to resume. */
-	readonly earlier: readonly HomeAgent[];
-	/** Every project, newest first; absent while Projects are off. Neither list above has projects or their threads. */
+	/** Every project, newest first, for On a branch's chevron; absent while Projects are off. */
 	readonly projects?: readonly HomeProject[];
 	/** Whether new agents start on their own branch by default (`gemini.agents.ownBranch`). */
 	readonly ownBranch: boolean;
@@ -144,7 +114,7 @@ export interface HomeView {
 	readonly defaultMode?: string;
 	/** The model a new agent starts on, when the user picked one. */
 	readonly model?: string;
-	/** The dashboard around the composer: the team tools, what needs the user, the cards. */
+	/** The dashboard around the composer: the banners, Get started and the cards. */
 	readonly dashboard: HomeDashboard;
 }
 
@@ -166,16 +136,6 @@ export interface HomeButton {
 	readonly action: HomeAction;
 	readonly primary?: boolean;
 	readonly title?: string;
-}
-
-/** A tool's connection, as a logo with a state. */
-export interface HomeTool {
-	readonly id: HomeToolId;
-	readonly name: string;
-	/** ok: connected; warn: can't reach it (VPN off); off: not connected; error: its token was refused. */
-	readonly tone: 'ok' | 'warn' | 'off' | 'error' | 'checking';
-	/** "Connected as pulkit.jain", "VPN off". */
-	readonly label: string;
 }
 
 /** A tone for a short status word: a dot plus one coloured word. */
@@ -208,9 +168,9 @@ export interface HomeRow {
 	readonly open?: HomeAction;
 	/** A small heading above this row, such as "Mine". */
 	readonly group?: string;
-	/** The query behind that heading, faint beside it. */
+	/** What is behind that heading (the sprint's progress, a site's state), in the heading's tooltip. */
 	readonly groupQuery?: string;
-	/** The heading query's tone: warn for a Jira site that can't be reached now. */
+	/** The heading's tone: warn for a Jira site that can't be reached now. */
 	readonly groupTone?: HomeTone;
 	/** Dimmed: the last answer of a server that can't be reached now. */
 	readonly dim?: boolean;
@@ -223,7 +183,7 @@ export interface HomeCard {
 	readonly icon?: string;
 	/** A link at the right of the heading. */
 	readonly link?: HomeButton;
-	/** The query that fills the card, faint beside the title, so its numbers can be checked against the tool. */
+	/** The query that fills the card, in the title's tooltip, so its numbers can be checked against the tool. */
 	readonly query?: string;
 	readonly rows: readonly HomeRow[];
 	/** How many rows the card's whole list has, when that is more than it shows: Show All opens them in a popup. */
@@ -248,14 +208,6 @@ export interface HomeList {
 	readonly rows: readonly HomeRow[];
 }
 
-export interface HomeNeed {
-	readonly tool: HomeToolId | 'gemini';
-	readonly title: string;
-	readonly detail: string;
-	readonly pill?: { readonly text: string; readonly tone: HomeTone };
-	readonly button: HomeButton;
-}
-
 export interface HomeSetupStep {
 	readonly title: string;
 	readonly detail: string;
@@ -268,11 +220,8 @@ export interface HomeDashboard {
 	readonly greeting: string;
 	/** "Friday 17 October · acme-checkout · Sprint 42, 6 days left" */
 	readonly context: string;
-	readonly tools: readonly HomeTool[];
+	/** Review and Run checks..., under Actions in the composer's + menu. */
 	readonly quickActions: readonly (HomeButton & { readonly tool?: HomeToolId; readonly icon?: string })[];
-	readonly needs: readonly HomeNeed[];
-	/** What Needs you is made of, faint beside its title. */
-	readonly needsQuery: string;
 	readonly cards: readonly HomeCard[];
 	/** First run: nothing connected yet. */
 	readonly setup?: readonly HomeSetupStep[];
@@ -334,8 +283,9 @@ export type FromHome =
 	| { readonly type: 'folderPicked' | 'trust'; readonly folder: string }
 	/** The user is typing a task, so the agent and a session for it can get ready. */
 	| { readonly type: 'typing'; readonly folder: string; readonly ownBranch: boolean }
-	| { readonly type: 'addFolder' | 'agentSetup' | 'openIndex' | 'pickFiles' | 'newProject' }
-	| { readonly type: 'open' | 'stop' | 'review' | 'mergeBack' | 'tryMenu'; readonly id: string }
+	| { readonly type: 'addFolder' | 'pickFiles' }
+	/** An Agents card row's title or Review button (a `HomeAction` of kind 'agent'). */
+	| { readonly type: 'open' | 'stop' | 'review' | 'mergeBack'; readonly id: string }
 	| { readonly type: 'action'; readonly action: HomeAction }
 	| { readonly type: 'refresh' }
 	| { readonly type: 'layout'; readonly card: HomeCardId; readonly visible?: boolean; readonly move?: number }
@@ -382,8 +332,6 @@ export interface McpServerView {
 	readonly enabled: boolean;
 	/** Why it failed to start in the running agent. */
 	readonly problem?: string;
-	/** Its tools' definitions in every model call, from the last measurement. */
-	readonly tokens?: number;
 }
 
 /** A Gemini CLI setting the page offers, from the user's own settings.json. */
@@ -450,8 +398,8 @@ export interface MemoryFileView {
 	/** Shown as `~/...`. */
 	readonly display: string;
 	readonly preview?: string;
-	/** About how many tokens it adds to every model call, with the files it imports. */
-	readonly tokens?: number;
+	/** Its size in characters, with the files it imports. */
+	readonly characters?: number;
 }
 
 /** What every model call carries before the prompt (contextCost.ts), for the page's Context cost section. */
@@ -462,12 +410,15 @@ export interface ContextCostView {
 	readonly folderPath: string;
 	/** The window's folders to pick from, in a multi-root window: each folder's agents get its own context. */
 	readonly folders?: readonly { readonly path: string; readonly name: string }[];
+	/** What every model call carries: the last reading. */
 	readonly total?: number;
-	readonly parts: readonly { readonly label: string; readonly tokens: number; readonly kind: 'cli' | 'context' | 'server' | 'geminicode' }[];
+	/** One row per test prompt, with its input tokens as the CLI reported them. */
+	readonly readings: readonly { readonly label: string; readonly tokens: number }[];
 	/** "2 hours ago, with gemini-3.1-flash-lite". */
 	readonly measured?: string;
+	/** What accounts for much of the total, in words. */
 	readonly tips: readonly string[];
-	/** How many model calls and tokens measuring takes, from the user's Gemini quota. */
+	/** How many test prompts measuring runs, from the user's Gemini quota. */
 	readonly note: string;
 	readonly error?: string;
 }
@@ -530,7 +481,39 @@ export type TrustView =
 	| { readonly state: 'ready'; readonly rows: readonly TrustRowView[] }
 	| { readonly state: 'off' | 'unreadable'; readonly message: string };
 
+/** One `gemini.*` setting on the page, from the extension's contribution (src/acp/settingsModel.ts) with its value in effect. */
+export interface SettingRowView {
+	readonly key: string;
+	readonly label: string;
+	/** The description, with `code` marks and `#gemini.key#` references; `%key%` strings already resolved. */
+	readonly help: string;
+	readonly control: SettingControl;
+	/** What `get` returns: a policy's value when one applies, else the settings files'. */
+	readonly value: unknown;
+	readonly default: unknown;
+	readonly choices?: readonly { readonly value: unknown; readonly label: string; readonly help?: string }[];
+	readonly minimum?: number;
+	readonly maximum?: number;
+	/** Where a change goes: the user's settings, or the workspace's for a resource-scoped setting while a folder is open. */
+	readonly target: SettingTarget;
+	/** An administrator's policy decides it: shown locked, with its control disabled. */
+	readonly locked: boolean;
+	/** The value differs from the default, so Reset shows. */
+	readonly modified: boolean;
+	readonly advanced: boolean;
+	readonly deprecated?: string;
+}
+
+/** A contributed section of settings, in package.json's order, with its anchor id and its resolved title. */
+export interface SettingSectionView {
+	readonly id: string;
+	readonly title: string;
+	readonly settings: readonly SettingRowView[];
+}
+
 export interface SettingsPageView {
+	/** Every contributed section with every setting, advanced and deprecated ones included; the page hides those until searched for. */
+	readonly settings: readonly SettingSectionView[];
 	readonly servers: readonly McpServerView[];
 	readonly skills: readonly SkillView[];
 	readonly hooks: readonly HookView[];
@@ -562,4 +545,10 @@ export type FromSettingsPage =
 	| { readonly type: 'createRules'; readonly path: string }
 	/** Trust Folder..., Trust a Parent Folder... and Never Trust a Folder..., which ask for the folder. */
 	| { readonly type: 'trustFolder'; readonly kind: 'folder' | 'parent' | 'never' }
-	| { readonly type: 'removeTrust'; readonly rule: string };
+	| { readonly type: 'removeTrust'; readonly rule: string }
+	/** A `gemini.*` setting's new value from its control; the host checks it against the contribution and writes it where `SettingRowView.target` says. */
+	| { readonly type: 'setSetting'; readonly key: string; readonly value: unknown }
+	/** Clears a setting in the user's and the workspace's settings, so the default applies again. */
+	| { readonly type: 'resetSetting'; readonly key: string }
+	/** One of the other Agent Setup pages, from the side index; the page shell answers it (PagePanel's `openTab`). */
+	| { readonly type: 'openTab'; readonly tab: string };

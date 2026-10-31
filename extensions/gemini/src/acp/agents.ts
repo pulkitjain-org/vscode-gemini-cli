@@ -52,6 +52,8 @@ export interface AgentRecord {
 	 * is used again (`isArchived`).
 	 */
 	readonly archivedAt?: number;
+	/** Its sessions list the team tools: its task needed them once, so they stay (teamConnections.ts, `enableTeamTools`). */
+	readonly teamTools?: true;
 	/** Its work in the user's checkout (Try in Workspace), until taken back; kept across restarts. */
 	readonly tried?: AgentTried;
 	/** A plain agent on a branch whose work was kept or merged: it reads "kept" or "merged", leaves Needs you, and is archived a week on (`isArchived`); its next turn clears it. */
@@ -400,6 +402,13 @@ export class AgentsModel {
 	setSessionId(id: string, sessionId: string): void {
 		if (this.agent(id)?.sessionId !== sessionId) {
 			this.update(id, a => ({ ...a, sessionId }));
+		}
+	}
+
+	/** Remembers that `id`'s sessions list the team tools from now on. */
+	setTeamTools(id: string): void {
+		if (this.agent(id) && !this.agent(id)?.teamTools) {
+			this.update(id, a => ({ ...a, teamTools: true }));
 		}
 	}
 

@@ -10,11 +10,15 @@
 
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import { isModeAllowed } from '../../acp/adminPolicy';
 import type { ChatTranscript } from '../../acp/chatTranscript';
+import { nextApprovalMode } from '../../acp/chatTurns';
 import { setCliDefaultModel } from '../../acp/cliPreferences';
 import { geminiDir } from '../../acp/directRequest';
 import { AgentError, errorMessage } from '../../acp/errors';
+import { knownModes } from '../../acp/sessionSettings';
 import type { FromWebview, ToWebview } from '../chatProtocol';
+import { getApprovalPolicy } from '../configuration';
 import { rememberModel } from '../modelPreference';
 import type { ChatControllerOptions, ChatHost } from './chatOptions';
 
@@ -30,7 +34,7 @@ export class ChatSettings implements vscode.Disposable {
 	constructor(
 		private readonly service: Pick<ChatHost, 'client' | 'permissions' | 'askToTrust'>,
 		private readonly transcript: ChatTranscript,
-		private readonly options: Pick<ChatControllerOptions, 'onDidPickModel'>,
+		private readonly options: Pick<ChatControllerOptions, 'onDidPickModel' | 'project'>,
 		private readonly post: (message: ToWebview) => void,
 	) {
 		this.noteMode(service.client.settings.mode?.currentId);
@@ -55,6 +59,46 @@ export class ChatSettings implements vscode.Disposable {
 	/** The last mode that was neither YOLO nor Plan: where ⌘Y goes back to from YOLO. */
 	get modeBeforeYolo(): string | undefined {
 		return this.lastPlainMode;
+	}
+
+	/**
+	 * Switches to the next approval mode, as the CLI's Shift+Tab does; the
+	 * composer's mode chip shows it. A project's coordinator has no modes to pick.
+	 * `busy`: whether a turn runs, which rules some modes out.
+	 */
+	cycleMode(busy: boolean): void {
+		const next = this.options.project ? undefined : nextApprovalMode(this.service.client.settings, busy);
+		if (!next) {
+			return;
+		}
+		this.onMessage({ type: 'setMode', id: next });
+	}
+
+	/** Switches to YOLO, or back to the mode before it, as the CLI's Ctrl+Y does; nothing where policy or the agent offers no YOLO. */
+	toggleYolo(): void {
+		const mode = this.service.client.settings.mode;
+		if (this.options.project || !mode || !mode.available.some(choice => choice.id === knownModes.yolo) || !isModeAllowed(getApprovalPolicy(), knownModes.yolo)) {
+			return;
+		}
+		this.onMessage({ type: 'setMode', id: mode.currentId === knownModes.yolo ? this.modeBeforeYolo ?? mode.available[0].id : knownModes.yolo });
+	}
+
+	/** Picks the session's model in a quick pick, as the composer's model picker does. */
+	async pickModel(): Promise<void> {
+		const model = this.service.client.settings.model;
+		if (!model) {
+			void vscode.window.showInformationMessage(vscode.l10n.t("This agent offers no other model."));
+			return;
+		}
+		const picked = await vscode.window.showQuickPick(model.available.map(choice => ({
+			label: choice.name,
+			description: choice.id === model.currentId ? vscode.l10n.t("Current") : undefined,
+			detail: choice.description,
+			id: choice.id,
+		})), { title: vscode.l10n.t("Switch Model"), placeHolder: vscode.l10n.t("The model this agent's next prompts use") });
+		if (picked && picked.id !== model.currentId) {
+			this.onMessage({ type: 'setModel', id: picked.id });
+		}
 	}
 
 	private noteMode(id: string | undefined): void {

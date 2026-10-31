@@ -37,6 +37,7 @@ import { addMemoryFiles, configFile, maxInstructionsChars, memoryFolder, newMemo
 import { coordinatorHome, repositoryRoot } from '../acp/worktrees';
 import type { ChatActivity, ChatController, ChatProject } from './chatController';
 import type { NewThread, ProjectDefaultsView, ProjectSettingsAction, ProjectSettingsSave, ProjectSettingsView, ThreadAction, TryAction } from './chatProtocol';
+import { isTryChoice, type TryChoice } from './agents/tryChoices';
 import { configSection } from './configuration';
 import { tildify } from './displayText';
 import { showError } from './errorNotice';
@@ -103,8 +104,10 @@ export interface ProjectAgents {
 	mergeCommits(id: string): boolean;
 	/** The thread's Try button's choice. */
 	tryChoice(id: string): 'try' | 'merge' | 'mr';
-	/** The chevron beside the Try button: pick and remember the choice, then run it. */
-	pickTryChoice(id: string): Promise<void>;
+	/** A pick from the menu of the chevron beside the Try button: remember the choice, then run it. */
+	chooseTry(id: string, choice: TryChoice): Promise<void>;
+	/** Whether GitLab is connected, so the chevron's menu offers Open Merge Request. */
+	mergeRequests(): boolean;
 	/** Whether the person has read the first-try guide; setting it shows or hides it on cards. */
 	guideSeen(): boolean;
 	setGuideSeen(seen: boolean): Promise<void>;
@@ -229,7 +232,7 @@ export class Projects implements vscode.Disposable {
 		return {
 			post: (text, attachments) => this.projects.get(coordinatorId)?.hub.post(withAttachments(text, attachments)),
 			hidesToolCall: title => isProjectToolTitle(title, coordinatorTools),
-			threadAction: (thread, action, repo) => void this.threadAction(coordinatorId, thread, action, repo),
+			threadAction: (thread, action, repo, choice) => void this.threadAction(coordinatorId, thread, action, repo, choice),
 			prepareThread: thread => {
 				if (this.agents.record(thread)?.project?.role === 'thread') {
 					this.agents.prepare(thread);
@@ -1032,6 +1035,7 @@ export class Projects implements vscode.Disposable {
 			restorable: offer === 'menu' ? true : undefined,
 			guide: record.tried?.state === 'trying' && !this.agents.guideSeen() ? true : undefined,
 			tryChoice: this.agents.tryChoice(thread) === 'try' ? undefined : this.agents.tryChoice(thread) as 'merge' | 'mr',
+			mergeRequests: this.agents.mergeRequests() || undefined,
 		});
 		this.schedulePanel(project);
 	}
@@ -1111,7 +1115,7 @@ export class Projects implements vscode.Disposable {
 		return { held: held === 1 ? vscode.l10n.t("Holding 1 new thread: today's quota is {0}% used. It starts when the quota resets.", percent) : vscode.l10n.t("Holding {0} new threads: today's quota is {1}% used. They start when it resets.", held, percent) };
 	}
 
-	private async threadAction(coordinatorId: string, thread: string, action: ThreadAction, repo?: string): Promise<void> {
+	private async threadAction(coordinatorId: string, thread: string, action: ThreadAction, repo?: string, choice?: unknown): Promise<void> {
 		const project = this.projects.get(coordinatorId);
 		switch (action) {
 			case 'startAnyway':
@@ -1141,7 +1145,7 @@ export class Projects implements vscode.Disposable {
 				await this.agents.undoThread(thread);
 				return;
 			case 'tryMenu':
-				return this.agents.pickTryChoice(thread);
+				return isTryChoice(choice) ? this.agents.chooseTry(thread, choice) : undefined;
 			case 'try':
 			case 'keep':
 			case 'takeBack':

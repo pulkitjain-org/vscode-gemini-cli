@@ -3,16 +3,17 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// What every model call carries before the user's prompt, and what each part
-// of it costs: the CLI's own prompt and tools, the folder's context files
-// (GEMINI.md and what it imports, the skills list), each MCP server's tool
-// definitions and GeminiCode's own servers. On one team repository half of
-// the 63,500 tokens of every call were two MCP servers' tools (FINDINGS.md).
+// What every model call carries before the user's prompt: the CLI's own
+// prompt and tools, the folder's context files (GEMINI.md and what it
+// imports, the skills list), each MCP server's tool definitions and
+// GeminiCode's own servers. On one team repository half of the 63,500 tokens
+// of every call were two MCP servers' tools (FINDINGS.md).
 //
-// The CLI doesn't report this, so it is measured: one short prompt per
-// variant, each in a fresh CLI with a different set of servers allowed, and
-// each part is the difference between two of them. Only on request, since
-// each variant is a model call.
+// The CLI doesn't report this as such, so it is measured: one short test
+// prompt per variant, each in a fresh CLI with a different set of servers
+// allowed, and the app shows each prompt's input tokens as the CLI reported
+// them (design rule 10: only numbers the CLI reports, never a difference the
+// app worked out). Only on request, since each prompt is a model call.
 
 export type ProbeVariant =
 	| { readonly kind: 'empty' }
@@ -24,17 +25,20 @@ export type ProbeVariant =
 /** The input tokens of one model call in the given setup. */
 export type ContextProbe = (variant: ProbeVariant) => Promise<number>;
 
+/** One test prompt's input tokens, as the CLI reported them. */
+export interface ContextReading {
+	/** `empty`: an empty folder; `folder`: the folder alone; `server`: the folder with one MCP server; `geminicode`: with GeminiCode's tools; `all`: everything agents get. */
+	readonly kind: 'empty' | 'folder' | 'server' | 'geminicode' | 'all';
+	/** The MCP server, for a `server` reading. */
+	readonly server?: string;
+	readonly tokens: number;
+}
+
 export interface ContextCost {
-	/** Every model call, as agents get it. */
+	/** Every model call, as agents get it: the `all` reading. */
 	readonly total: number;
-	/** The CLI's own prompt and built-in tools. */
-	readonly cli: number;
-	/** The folder's context files and skills list. */
-	readonly context: number;
-	/** Each MCP server's tool definitions, largest first. */
-	readonly servers: readonly { readonly name: string; readonly tokens: number }[];
-	/** GeminiCode's own servers (browser, team tools, index, project). */
-	readonly geminicode: number;
+	/** One reading per test prompt, in the order shown: empty, folder, each server, geminicode, all. */
+	readonly readings: readonly ContextReading[];
 	readonly measuredAt: number;
 	/** The model that counted, since tokens differ a little between models. */
 	readonly model?: string;
@@ -53,10 +57,11 @@ export const largeRuleFileBytes = 20 * 1024;
 /** The chat's usage popover's breakdown of a folder's context (`/context`). */
 export interface ContextBreakdown {
 	readonly state: 'none' | 'measuring' | 'ready' | 'failed';
-	/** When the parts were measured, in ms since the epoch. */
+	/** When the readings were taken, in ms since the epoch. */
 	readonly measuredAt?: number;
-	/** Tokens of each part; `servers` is how many MCP servers, `serverTokens` what they cost together. */
-	readonly parts?: { readonly cli: number; readonly rules: number; readonly geminicode: number; readonly servers: number; readonly serverTokens: number; readonly total: number };
+	/** Each test prompt's input tokens as the CLI reported them; `total` is the `all` reading, what every call carries. */
+	readonly readings?: readonly ContextReading[];
+	readonly total?: number;
 	/** The rule files, by name, largest first. */
 	readonly rules?: readonly { readonly name: string; readonly path: string; readonly bytes: number }[];
 	readonly error?: string;
@@ -71,14 +76,8 @@ export function contextBreakdown(cost: ContextCost | undefined, measuring: boole
 	return {
 		state,
 		measuredAt: cost.measuredAt,
-		parts: {
-			cli: cost.cli,
-			rules: cost.context,
-			geminicode: cost.geminicode,
-			servers: cost.servers.length,
-			serverTokens: cost.servers.reduce((sum, server) => sum + server.tokens, 0),
-			total: cost.total,
-		},
+		readings: cost.readings,
+		total: cost.total,
 		...cost.rules ? { rules: [...cost.rules].sort((a, b) => b.bytes - a.bytes).map(rule => ({ name: ruleFileName(rule.path), path: rule.path, bytes: rule.bytes })) } : {},
 		...error ? { error } : {},
 	};
@@ -94,6 +93,7 @@ function ruleFileName(file: string): string {
 const concurrency = 3;
 
 export async function measureContextCost(servers: readonly string[], probe: ContextProbe, now: () => number = Date.now): Promise<Omit<ContextCost, 'model'>> {
+	// The heaviest variants first, so the longest calls start at once.
 	const variants: ProbeVariant[] = [
 		{ kind: 'all', servers },
 		{ kind: 'context' },
@@ -110,27 +110,23 @@ export async function measureContextCost(servers: readonly string[], probe: Cont
 		}
 	};
 	await Promise.all(Array.from({ length: Math.min(concurrency, variants.length) }, worker));
-	const [total, context, empty, geminicode] = results;
-	const difference = (value: number, base: number) => Math.max(0, value - base);
+	const [all, folder, empty, geminicode] = results;
 	return {
-		total,
-		cli: empty,
-		context: difference(context, empty),
-		geminicode: difference(geminicode, context),
-		servers: servers.map((name, i) => ({ name, tokens: difference(results[4 + i], context) })).sort((a, b) => b.tokens - a.tokens),
+		total: all,
+		readings: [
+			{ kind: 'empty', tokens: empty },
+			{ kind: 'folder', tokens: folder },
+			...servers.map((server, i) => ({ kind: 'server' as const, server, tokens: results[4 + i] })),
+			{ kind: 'geminicode', tokens: geminicode },
+			{ kind: 'all', tokens: all },
+		],
 		measuredAt: now(),
 	};
 }
 
-/** How many model calls measuring a folder with `servers` MCP servers makes: one per variant of `measureContextCost`. */
+/** How many test prompts measuring a folder with `servers` MCP servers runs: one per variant of `measureContextCost`. */
 export function measureCalls(servers: number): number {
 	return 4 + servers;
-}
-
-/** About how many input tokens measuring again takes, from the last measure: each call carries the part it measures and the parts under it. */
-export function measureTokens(cost: ContextCost): number {
-	const context = cost.cli + cost.context;
-	return cost.total + cost.cli + context + context + cost.geminicode + cost.servers.reduce((sum, server) => sum + context + server.tokens, 0);
 }
 
 /** The allowlist for a variant: server names, or a name no server has, so none load. */
@@ -142,11 +138,20 @@ export function allowedServersFor(variant: ProbeVariant): string[] {
 	}
 }
 
-/** About how many tokens a context file costs: four characters each, as a rule of thumb for English and code. */
-export function estimateTokens(characters: number): number {
-	return Math.round(characters / 4);
-}
+/** A reading at least this many times the one it builds on accounts for much of what every call carries. */
+export const heavyReadingRatio = 1.5;
 
-/** Advice for the heaviest parts, as keys the page words: a server over this many tokens, context files over that. */
-export const heavyServerTokens = 5_000;
-export const heavyContextTokens = 15_000;
+/**
+ * What to point out in words, without a number: the MCP servers whose reading
+ * is `heavyReadingRatio` times the folder's, and whether the folder's own
+ * context files make its reading that much more than an empty folder's.
+ */
+export function heavyReadings(cost: Pick<ContextCost, 'readings'>): { readonly servers: readonly string[]; readonly context: boolean } {
+	const tokens = (kind: ContextReading['kind']) => cost.readings.find(reading => reading.kind === kind)?.tokens ?? 0;
+	const empty = tokens('empty');
+	const folder = tokens('folder');
+	return {
+		servers: cost.readings.filter(reading => reading.kind === 'server' && reading.server && folder > 0 && reading.tokens >= folder * heavyReadingRatio).map(reading => reading.server!),
+		context: empty > 0 && folder >= empty * heavyReadingRatio,
+	};
+}

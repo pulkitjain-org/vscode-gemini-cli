@@ -49,6 +49,8 @@ export class LocalMcpServer<C> {
 	private server: http.Server | undefined;
 	private port: number | undefined;
 	private starting: Promise<number> | undefined;
+	/** The notification streams open per route: the CLI keeps one per server (a `GET`), and lists the tools again on `tools/list_changed`. */
+	private readonly streams = new Map<string, Set<http.ServerResponse>>();
 
 	constructor(private readonly options: LocalMcpServerOptions<C>) { }
 
@@ -88,9 +90,33 @@ export class LocalMcpServer<C> {
 		return { type: 'http', name: this.options.name, url: `http://127.0.0.1:${this.port}/mcp/${route}`, headers: [{ name: 'Authorization', value: `Bearer ${this.tokenFor(route)}` }] };
 	}
 
+	/**
+	 * Tells the session on `route` that its tools changed, so the CLI lists
+	 * them again and the next prompt declares the new set (FINDINGS.md, giving
+	 * a session a server later). Returns how many streams heard it: none
+	 * when the session has not opened its stream yet, in which case its
+	 * first `tools/list` will see the change anyway.
+	 */
+	notifyToolsChanged(route: string): number {
+		const streams = this.streams.get(route);
+		if (!streams?.size) {
+			return 0;
+		}
+		for (const stream of streams) {
+			stream.write(`event: message\ndata: ${JSON.stringify({ jsonrpc: '2.0', method: 'notifications/tools/list_changed' })}\n\n`);
+		}
+		return streams.size;
+	}
+
 	/** Stops listening and drops open connections, so sessions lose the tools at once. */
 	dispose(): void {
 		this.starting = undefined;
+		for (const streams of this.streams.values()) {
+			for (const stream of streams) {
+				stream.end();
+			}
+		}
+		this.streams.clear();
 		this.server?.close();
 		this.server?.closeAllConnections();
 		this.server = undefined;
@@ -119,6 +145,12 @@ export class LocalMcpServer<C> {
 		if (!routePattern.test(route)) {
 			return void res.writeHead(404).end();
 		}
+		// Only the CLI on this machine, by its loopback address: a page in a browser (an Origin header, or a Host that
+		// isn't ours, as a DNS rebinding gives) is refused before the token is looked at.
+		const host = req.headers.host ?? '';
+		if (req.headers.origin !== undefined || (host !== `127.0.0.1:${this.port}` && host !== `localhost:${this.port}`)) {
+			return void res.writeHead(403).end();
+		}
 		const expected = Buffer.from(`Bearer ${this.tokenFor(route)}`);
 		const given = Buffer.from(req.headers.authorization ?? '');
 		if (given.length !== expected.length || !timingSafeEqual(given, expected)) {
@@ -131,8 +163,23 @@ export class LocalMcpServer<C> {
 		if (req.method === 'DELETE') {
 			return void res.writeHead(200).end();
 		}
+		if (req.method === 'GET') {
+			// The session's notification stream, kept open until it or the server ends.
+			res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
+			res.write(': open\n\n');
+			const streams = this.streams.get(route) ?? new Set();
+			this.streams.set(route, streams);
+			streams.add(res);
+			req.on('close', () => {
+				streams.delete(res);
+				if (!streams.size) {
+					this.streams.delete(route);
+				}
+			});
+			return;
+		}
 		if (req.method !== 'POST') {
-			return void res.writeHead(405, { Allow: 'POST, DELETE' }).end();
+			return void res.writeHead(405, { Allow: 'GET, POST, DELETE' }).end();
 		}
 		let body: unknown;
 		try {
@@ -159,7 +206,7 @@ export class LocalMcpServer<C> {
 			case 'initialize':
 				return ok({
 					protocolVersion: typeof message.params?.protocolVersion === 'string' ? message.params.protocolVersion : '2025-06-18',
-					capabilities: { tools: {} },
+					capabilities: { tools: { listChanged: true } },
 					serverInfo: { name: this.options.name, version: this.options.version },
 					instructions: this.options.instructions(caller),
 				});
@@ -256,6 +303,17 @@ export class AgentMcpServer {
 	/** Whether it is listening, so sessions can be given it. */
 	get listening(): boolean {
 		return this.server.listening;
+	}
+
+	/** Tells `agent`'s sessions (its own route, and any slot bound to it) that their tools changed; how many streams heard it. */
+	notifyToolsChanged(agent: string): number {
+		let heard = this.server.notifyToolsChanged(agent);
+		for (const [slot, bound] of this.slots) {
+			if (bound === agent) {
+				heard += this.server.notifyToolsChanged(slot);
+			}
+		}
+		return heard;
 	}
 
 	/** The `mcpServers` entry for an agent; undefined until started. */

@@ -12,6 +12,7 @@
 import type { IndexToolVerbs, TeamToolVerbs } from '../acp/toolLinks';
 import type { ForkContext, NoticeAction } from '../acp/chatTranscript';
 import type { ThreadAction } from './chatProtocol';
+import type { TryChoiceStrings } from './panelStrings';
 
 /** The strings only a project's chat shows. */
 export interface ProjectChatStrings {
@@ -116,16 +117,14 @@ export interface ProjectChatStrings {
 		readonly planned: string;
 		readonly done: string;
 		readonly merged: string;
-		readonly context: string;
-		readonly conductorTracks: string;
-		readonly noConductor: string;
-		readonly model: string;
 		readonly repos: string;
 	};
 	readonly states: { readonly starting: string; readonly working: string; readonly waiting: string; readonly planned: string; readonly done: string; readonly error: string };
 	readonly actions: { readonly [action in ThreadAction]: string };
 	/** The Try button's label when the repository's remembered choice is a merge request. */
 	readonly openMr: string;
+	/** The Try button's chevron menu. */
+	readonly tryChoices: TryChoiceStrings;
 	/** Each action's tooltip, for the buttons that have one. */
 	readonly tips: { readonly [action in ThreadAction]?: string };
 	readonly openToAnswer: string;
@@ -262,6 +261,8 @@ export interface ChatStrings {
 	readonly side?: SideStrings;
 	/** Emoji reactions' strings; unset in a project's chat, which has none. */
 	readonly reactions?: ReactionStrings;
+	/** The + menu's Debug with Gemini and its detail, while gemini.debugMode.enabled is on. */
+	readonly debugStart?: readonly [string, string];
 	/** The badge on a thread's brief and the notes its coordinator relays. */
 	readonly fromCoordinator: string;
 	readonly placeholderFollowUp: string;
@@ -546,6 +547,8 @@ export interface ChatStrings {
 	readonly menuSearch: string;
 	readonly menuFiles: string;
 	readonly menuFilesDetail: string;
+	readonly menuTeamTools: string;
+	readonly menuTeamToolsDetail: string;
 	readonly menuContext: string;
 	readonly menuContextDetail: string;
 	readonly menuFollow: string;
@@ -637,11 +640,11 @@ export interface ChatStrings {
 	readonly usageHideDetails: string;
 	readonly usageAllModels: string;
 	readonly usageFewerModels: string;
-	/** The usage popover's context breakdown and rule files (`/context`); `{0}` is a count, a name, a time or a size. */
+	/** The usage popover's context readings and rule files (`/context`); `{0}` is a server, a name, a time or a size. */
 	readonly contextParts: {
-		readonly conversation: string; readonly servers: string; readonly rules: string; readonly geminicode: string; readonly cli: string;
-		readonly ruleFiles: string; readonly kilobytes: string; readonly aboutTokens: string; readonly large: string;
-		readonly measured: string; readonly measureAgain: string; readonly measuring: string; readonly notMeasured: string; readonly failed: string; readonly compactNote: string;
+		readonly empty: string; readonly folder: string; readonly server: string; readonly geminicode: string; readonly all: string;
+		readonly ruleFiles: string; readonly kilobytes: string; readonly large: string;
+		readonly measured: string; readonly measureAgain: string; readonly measuring: string; readonly notMeasured: string; readonly failed: string;
 	};
 	/** The @ picker's groups and its Workspace rows; `{0}` and `{1}` are counts or a command. */
 	readonly mentions: {

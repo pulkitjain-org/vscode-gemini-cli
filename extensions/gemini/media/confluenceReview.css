@@ -11,7 +11,7 @@ body.review-page {
 	background: var(--vscode-editor-background);
 	color: var(--vscode-foreground);
 	font-family: var(--vscode-font-family);
-	font-size: var(--vscode-font-size);
+	font-size: var(--gc-text-md);
 	--review-added: color-mix(in srgb, var(--gemini-ok) 20%, transparent);
 	--review-removed: color-mix(in srgb, var(--gemini-error) 16%, transparent);
 	--review-info: var(--vscode-editorInfo-foreground, #3794ff);
@@ -31,7 +31,7 @@ body.review-page {
 	align-items: center;
 	flex-wrap: wrap;
 	gap: 10px 16px;
-	padding: 12px 28px;
+	padding: 12px 32px;
 	border-bottom: 1px solid var(--gemini-border);
 	background: var(--vscode-editor-background);
 }
@@ -54,8 +54,9 @@ body.review-page {
 	align-items: center;
 	gap: 5px;
 	padding: 0 8px;
-	border-radius: 999px;
-	font-size: 11.5px;
+	border-radius: var(--gc-radius-pill);
+	font-size: var(--gc-text-xs);
+	font-weight: var(--gc-weight-medium);
 	line-height: 20px;
 	background: var(--gemini-hover);
 	color: var(--gemini-warn);
@@ -74,7 +75,7 @@ body.review-page {
 	align-items: center;
 	gap: 6px;
 	min-width: 0;
-	font-size: 12px;
+	font-size: var(--gc-text-sm);
 	color: var(--gemini-muted);
 }
 
@@ -89,7 +90,7 @@ body.review-page {
 }
 
 .review-by {
-	font-size: 12px;
+	font-size: var(--gc-text-sm);
 	color: var(--gemini-muted);
 }
 
@@ -99,8 +100,8 @@ body.review-page {
 	gap: 2px;
 	padding: 2px;
 	border: 1px solid var(--gemini-border);
-	border-radius: 8px;
-	font-size: 12px;
+	border-radius: var(--gc-radius-md);
+	font-size: var(--gc-text-sm);
 }
 
 .review-seg button {
@@ -108,7 +109,7 @@ body.review-page {
 	align-items: center;
 	gap: 6px;
 	height: 22px;
-	padding: 0 10px;
+	padding: 0 8px;
 	border: none;
 	border-radius: var(--gemini-radius-small);
 	background: none;
@@ -121,11 +122,12 @@ body.review-page {
 }
 
 .review-count {
-	padding: 0 5px;
-	border-radius: 999px;
+	padding: 0 4px;
+	border-radius: var(--gc-radius-pill);
 	background: var(--gemini-accent);
 	color: var(--gemini-on-accent);
-	font-size: 11px;
+	font-size: var(--gc-text-xs);
+	font-weight: var(--gc-weight-medium);
 	line-height: 16px;
 }
 
@@ -134,7 +136,7 @@ body.review-page {
 	display: grid;
 	grid-template-columns: minmax(0, 1fr);
 	gap: 16px;
-	padding: 20px 28px;
+	padding: 24px 32px;
 }
 
 .review-body.with-side {
@@ -157,7 +159,7 @@ body.review-page {
 	border-radius: var(--gemini-radius);
 	background: var(--gemini-card);
 	box-sizing: border-box;
-	font-size: 14px;
+	font-size: var(--gc-text-lg);
 	line-height: 1.6;
 }
 
@@ -172,9 +174,9 @@ body.review-page {
 	background: none;
 	color: var(--vscode-foreground);
 	font: inherit;
-	font-size: 26px;
-	font-weight: 600;
-	line-height: 1.25;
+	font-size: var(--gc-text-xl);
+	font-weight: var(--gc-weight-semibold);
+	line-height: var(--gc-leading-heading);
 }
 
 .review-title:focus {
@@ -184,13 +186,13 @@ body.review-page {
 .review-note {
 	display: flex;
 	gap: 8px;
-	margin-bottom: 14px;
+	margin-bottom: 16px;
 	padding: 8px 12px;
 	border: 1px solid color-mix(in srgb, var(--review-info) 40%, transparent);
 	border-radius: var(--gemini-radius-small);
 	background: color-mix(in srgb, var(--review-info) 8%, transparent);
-	font-size: 12.5px;
-	line-height: 1.45;
+	font-size: var(--gc-text-md);
+	line-height: var(--gc-leading-row);
 }
 
 .review-note .codicon {
@@ -203,35 +205,35 @@ body.review-page {
 	outline: none;
 }
 
-.review-content h1 { font-size: 22px; margin: 22px 0 6px; font-weight: 600; }
-.review-content h2 { font-size: 18px; margin: 20px 0 6px; font-weight: 600; }
-.review-content h3 { font-size: 15px; margin: 16px 0 4px; font-weight: 600; }
-.review-content p { margin: 0 0 10px; }
-.review-content ul, .review-content ol { margin: 0 0 10px; padding-left: 24px; }
-.review-content blockquote { margin: 0 0 10px; padding-left: 12px; border-left: 3px solid var(--gemini-border-strong); color: var(--gemini-muted); }
-.review-content pre { margin: 0 0 10px; padding: 10px 12px; border-radius: var(--gemini-radius-small); background: var(--vscode-textCodeBlock-background, var(--gemini-hover)); overflow-x: auto; }
+.review-content h1 { font-size: var(--gc-text-xl); margin: 24px 0 8px; font-weight: var(--gc-weight-semibold); }
+.review-content h2 { font-size: var(--gc-text-lg); margin: 24px 0 8px; font-weight: var(--gc-weight-semibold); }
+.review-content h3 { font-size: var(--gc-text-md); margin: 16px 0 4px; font-weight: var(--gc-weight-semibold); }
+.review-content p { margin: 0 0 8px; }
+.review-content ul, .review-content ol { margin: 0 0 8px; padding-left: 24px; }
+.review-content blockquote { margin: 0 0 8px; padding-left: 12px; border-left: 3px solid var(--gemini-border-strong); color: var(--gemini-muted); }
+.review-content pre { margin: 0 0 8px; padding: 8px 12px; border-radius: var(--gemini-radius-small); background: var(--vscode-textCodeBlock-background, var(--gemini-hover)); overflow-x: auto; }
 .review-content code { font-family: var(--vscode-editor-font-family); font-size: 0.92em; }
-.review-content :not(pre) > code { padding: 0 3px; border-radius: 3px; background: var(--vscode-textCodeBlock-background, var(--gemini-hover)); }
+.review-content :not(pre) > code { padding: 0 4px; border-radius: var(--gc-radius-sm); background: var(--vscode-textCodeBlock-background, var(--gemini-hover)); }
 .review-content a { color: var(--vscode-textLink-foreground); }
 .review-content hr { border: none; border-top: 1px solid var(--gemini-border); margin: 16px 0; }
-.review-content table { border-collapse: collapse; width: 100%; margin: 4px 0 12px; font-size: 13px; }
-.review-content th, .review-content td { border: 1px solid var(--gemini-border-strong); padding: 5px 10px; text-align: left; vertical-align: top; }
+.review-content table { border-collapse: collapse; width: 100%; margin: 4px 0 12px; font-size: var(--gc-text-md); }
+.review-content th, .review-content td { border: 1px solid var(--gemini-border-strong); padding: 4px 8px; text-align: left; vertical-align: top; }
 .review-content th { background: var(--gemini-hover); }
 .review-content td > p:last-child, .review-content th > p:last-child { margin-bottom: 0; }
 
 /* What the editor shows but can't change: kept as it is. */
 .adf-opaque {
-	border-radius: 4px;
+	border-radius: var(--gc-radius-sm);
 	background: var(--gemini-hover);
 	color: var(--gemini-muted);
 	cursor: default;
 }
 
 div.adf-opaque {
-	margin: 0 0 10px;
+	margin: 0 0 8px;
 	padding: 8px 12px;
 	border: 1px dashed var(--gemini-border-strong);
-	font-size: 12.5px;
+	font-size: var(--gc-text-md);
 }
 
 span.adf-opaque {
@@ -249,7 +251,7 @@ span.adf-mention {
 
 /* A block of the page the agent's draft would have dropped, kept on the page. */
 .review-held {
-	margin: 0 -12px 10px;
+	margin: 0 -12px 8px;
 	padding: 8px 12px;
 	border-radius: var(--gemini-radius-small);
 	outline: 1px dashed var(--gemini-border-strong);
@@ -258,9 +260,9 @@ span.adf-mention {
 .review-held-note {
 	display: flex;
 	gap: 6px;
-	margin-bottom: 6px;
+	margin-bottom: 8px;
 	color: var(--gemini-muted);
-	font-size: 12px;
+	font-size: var(--gc-text-sm);
 }
 
 .review-agent-version {
@@ -272,7 +274,7 @@ span.adf-mention {
 /* The draft's changes, marked in place. */
 .review-change {
 	position: relative;
-	margin: 0 -12px 10px;
+	margin: 0 -12px 8px;
 	padding: 8px 12px;
 	border-radius: var(--gemini-radius-small);
 	outline: 1px solid color-mix(in srgb, var(--gemini-accent) 45%, transparent);
@@ -288,8 +290,8 @@ span.adf-mention {
 	display: flex;
 	align-items: center;
 	gap: 4px;
-	margin-bottom: 6px;
-	font-size: 12px;
+	margin-bottom: 8px;
+	font-size: var(--gc-text-sm);
 }
 
 .review-change-of {
@@ -298,9 +300,9 @@ span.adf-mention {
 }
 
 .review-change-bar button {
-	height: 22px;
+	height: var(--gc-control);
 	padding: 0 8px;
-	font-size: 12px;
+	font-size: var(--gc-text-sm);
 }
 
 .review-change-bar button.keep { color: var(--gemini-ok); }
@@ -332,18 +334,18 @@ span.adf-mention {
 .review-outline {
 	display: flex;
 	flex-direction: column;
-	padding: 6px;
+	padding: 8px;
 }
 
 .review-outline a {
 	display: flex;
 	align-items: center;
 	gap: 8px;
-	padding: 5px 8px;
+	padding: 4px 8px;
 	border-radius: var(--gemini-radius-small);
 	color: var(--vscode-foreground);
 	text-decoration: none;
-	font-size: 12.5px;
+	font-size: var(--gc-text-md);
 }
 
 .review-outline a:hover {
@@ -351,19 +353,19 @@ span.adf-mention {
 }
 
 .review-outline .codicon {
-	font-size: 10px;
+	font-size: var(--gc-text-xs);
 	color: var(--gemini-accent);
 }
 
 .review-outline a.kept .codicon {
-	font-size: 14px;
+	font-size: var(--gc-text-lg);
 	color: var(--gemini-ok);
 }
 
 .review-side-actions {
 	display: flex;
 	gap: 6px;
-	padding: 8px 10px;
+	padding: 8px 8px;
 	border-top: 1px solid var(--gemini-border);
 }
 
@@ -372,8 +374,8 @@ span.adf-mention {
 	display: flex;
 	align-items: flex-start;
 	gap: 12px;
-	margin: 16px 28px 0;
-	padding: 12px 14px;
+	margin: 16px 32px 0;
+	padding: 12px 16px;
 	border-radius: var(--gemini-radius);
 }
 
@@ -396,15 +398,15 @@ span.adf-mention {
 	flex: 1;
 	flex-direction: column;
 	gap: 2px;
-	line-height: 1.45;
+	line-height: var(--gc-leading-row);
 }
 
 .review-conflict {
 	display: grid;
 	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 	gap: 10px;
-	margin: 0 -12px 10px;
-	padding: 10px 12px;
+	margin: 0 -12px 8px;
+	padding: 8px 12px;
 	border: 1px solid color-mix(in srgb, var(--gemini-warn) 55%, transparent);
 	border-radius: var(--gemini-radius-small);
 	background: color-mix(in srgb, var(--gemini-warn) 6%, transparent);
@@ -413,7 +415,7 @@ span.adf-mention {
 
 .review-conflict-side {
 	min-width: 0;
-	padding: 6px 10px;
+	padding: 8px 8px;
 	border-radius: var(--gemini-radius-small);
 	background: color-mix(in srgb, var(--gemini-warn) 12%, transparent);
 }
@@ -424,8 +426,8 @@ span.adf-mention {
 
 .review-conflict-label {
 	margin-bottom: 4px;
-	font-size: 11px;
-	font-weight: 600;
+	font-size: var(--gc-text-xs);
+	font-weight: var(--gc-weight-semibold);
 	color: var(--gemini-muted);
 }
 
@@ -446,7 +448,7 @@ span.adf-mention {
 	flex-wrap: wrap;
 	align-items: center;
 	gap: 8px;
-	padding: 12px 28px;
+	padding: 12px 32px;
 	border-top: 1px solid var(--gemini-border);
 	background: var(--vscode-editor-background);
 }
@@ -459,11 +461,11 @@ span.adf-mention {
 .review-foot-text {
 	flex: 1 1 16em;
 	color: var(--gemini-muted);
-	font-size: 12.5px;
+	font-size: var(--gc-text-md);
 }
 
 .review-status {
-	font-size: 12px;
+	font-size: var(--gc-text-sm);
 	color: var(--gemini-muted);
 }
 
@@ -475,7 +477,7 @@ span.adf-mention {
 }
 
 .review-foot-reason {
-	font-size: 12px;
+	font-size: var(--gc-text-sm);
 	color: var(--gemini-warn);
 }
 
@@ -489,11 +491,11 @@ span.adf-mention {
 	display: flex;
 	align-items: center;
 	gap: 2px;
-	padding: 3px;
-	border: 1px solid var(--gemini-border-strong);
-	border-radius: 8px;
+	padding: var(--gc-space-1);
+	border: var(--gc-hairline);
+	border-radius: var(--gc-radius-overlay);
 	background: var(--gemini-popover);
-	box-shadow: 0 8px 24px var(--gemini-shadow);
+	box-shadow: var(--gc-shadow);
 }
 
 .review-toolbar[hidden] {
@@ -505,13 +507,13 @@ span.adf-mention {
 	align-items: center;
 	justify-content: center;
 	min-width: 28px;
-	height: 26px;
-	padding: 0 6px;
+	height: var(--gc-control);
+	padding: 0 8px;
 	border: none;
-	border-radius: 5px;
+	border-radius: var(--gc-radius-md);
 	background: none;
 	color: var(--vscode-foreground);
-	font-size: 13px;
+	font-size: var(--gc-text-md);
 	cursor: pointer;
 }
 
@@ -522,13 +524,13 @@ span.adf-mention {
 .review-tool-sep {
 	width: 1px;
 	height: 18px;
-	margin: 0 3px;
+	margin: 0 4px;
 	background: var(--gemini-border);
 }
 
 .review-tool[data-block] {
-	font-size: 11.5px;
-	font-weight: 600;
+	font-size: var(--gc-text-sm);
+	font-weight: var(--gc-weight-semibold);
 }
 
 .review-tool.on {
@@ -541,11 +543,11 @@ span.adf-mention {
 	height: 24px;
 	padding: 0 8px;
 	border: 1px solid var(--vscode-focusBorder);
-	border-radius: 5px;
+	border-radius: var(--gc-radius-md);
 	background: var(--vscode-input-background);
 	color: var(--vscode-input-foreground);
 	font: inherit;
-	font-size: 12px;
+	font-size: var(--gc-text-sm);
 	outline: none;
 }
 

@@ -22,6 +22,7 @@
 //   project.ts         a project chat's New thread dialog and side panel
 //   projectSettings.ts a project chat's settings popup (settingsLogic.ts holds its state)
 //   runButtons.ts      Run on a reply's shell blocks, and how the command ended
+//   debugCardLoader.ts Debug mode's bar and cards (debugCard.ts, loaded with the first)
 
 import type { ItemUpdate } from '../src/acp/textDeltas';
 import { chatProtocolVersion, type ToWebview } from '../src/host/chatProtocol';
@@ -43,10 +44,11 @@ import { updatePlusMenu } from './plusMenu';
 import { openNewThread, showParentProject, showProjectPanel } from './project';
 import { pickedRepository, showProjectSettings } from './projectSettingsLoader';
 import { onSide } from './sideChatLoader';
+import { onDebug } from './debugCardLoader';
 import { setRunState, setRunView } from './runButtons';
 import { updateOutline } from './promptNav';
 import { setSideLinks } from './sideLinks';
-import { appended, applyItem, isNearBottom, reset, setFoldWork, setStall, settleScroll, updateWorking } from './transcript';
+import { appended, applyItem, isNearBottom, reset, setFoldWork, setStall, settleScroll, takeRenderStats, updateWorking } from './transcript';
 import { showBreakdown, showContext, showQuota, toggleUsage, updateUsage } from './usage';
 import { state, strings, ui, vscode } from './view';
 
@@ -102,8 +104,12 @@ function applyUpdates(updates: readonly ItemUpdate[]): void {
 	if (updates.some(update => update.kind === 'user')) {
 		updateOutline();
 	}
-	if (updates.some(update => update.kind === 'turnEnd')) {
+	const turnEnd = updates.findLast(update => update.kind === 'turnEnd');
+	if (turnEnd) {
 		updateUsage();
+		// What the view spent on the turn, for its line in the Gemini log.
+		const { ms, updates: rendered } = takeRenderStats();
+		vscode.postMessage({ type: 'turnRendered', turnEnd: turnEnd.id, renderMs: ms, updates: rendered });
 	}
 	updatePlaceholder();
 }
@@ -169,6 +175,10 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			break;
 		case 'capabilities':
 			state.imageInput = message.image;
+			break;
+		case 'teamTools':
+			state.teamTools = message.state;
+			updatePlusMenu();
 			break;
 		case 'composerHeight':
 			restoreComposerHeight(message.height);
@@ -281,6 +291,9 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			break;
 		case 'runState':
 			setRunState(message.text, message.state);
+			break;
+		case 'debug':
+			onDebug(message);
 			break;
 		case 'stall':
 			setStall(message.stall);

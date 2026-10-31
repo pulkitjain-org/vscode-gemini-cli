@@ -28,6 +28,7 @@ Documentation:
 - [docs/guide/](docs/guide/): the user docs, one page per area, published as the [GeminiCode docs](https://pulkitjain-org.github.io/vscode-gemini-cli/docs/). They describe what is on `main`; update them in the same pull request as the feature.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how GeminiCode works and why, including the security model, admin policies and the [design rules](docs/ARCHITECTURE.md#design-rules).
 - [docs/PROJECTS.md](docs/PROJECTS.md): how Projects work inside: the coordinator and its threads, how prompts move between them, and what drives the coordinator's decisions.
+- [docs/DEBUG_MODE.md](docs/DEBUG_MODE.md): the design of Debug mode, not yet built: an agent that debugs from evidence of the running program, with the debugger, marked log lines and their cleanup.
 - [docs/FINDINGS.md](docs/FINDINGS.md): Gemini CLI behaviour and measurements the design relies on.
 - [docs/RELEASING.md](docs/RELEASING.md): versions, cutting a release, the download page, and Apple signing.
 - [docs/ROADMAP.md](docs/ROADMAP.md): open work and risks.
@@ -52,11 +53,11 @@ The repository's top-level README, SECURITY and AGENTS files point here. CONTRIB
 
 ## Issues and security
 
-Report bugs in [GitHub Issues](https://github.com/pulkitjain-org/vscode-gemini-cli/issues). Include the GeminiCode and Gemini CLI versions and the relevant lines from **Gemini: Show Log**, with account names and project IDs removed. Report vulnerabilities privately through [GitHub's vulnerability reporting](https://github.com/pulkitjain-org/vscode-gemini-cli/security/advisories/new), never in a public issue.
+To report a bug, run **Gemini: Report a Problem**: it opens a report with the GeminiCode and Gemini CLI versions, the last failed turn and the recent log lines, with account names, project IDs, your home folder and anything that looks like a key taken out, for you to read over and paste into a [GitHub issue](https://github.com/pulkitjain-org/vscode-gemini-cli/issues) or a message to the maintainers. Report vulnerabilities privately through [GitHub's vulnerability reporting](https://github.com/pulkitjain-org/vscode-gemini-cli/security/advisories/new), never in a public issue.
 
 ## Contributing
 
-Put new code in `extensions/gemini/` and follow the [design rules](docs/ARCHITECTURE.md#design-rules). Keep `src/acp` free of `vscode` imports, so its logic can be unit tested. If you change the messages between the chat view and its webview (`src/host/chatProtocol.ts`), bump `chatProtocolVersion`.
+Put new code in `extensions/gemini/` and follow the [design rules](docs/ARCHITECTURE.md#design-rules). Keep `src/acp` free of `vscode` imports, so its logic can be unit tested. If you change the messages between the chat view and its webview (`src/host/chatProtocol.ts`), bump `chatProtocolVersion` and set `chatProtocolHash` to the value `test/acp/chatProtocolHash.test.ts` names; the test fails until both are done.
 
 Commits are authored as the repository owner, branches start with `task/`, `feature/` or `bugfix/`, and nothing names an AI tool; [AGENTS.md](../AGENTS.md#commits-branches-and-pull-requests) has the full rules. `scripts/commit-policy.sh` checks them: the hooks in `scripts/git-hooks/` run it on commit and push, and Gemini CI's Policy job on every pull request.
 

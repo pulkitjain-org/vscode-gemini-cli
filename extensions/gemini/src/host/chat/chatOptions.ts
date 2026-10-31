@@ -21,6 +21,8 @@ import type { ConversationEntry, MessageRecord } from '../../acp/cliSessions';
 import type { FinishedCommand, RunPlace } from '../../acp/runCommands';
 import type { RunOutcome } from '../agentTerminals';
 import type { ForkAction, ForkRequest, NewThread, ProjectSettingsAction, ProjectSettingsSave, SideLink, ThreadAction, ViewContextBreakdown, ViewSideLinks } from '../chatProtocol';
+import type { TryChoice } from '../panelProtocol';
+import type { DebugAction } from '../debug/debugProtocol';
 import type { ToolChips } from '../toolChips';
 import type { UsageMeter } from '../usageMeter';
 import type { FileMatch } from '../workspaceFiles';
@@ -75,6 +77,19 @@ export interface ChatControllerOptions {
 	indexContext?(draft: string): Promise<string | undefined>;
 	/** A note telling the agent to use the index tools, when its folder's index is built; sent once per session. */
 	indexHint?(): string | undefined;
+	/**
+	 * The team tools for this agent: listed to its sessions only once its task needs them
+	 * (a ticket or merge request in a prompt or an attachment, a flow, or the user's choice).
+	 */
+	readonly teamTools?: {
+		/** Whether any team tool is connected, so they can be turned on. */
+		available(): boolean;
+		enabled(): boolean;
+		/** Turns them on for good; a running session hears through tools/list_changed. */
+		enable(): void;
+		/** Turns them on when `text` or `attachments` refer to a ticket, merge request, page or design. */
+		notePrompt(text: string, attachments: readonly Attachment[]): void;
+	};
 	/** What Read the code too needs: the agent process, the folder, and the index's servers and outline for it. Unset in a project's chats, whose threads do the reading. */
 	research?: ChatResearchHost;
 	/** The notice for errors the language servers report in the folder's changed files after a turn that edited them; undefined without any. */
@@ -123,6 +138,10 @@ export interface ChatControllerOptions {
 	contextCost?(): ChatContextCost | undefined;
 	/** The @ picker's Symbols: definitions named like `query` in the folder's index; undefined while the index is off, unavailable or not built. */
 	symbols?(query: string): Promise<readonly ChatSymbol[] | undefined>;
+	/** A note every prompt carries, such as Debug mode's phase and hypotheses; undefined adds none. */
+	turnNote?(): string | undefined;
+	/** A debug bar or card button (src/host/debug); unset where Debug mode is not offered. */
+	debugAction?(action: DebugAction, arg?: string): void;
 }
 
 /** What the side column shows and opens. */
@@ -206,8 +225,8 @@ export interface ChatProject {
 	post(text: string, attachments: readonly Attachment[]): void;
 	/** Tool calls the chat leaves out: the project's own tools, which show as posts and thread cards. */
 	hidesToolCall(title: string): boolean;
-	/** `repo` names one repository of a thread in several, for Merge back. */
-	threadAction(thread: string, action: ThreadAction, repo?: string): void;
+	/** `repo` names one repository of a thread in several, for Merge back; `choice` is the Try chevron menu's pick. */
+	threadAction(thread: string, action: ThreadAction, repo?: string, choice?: TryChoice): void;
 	/** The New thread dialog's Start thread. */
 	startThread(thread: NewThread): void;
 	/** Project settings: open it, save it, or one of its buttons that needs the extension. */

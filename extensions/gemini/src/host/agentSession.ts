@@ -43,7 +43,7 @@ export class AgentSession implements ChatHost, vscode.Disposable {
 		/** Overrides the model each session switches to, such as a project coordinator's Flash model. */
 		preferredModel?: AgentClientOptions['preferredModel'],
 	) {
-		const ownFiles = isInWorkspace(folder) ? undefined : createFileHandlers(new WorkspaceFileSystem(), () => agentFileAccessPolicy(folder));
+		const ownFiles = isInWorkspace(folder) ? undefined : createFileHandlers(new WorkspaceFileSystem(), () => agentFileAccessPolicy(folder), (...args) => service.writeGuard?.(...args));
 		this.client = new AgentClient(service.runtime, {
 			cwd: folder,
 			resumeSessionId,

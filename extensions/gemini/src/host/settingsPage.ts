@@ -18,21 +18,31 @@ import type { AuditLog } from '../acp/auditLog';
 import { ownTrustRules, readTrustRules, staleTrustRules, type TrustLevel, type TrustRule } from '../acp/trustedFolders';
 import { trustRows, type TrustRow } from '../acp/trustRows';
 import type { AgentService } from './agentService';
-import { type getAgentCommand, getWorkspaceCwd, workspaceFolderPaths } from './configuration';
+import { configSection, type getAgentCommand, getWorkspaceCwd, workspaceFolderPaths } from './configuration';
 import { configuredDefaultMode } from './defaultMode';
 import { developerToolsOn } from './developerTools';
 import { tildify } from './displayText';
-import { CliReport, ContextCostView, ExtensionView, FromSettingsPage, HookView, McpServerView, MemoryFileView, PreferencesView, RulesFileView, SettingsPageView, SkillView, ToSettingsPage, TrustRowView, TrustView } from './panelProtocol';
+import { CliReport, ContextCostView, ExtensionView, FromSettingsPage, HookView, McpServerView, MemoryFileView, PreferencesView, RulesFileView, SettingRowView, SettingSectionView, SettingsPageView, SkillView, ToSettingsPage, TrustRowView, TrustView } from './panelProtocol';
 import { SettingsPageStrings } from './panelStrings';
 import type { forgetSkills } from './teamCommands';
 import { cliModeList } from '../acp/sessionSettings';
 import { PagePanel, PageShell, SinglePage } from './pagePanel';
 import { agentSetupTabs, agentSetupTabsLabel, agentSetupTitle, openAgentSetupTab } from './agentSetupTabs';
-import { ContextCost, estimateTokens, heavyContextTokens, heavyServerTokens, measureCalls, measureTokens } from '../acp/contextCost';
+import { ContextCost, heavyReadings, measureCalls } from '../acp/contextCost';
 import type { ContextMeasures } from './chat/chatContext';
 import { showError } from './errorNotice';
+import { ContributedSection, isPolicyLocked, parseSettingValue, resolveNls, sameValue, sectionId, sectionTitle, SettingRow, settingSections, settingTarget } from '../acp/settingsModel';
 
 const viewType = 'gemini.projectSettings';
+/** The extension's own id, whose `packageJSON` holds the contributed settings. */
+const extensionId = 'gemini-fork.gemini';
+
+/** A contributed section as the page lists it: its anchor, its title and its settings, with every `%key%` resolved. */
+interface ResolvedSection {
+	readonly id: string;
+	readonly title: string;
+	readonly settings: readonly SettingRow[];
+}
 
 /**
  * Project Helpers: what every Gemini agent loads when it starts. MCP servers,
@@ -78,12 +88,16 @@ export class SettingsPage implements vscode.Disposable {
 
 	/** The folder Context per model call shows, when the user picked one of a multi-root window's. */
 	private contextFolder: string | undefined;
+	/** The contributed settings, read once from the extension's package.json and package.nls.json. */
+	private contributed: Promise<readonly ResolvedSection[]> | undefined;
 
 	/** `contextCost` measures what every model call carries in each folder and keeps the results (chatContext.ts). */
 	constructor(private readonly extensionUri: vscode.Uri, private readonly service: AgentService, private readonly host: SettingsHost, private readonly contextCost?: SettingsContextCost) {
 		this.disposables.push(
 			// A measure started here or from a chat's usage popover.
 			...contextCost ? [contextCost.onDidChange(folder => folder === this.measuredFolder() && void this.update())] : [],
+			// A setting changed here, in the editor's own Settings or by a policy: every row shows its value in effect.
+			vscode.workspace.onDidChangeConfiguration(e => e.affectsConfiguration(configSection) && void this.update()),
 			vscode.commands.registerCommand('gemini.projectSettings', () => this.show()),
 			vscode.commands.registerCommand('gemini.newSkill', () => this.newSkill()),
 			service.onDidChangeMcpProblems(() => void this.update()),
@@ -254,17 +268,101 @@ export class SettingsPage implements vscode.Disposable {
 		rules.push(await rulesView(vscode.l10n.t("Personal rules"), personalRules, tildify(personalRules)));
 		const folder = this.measuredFolder();
 		const cost = this.contextCost?.cost(folder);
-		const measured = new Map(cost?.servers.map(s => [s.name, s.tokens]));
-		// A measure covers its folder's servers and the personal ones; another folder's server of the same name is another server.
-		const scopes = new Set([personalLabel, folders.find(each => each.uri.fsPath === folder)?.name]);
 		return {
-			servers: servers.map(server => scopes.has(server.scope) && measured.has(server.name) ? { ...server, tokens: measured.get(server.name) } : server),
+			settings: await this.settingsView(),
+			servers,
 			skills, hooks, extensions: this.extensions, memory: this.memory, rules, preferences: this.preferencesView(personal),
 			contextCost: await this.contextCostView(folder, cost),
 			// Measuring costs model calls: a developer's button. The measures the chat made still show.
 			developer: developerToolsOn(),
 			trust: await trust,
 		};
+	}
+
+	/**
+	 * The contributed sections, from the running extension's package.json (or
+	 * the file, outside the extension host), with every `%key%` resolved from
+	 * package.nls.json: built once, so the page never drifts from what is contributed.
+	 */
+	private contributedSettings(): Promise<readonly ResolvedSection[]> {
+		return this.contributed ??= (async () => {
+			const read = (file: string) => fs.readFile(path.join(this.extensionUri.fsPath, file), 'utf8');
+			const packageJson = (vscode.extensions.getExtension(extensionId)?.packageJSON ?? JSON.parse(await read('package.json'))) as { readonly contributes?: { readonly configuration?: ContributedSection | readonly ContributedSection[] } };
+			const strings = await read('package.nls.json').then(text => JSON.parse(text) as Readonly<Record<string, string>>, () => ({}));
+			const configuration = packageJson.contributes?.configuration ?? [];
+			return settingSections(Array.isArray(configuration) ? configuration : [configuration as ContributedSection]).map(section => ({
+				id: sectionId(section.title),
+				title: sectionTitle(section.title, strings),
+				settings: section.settings.map(setting => ({
+					...setting,
+					help: resolveNls(setting.help, strings),
+					...setting.choices ? { choices: setting.choices.map(choice => ({ ...choice, label: resolveNls(choice.label, strings), ...choice.help ? { help: resolveNls(choice.help, strings) } : {} })) } : {},
+					...setting.deprecated ? { deprecated: resolveNls(setting.deprecated, strings) } : {},
+				})),
+			}));
+		})();
+	}
+
+	/** Every contributed setting with its value in effect, where a change goes, and whether a policy locks it. */
+	private async settingsView(): Promise<SettingSectionView[]> {
+		const sections = await this.contributedSettings();
+		const config = vscode.workspace.getConfiguration();
+		const workspaceOpen = !!vscode.workspace.workspaceFolders?.length;
+		return sections.map(section => ({
+			id: section.id,
+			title: section.title,
+			settings: section.settings.map((setting): SettingRowView => {
+				const value = config.get(setting.key);
+				return {
+					key: setting.key,
+					label: setting.label,
+					help: setting.help,
+					control: setting.control,
+					value,
+					default: setting.default,
+					...setting.choices ? { choices: setting.choices } : {},
+					...setting.minimum !== undefined ? { minimum: setting.minimum } : {},
+					...setting.maximum !== undefined ? { maximum: setting.maximum } : {},
+					target: settingTarget(setting.scope, workspaceOpen),
+					locked: isPolicyLocked(value, config.inspect(setting.key)),
+					modified: !sameValue(value, setting.default),
+					advanced: setting.advanced,
+					...setting.deprecated ? { deprecated: setting.deprecated } : {},
+				};
+			}),
+		}));
+	}
+
+	/** A row's control changed: the value, checked against the contribution, goes to the user's or the workspace's settings; a locked setting is left alone. */
+	private async setSetting(key: string, value: unknown): Promise<void> {
+		const setting = (await this.contributedSettings()).flatMap(section => section.settings).find(each => each.key === key);
+		if (!setting) {
+			return;
+		}
+		const config = vscode.workspace.getConfiguration();
+		if (isPolicyLocked(config.get(key), config.inspect(key))) {
+			return;
+		}
+		const parsed = parseSettingValue(setting, value);
+		if (!parsed) {
+			return;
+		}
+		const workspace = settingTarget(setting.scope, !!vscode.workspace.workspaceFolders?.length) === 'workspace';
+		// The default is written as no entry, as the editor's Settings does, so the file stays as small as the user's choices.
+		await config.update(key, !workspace && sameValue(parsed.value, setting.default) ? undefined : parsed.value, workspace ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global);
+	}
+
+	/** Reset: the setting leaves the user's settings and the workspace's, so the default applies again. */
+	private async resetSetting(key: string): Promise<void> {
+		const setting = (await this.contributedSettings()).flatMap(section => section.settings).find(each => each.key === key);
+		const config = vscode.workspace.getConfiguration();
+		if (!setting || isPolicyLocked(config.get(key), config.inspect(key))) {
+			return;
+		}
+		await config.update(key, undefined, vscode.ConfigurationTarget.Global);
+		if (vscode.workspace.workspaceFolders?.length && config.inspect(key)?.workspaceValue !== undefined) {
+			await config.update(key, undefined, vscode.ConfigurationTarget.Workspace);
+		}
 	}
 
 	/** Trusted Folders: every rule of the Gemini CLI's trust file, in plain words. */
@@ -342,23 +440,26 @@ export class SettingsPage implements vscode.Disposable {
 	}
 
 	private async contextCostView(folder: string, cost: ContextCost | undefined): Promise<ContextCostView> {
-		const n = (tokens: number) => Math.round(tokens).toLocaleString();
-		const parts: ContextCostView['parts'] = cost ? [
-			{ label: vscode.l10n.t("Gemini CLI's own prompt and tools"), tokens: cost.cli, kind: 'cli' },
-			{ label: vscode.l10n.t("Context files and skills list"), tokens: cost.context, kind: 'context' },
-			...cost.servers.map(s => ({ label: vscode.l10n.t("MCP server {0}", s.name), tokens: s.tokens, kind: 'server' as const })),
-			{ label: vscode.l10n.t("GeminiCode's own tools"), tokens: cost.geminicode, kind: 'geminicode' },
-		] : [];
-		const tips = cost ? [
-			...cost.servers.filter(s => s.tokens >= heavyServerTokens).map(s => vscode.l10n.t("{0} adds about {1} tokens to every model call. Turn it off below when agents don't need it, or list only the tools they use in its includeTools.", s.name, n(s.tokens))),
-			...cost.context >= heavyContextTokens ? [vscode.l10n.t("The context files add about {0} tokens to every model call. Rules needed only for some tasks can move into skills, which load only when a task calls for them.", n(cost.context))] : [],
-		] : [];
+		// One row per test prompt, each the input tokens the CLI reported: nothing is worked out from them.
+		const label = (reading: ContextCost['readings'][number]): string => {
+			switch (reading.kind) {
+				case 'empty': return vscode.l10n.t("Empty folder");
+				case 'folder': return vscode.l10n.t("This folder");
+				case 'server': return vscode.l10n.t("This folder with {0}", reading.server ?? '');
+				case 'geminicode': return vscode.l10n.t("This folder with GeminiCode's tools");
+				case 'all': return vscode.l10n.t("Everything agents get");
+			}
+		};
+		const readings: ContextCostView['readings'] = cost ? cost.readings.map(reading => ({ label: label(reading), tokens: reading.tokens })) : [];
+		const heavy = cost ? heavyReadings(cost) : { servers: [], context: false };
+		const tips = [
+			...heavy.servers.map(server => vscode.l10n.t("{0} accounts for much of it: turn it off below when agents don't need it, or list only the tools they use in its includeTools.", server)),
+			...heavy.context ? [vscode.l10n.t("The context files account for much of it: rules needed only for some tasks can move into skills, which load only when a task calls for them.")] : [],
+		];
 		const { state, error } = this.contextCost?.view(folder) ?? { state: 'none' };
-		// Measuring is a model call per part, each carrying the context it measures: say what it takes before anyone asks.
-		const calls = measureCalls((await this.contextCost?.servers(folder).catch(() => undefined))?.length ?? cost?.servers.length ?? 0);
-		const note = cost
-			? vscode.l10n.t("Measuring again sends {0} prompts to the lightest Gemini model, one for each part, about {1} tokens in all. They count against your Gemini quota like any other model call, so measure again only after your setup changes.", calls, n(measureTokens(cost)))
-			: vscode.l10n.t("Measuring sends {0} prompts to the lightest Gemini model, one for each part. Each carries the context it measures, so together they use several times its tokens, and they count against your Gemini quota like any other model call.", calls);
+		// Measuring is a model call per test prompt: say what it takes before anyone asks.
+		const servers = (await this.contextCost?.servers(folder).catch(() => undefined))?.length ?? cost?.readings.filter(reading => reading.kind === 'server').length ?? 0;
+		const note = vscode.l10n.t("Runs {0} test prompts against the lightest Gemini model; they count against your quota like any other call.", measureCalls(servers));
 		const folders = vscode.workspace.workspaceFolders?.filter(each => each.uri.scheme === 'file') ?? [];
 		return {
 			state,
@@ -366,7 +467,7 @@ export class SettingsPage implements vscode.Disposable {
 			folderPath: folder,
 			...folders.length > 1 ? { folders: folders.map(each => ({ path: each.uri.fsPath, name: each.name })) } : {},
 			...cost ? { total: cost.total, measured: cost.model ? vscode.l10n.t("{0}, counted with {1}", relativeAgo(cost.measuredAt), cost.model) : relativeAgo(cost.measuredAt) } : {},
-			parts,
+			readings,
 			tips,
 			note,
 			...error ? { error: vscode.l10n.t("Couldn't measure: {0}", error) } : {},
@@ -489,6 +590,15 @@ export class SettingsPage implements vscode.Disposable {
 				case 'removeTrust':
 					await this.removeTrust(message.rule);
 					break;
+				case 'setSetting':
+					await this.setSetting(message.key, message.value);
+					break;
+				case 'resetSetting':
+					await this.resetSetting(message.key);
+					break;
+				case 'openTab':
+					// Answered by the page shell (PagePanel) before it reaches here.
+					return;
 				case 'createRules':
 					if (!this.files.has(message.path)) {
 						return;
@@ -785,80 +895,100 @@ export class SettingsPage implements vscode.Disposable {
 	}
 
 	private shell(): PageShell {
-		const strings: SettingsPageStrings = {
-			contextTitle: vscode.l10n.t("Context per model call"),
-			contextHint: vscode.l10n.t("What every model call sends before your prompt in {0}. A large context makes every step of an agent slower and uses more of your quota."),
-			measure: vscode.l10n.t("Measure"),
-			measureAgain: vscode.l10n.t("Measure Again"),
-			measuring: vscode.l10n.t("Measuring\u2026"),
-			contextFolder: vscode.l10n.t("Folder"),
-			contextNone: vscode.l10n.t("Not measured yet."),
-			contextTotal: vscode.l10n.t("{0} tokens in every model call"),
-			tokensPerCall: vscode.l10n.t("\u2248{0} tokens"),
-			title: vscode.l10n.t("Agent Setup"),
-			subtitle: vscode.l10n.t("What every Gemini agent loads when it starts, shared with the gemini command in your terminal. Changes apply to new agents."),
-			restart: vscode.l10n.t("Restart Agent"),
-			servers: vscode.l10n.t("MCP servers"),
-			serversHint: vscode.l10n.t("Tools agents can use, such as GitHub, a database or your docs. A project's servers load once you trust its folder."),
-			addServer: vscode.l10n.t("Add Server"),
-			connections: vscode.l10n.t("Connections"),
-			noServers: vscode.l10n.t("No MCP servers yet."),
-			edit: vscode.l10n.t("Edit in settings"),
-			enable: vscode.l10n.t("Use this server"),
-			failed: vscode.l10n.t("Failed to start: {0}"),
-			skills: vscode.l10n.t("Skills"),
-			skillsHint: vscode.l10n.t("Know-how Gemini loads when a task calls for it, such as how to cut a release. Pick one from the / menu to use it now."),
-			newSkill: vscode.l10n.t("New Skill"),
-			noSkills: vscode.l10n.t("No skills yet."),
-			hooks: vscode.l10n.t("Hooks"),
-			hooksHint: vscode.l10n.t("Commands the CLI runs at set points, such as a formatter after every edit. A project's hooks run once you trust its folder."),
-			addHook: vscode.l10n.t("Add Hook"),
-			noHooks: vscode.l10n.t("No hooks yet."),
-			hookMatcher: vscode.l10n.t("for {0}"),
-			enableHook: vscode.l10n.t("Run this hook"),
-			extensions: vscode.l10n.t("Extensions"),
-			extensionsHint: vscode.l10n.t("Gemini CLI extensions bundle commands, MCP servers, skills and rules. Installing one runs the CLI's installer in a terminal."),
-			installExtension: vscode.l10n.t("Install"),
-			noExtensions: vscode.l10n.t("No extensions installed."),
-			enableExtension: vscode.l10n.t("Use this extension"),
-			updateExtension: vscode.l10n.t("Update"),
-			uninstallExtension: vscode.l10n.t("Uninstall"),
-			memory: vscode.l10n.t("Memory"),
-			memoryHint: vscode.l10n.t("The GEMINI.md files the CLI loads for this folder, from your home folder down to subfolders and extensions."),
-			addMemory: vscode.l10n.t("Add Memory"),
-			refresh: vscode.l10n.t("Refresh"),
-			noMemory: vscode.l10n.t("No GEMINI.md files in use."),
-			loading: vscode.l10n.t("Asking the Gemini CLI…"),
-			rules: vscode.l10n.t("Rules"),
-			rulesHint: vscode.l10n.t("Instructions every agent follows, such as how to build, test and write code here."),
-			open: vscode.l10n.t("Open"),
-			create: vscode.l10n.t("Create"),
-			missing: vscode.l10n.t("Not created yet"),
-			enableSkill: vscode.l10n.t("Use this skill"),
-			signIn: vscode.l10n.t("Sign In"),
-			preferences: vscode.l10n.t("Gemini CLI settings"),
-			preferencesHint: vscode.l10n.t("Your own settings in {0}. A project's .gemini/settings.json can override them."),
-			defaultApprovalMode: vscode.l10n.t("Default approval mode"),
-			defaultApprovalModeHint: vscode.l10n.t("The mode a new agent starts in, as the CLI's own /settings sets it. YOLO is picked on purpose, never by default."),
-			ownDefaultModeNote: vscode.l10n.t("GeminiCode's gemini.agents.defaultMode is set to {0}, which wins here; clear it to follow the CLI."),
-			permanentApproval: vscode.l10n.t("Allow for all future sessions"),
-			permanentApprovalHint: vscode.l10n.t("Permission prompts offer to allow a tool or command from now on, so trusted commands such as npm test stop asking in every new chat."),
-			planRouting: vscode.l10n.t("Plan with Pro, build with Flash"),
-			planRoutingHint: vscode.l10n.t("In Plan mode, the model on Auto plans with Pro and carries out the plan with Flash. Turn off to keep one model throughout."),
-			usageStatistics: vscode.l10n.t("Send usage statistics"),
-			usageStatisticsHint: vscode.l10n.t("The Gemini CLI sends anonymous usage statistics to Google to improve it."),
-			keepChats: vscode.l10n.t("Keep saved chats for"),
-			keepChatsHint: vscode.l10n.t("The Gemini CLI deletes saved chats older than this, so they no longer show under Restore Session."),
-			trust: vscode.l10n.t("Trusted Folders"),
-			trustHint: vscode.l10n.t("Where the Gemini CLI loads a folder's own settings, hooks and MCP servers. Shared with the terminal."),
-			trustFolder: vscode.l10n.t("Trust Folder..."),
-			trustParent: vscode.l10n.t("Trust a Parent Folder..."),
-			neverTrust: vscode.l10n.t("Never Trust a Folder..."),
-			removeTrust: vscode.l10n.t("Remove"),
-			noTrust: vscode.l10n.t("No trusted folders yet."),
-		};
-		return { script: 'settings.js', styles: [], title: strings.title, bodyClass: 'settings-page', mainClass: 'settings', strings, tabs: agentSetupTabs('loads'), tabsLabel: agentSetupTabsLabel() };
+		const strings = settingsPageStrings();
+		return { script: 'settings.js', styles: [], title: strings.title, bodyClass: 'settings-page setup-page', mainClass: 'settings', strings, tabs: agentSetupTabs('loads'), tabsLabel: agentSetupTabsLabel() };
 	}
+}
+
+/** The page's words, which the page reads from its script tag; exported so the page's tests run with the strings the app ships. */
+export function settingsPageStrings(): SettingsPageStrings {
+	const tabs = agentSetupTabs('loads');
+	return {
+		contextTitle: vscode.l10n.t("Context per model call"),
+		contextHint: vscode.l10n.t("What every model call sends before your prompt in {0}. A large context makes every step of an agent slower and uses more of your quota."),
+		measure: vscode.l10n.t("Measure"),
+		measureAgain: vscode.l10n.t("Measure Again"),
+		measuring: vscode.l10n.t("Measuring\u2026"),
+		contextFolder: vscode.l10n.t("Folder"),
+		contextNone: vscode.l10n.t("Not measured yet."),
+		contextTotal: vscode.l10n.t("{0} tokens in every model call"),
+		characters: vscode.l10n.t("{0} characters"),
+		title: vscode.l10n.t("Settings"),
+		subtitle: vscode.l10n.t("Every GeminiCode setting, and what every Gemini agent loads when it starts, shared with the gemini command in your terminal. Changes to loads apply to new agents."),
+		restart: vscode.l10n.t("Restart Agent"),
+		servers: vscode.l10n.t("MCP servers"),
+		serversHint: vscode.l10n.t("Tools agents can use, such as GitHub, a database or your docs. A project's servers load once you trust its folder."),
+		addServer: vscode.l10n.t("Add Server"),
+		connections: vscode.l10n.t("Connections"),
+		noServers: vscode.l10n.t("No MCP servers yet."),
+		edit: vscode.l10n.t("Edit in settings"),
+		enable: vscode.l10n.t("Use this server"),
+		failed: vscode.l10n.t("Failed to start: {0}"),
+		skills: vscode.l10n.t("Skills"),
+		skillsHint: vscode.l10n.t("Know-how Gemini loads when a task calls for it, such as how to cut a release. Pick one from the / menu to use it now."),
+		newSkill: vscode.l10n.t("New Skill"),
+		noSkills: vscode.l10n.t("No skills yet."),
+		hooks: vscode.l10n.t("Hooks"),
+		hooksHint: vscode.l10n.t("Commands the CLI runs at set points, such as a formatter after every edit. A project's hooks run once you trust its folder."),
+		addHook: vscode.l10n.t("Add Hook"),
+		noHooks: vscode.l10n.t("No hooks yet."),
+		hookMatcher: vscode.l10n.t("for {0}"),
+		enableHook: vscode.l10n.t("Run this hook"),
+		extensions: vscode.l10n.t("Extensions"),
+		extensionsHint: vscode.l10n.t("Gemini CLI extensions bundle commands, MCP servers, skills and rules. Installing one runs the CLI's installer in a terminal."),
+		installExtension: vscode.l10n.t("Install"),
+		noExtensions: vscode.l10n.t("No extensions installed."),
+		enableExtension: vscode.l10n.t("Use this extension"),
+		updateExtension: vscode.l10n.t("Update"),
+		uninstallExtension: vscode.l10n.t("Uninstall"),
+		memory: vscode.l10n.t("Memory"),
+		memoryHint: vscode.l10n.t("The GEMINI.md files the CLI loads for this folder, from your home folder down to subfolders and extensions."),
+		addMemory: vscode.l10n.t("Add Memory"),
+		refresh: vscode.l10n.t("Refresh"),
+		noMemory: vscode.l10n.t("No GEMINI.md files in use."),
+		loading: vscode.l10n.t("Asking the Gemini CLI…"),
+		rules: vscode.l10n.t("Rules"),
+		rulesHint: vscode.l10n.t("Instructions every agent follows, such as how to build, test and write code here."),
+		open: vscode.l10n.t("Open"),
+		create: vscode.l10n.t("Create"),
+		missing: vscode.l10n.t("Not created yet"),
+		enableSkill: vscode.l10n.t("Use this skill"),
+		signIn: vscode.l10n.t("Sign In"),
+		preferences: vscode.l10n.t("Gemini CLI settings"),
+		preferencesHint: vscode.l10n.t("Your own settings in {0}. A project's .gemini/settings.json can override them."),
+		defaultApprovalMode: vscode.l10n.t("Default approval mode"),
+		defaultApprovalModeHint: vscode.l10n.t("The mode a new agent starts in, as the CLI's own /settings sets it. YOLO is picked on purpose, never by default."),
+		ownDefaultModeNote: vscode.l10n.t("GeminiCode's gemini.agents.defaultMode is set to {0}, which wins here; clear it to follow the CLI."),
+		permanentApproval: vscode.l10n.t("Allow for all future sessions"),
+		permanentApprovalHint: vscode.l10n.t("Permission prompts offer to allow a tool or command from now on, so trusted commands such as npm test stop asking in every new chat."),
+		planRouting: vscode.l10n.t("Plan with Pro, build with Flash"),
+		planRoutingHint: vscode.l10n.t("In Plan mode, the model on Auto plans with Pro and carries out the plan with Flash. Turn off to keep one model throughout."),
+		usageStatistics: vscode.l10n.t("Send usage statistics"),
+		usageStatisticsHint: vscode.l10n.t("The Gemini CLI sends anonymous usage statistics to Google to improve it."),
+		keepChats: vscode.l10n.t("Keep saved chats for"),
+		keepChatsHint: vscode.l10n.t("The Gemini CLI deletes saved chats older than this, so they no longer show under Restore Session."),
+		trust: vscode.l10n.t("Trusted Folders"),
+		trustHint: vscode.l10n.t("Where the Gemini CLI loads a folder's own settings, hooks and MCP servers. Shared with the terminal."),
+		trustFolder: vscode.l10n.t("Trust Folder..."),
+		trustParent: vscode.l10n.t("Trust a Parent Folder..."),
+		neverTrust: vscode.l10n.t("Never Trust a Folder..."),
+		removeTrust: vscode.l10n.t("Remove"),
+		noTrust: vscode.l10n.t("No trusted folders yet."),
+		search: vscode.l10n.t("Search settings"),
+		noMatches: vscode.l10n.t("No settings match \"{0}\"."),
+		sideIndex: vscode.l10n.t("Settings sections"),
+		loads: tabs.find(tab => tab.id === 'loads')?.label ?? '',
+		otherPages: tabs.filter(tab => tab.id !== 'loads').map(tab => ({ id: tab.id, label: tab.label })),
+		lockedByAdmin: vscode.l10n.t("Set by your administrator"),
+		savedInWorkspace: vscode.l10n.t("Saved for this workspace"),
+		reset: vscode.l10n.t("Reset to default"),
+		advanced: vscode.l10n.t("Advanced"),
+		deprecated: vscode.l10n.t("Deprecated"),
+		addEntry: vscode.l10n.t("Add"),
+		removeEntry: vscode.l10n.t("Remove"),
+		entryPlaceholder: vscode.l10n.t("New entry"),
+		invalidJson: vscode.l10n.t("Not valid JSON; the last valid value is kept."),
+	};
 }
 
 /** A Trusted Folders row in plain words. */
@@ -917,7 +1047,7 @@ async function memoryView(file: string): Promise<MemoryFileView> {
 	const text = await fs.readFile(file, 'utf8').catch(() => undefined);
 	const preview = text === undefined ? undefined : firstLine(text);
 	const characters = text === undefined ? 0 : text.length + await importedCharacters(file, text, new Set([file]));
-	return { path: file, display: tildify(file), ...(preview ? { preview } : {}), ...characters ? { tokens: estimateTokens(characters) } : {} };
+	return { path: file, display: tildify(file), ...(preview ? { preview } : {}), ...characters ? { characters } : {} };
 }
 
 /** The size of the files a context file imports with `@path` lines, and theirs in turn, as the CLI expands them. */

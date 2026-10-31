@@ -7,14 +7,12 @@ import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
-import type { IndexStatus } from '../acp/index/indexerProtocol';
 import { isModeAllowed } from '../acp/adminPolicy';
 import { effectiveStartMode } from '../acp/chatTurns';
 import { errorMessage } from '../acp/errors';
 import { secretPathReason } from '../acp/fileAccess';
 import { collectCommandActions, commandActionKey } from '../acp/hostAllowlists';
 import type { JiraSites } from '../acp/jiraSites';
-import { formatCounts } from '../acp/agentChanges';
 import { attachmentsForFiles } from './addToChat';
 import { AgentsView, AgentSummary, relativeTime } from './agentsView';
 import { configuredDefaultMode } from './defaultMode';
@@ -22,13 +20,12 @@ import { chooseFolder } from './agents/agentStarts';
 import { startsQuietly } from './agentWarmup';
 import { detectAuth } from '../acp/directRequest';
 import { tildify } from './displayText';
-import { configSection, getApprovalPolicy, getProjectSettings, indexBuildOn } from './configuration';
+import { configSection, getApprovalPolicy, getProjectSettings } from './configuration';
 import { preferredModel } from './modelPreference';
 import { moveCard, toggleCard, type DashboardLayout } from '../acp/dashboard';
-import { branchAgentActions } from '../acp/agentRow';
 import { developerToolsOn } from './developerTools';
 import { buildDashboard, DashboardInput, StartupState } from './homeDashboard';
-import { FromHome, HomeAction, HomeAgent, HomeAgentButton, HomeCardId, HomeIndex, HomeProject, HomeView, ToHome } from './panelProtocol';
+import { FromHome, HomeAction, HomeCardId, HomeProject, HomeView, ToHome } from './panelProtocol';
 import { HomeStrings } from './panelStrings';
 import { TeamData } from './teamData';
 import { teamToolIds } from '../acp/teamHttp';
@@ -38,6 +35,8 @@ import { agentsColumn } from './editorPlacement';
 import { createNonce, escapeAttribute } from './webviewHtml';
 import { openTeamLink } from './teamLinks';
 import { showError } from './errorNotice';
+import { markStartup } from './startup';
+import { background } from './background';
 
 const homeViewType = 'gemini.agentHome';
 const layoutKey = 'gemini.home.layout';
@@ -58,8 +57,6 @@ export interface HomeOptions {
 	/** Merge request reviews in progress, and when they change. */
 	readonly reviews?: { readonly inProgress: () => DashboardInput['reviewsInProgress']; readonly onDidChange: vscode.Event<void> };
 }
-/** Earlier agents listed; the Agents pane has them all. */
-const maxEarlier = 8;
 /** How often agent updates reach the page at most. */
 const updateDelayMs = 200;
 /** How long Home trusts its last reading of the saved sign-in. */
@@ -69,15 +66,16 @@ type Mode = 'agents' | 'editor';
 
 /**
  * Home: the dashboard GeminiCode opens with. A composer starts a new agent in
- * one step; around it the team tools' state, what needs the user ("Needs
- * you") and cards for agents, Jira tickets, merge requests, quality, releases
- * and Gemini. It opens in front at every launch (`gemini.home.openOnStartup`),
- * whenever the editor area is empty in Agents mode, and from the Agents pane.
- * The tools' data shows at once from the last answers and refreshes in the
- * background while the page is visible; nothing here starts the Gemini CLI.
+ * one step; under it the cards: what is pending on the user, their tickets,
+ * the agents, and the ones the gear menu turns on (quality, Gemini). Each
+ * card's query is in its title's tooltip; a server's trouble is a banner. It
+ * opens in front at every launch (`gemini.home.openOnStartup`), whenever the
+ * editor area is empty in Agents mode, and from the Agents pane. The tools'
+ * data shows at once from the last answers and refreshes in the background
+ * while the page is visible; nothing here starts the Gemini CLI.
  */
-/** Commands the page's own buttons run, with no arguments, beside those the host sends in a view. */
-const pageCommands: ReadonlySet<string> = new Set(['gemini.connections']);
+/** Commands the page's own controls run, with no arguments, beside those the host sends in a view: Connect, and the gear menu's Settings. */
+const pageCommands: ReadonlySet<string> = new Set(['gemini.connections', 'gemini.projectSettings']);
 
 export class AgentHome implements vscode.Disposable {
 
@@ -125,7 +123,6 @@ export class AgentHome implements vscode.Disposable {
 			}),
 			agents.onDidChangeAgents(() => this.schedule()),
 			agents.folderTrust.onDidChange(() => this.schedule()),
-			agents.index?.onDidChangeStatus(() => this.schedule()) ?? { dispose: () => undefined },
 		);
 		void Promise.resolve(vscode.commands.executeCommand<Mode>('_gemini.getMode')).then(mode => this.setMode(mode), () => undefined);
 		// In front of the restored tabs, in either mode; off, Home opens as Agent Home did.
@@ -157,9 +154,12 @@ export class AgentHome implements vscode.Disposable {
 		const panel = vscode.window.createWebviewPanel(homeViewType, vscode.l10n.t("Home"), { viewColumn, preserveFocus }, {
 			enableScripts: true,
 			localResourceRoots: [media],
+			// Kept while an agent's tab is in front, so coming back to Home is a tab switch, not a page load and a rebuild.
+			retainContextWhenHidden: true,
 		});
 		panel.iconPath = vscode.Uri.joinPath(this.extensionUri, 'media', 'gemini.svg');
 		panel.webview.html = this.html(panel.webview, media);
+		markStartup('home shown');
 		panel.webview.onDidReceiveMessage((message: FromHome) => this.onMessage(message).catch(err => void showError(errorMessage(err))));
 		panel.onDidChangeViewState(e => {
 			if (e.webviewPanel.visible) {
@@ -243,7 +243,7 @@ export class AgentHome implements vscode.Disposable {
 		}
 		this.timer = setTimeout(() => {
 			this.timer = undefined;
-			void this.update();
+			background('Rebuilding Home', this.update());
 		}, delay);
 	}
 
@@ -265,30 +265,16 @@ export class AgentHome implements vscode.Disposable {
 
 	private async build(): Promise<HomeView> {
 		const now = Date.now();
-		const index = this.agents.index?.enabled ? this.agents.index : undefined;
 		const trust = this.agents.folderTrust;
 		const workspaces = await Promise.all((await this.agents.workspaces()).map(async w => {
-			const [state, trusted] = await Promise.all([index ? index.summary(w.folder).then(summary => homeIndex(summary, index.status(w.folder))) : undefined, trust.label(w.folder).catch(() => undefined)]);
-			return { folder: w.folder, name: path.basename(w.folder) || w.folder, description: tildify(path.dirname(w.folder)), git: w.git, ...state ? { index: state } : {}, ...trusted ? { trust: trusted } : {} };
+			const trusted = await trust.label(w.folder).catch(() => undefined);
+			return { folder: w.folder, name: path.basename(w.folder) || w.folder, description: tildify(path.dirname(w.folder)), git: w.git, ...trusted ? { trust: trusted } : {} };
 		}));
 		// Archived agents are only under the pane's Archived row.
 		const all = this.agents.summaries().filter(a => !a.archived);
-		// Projects and their threads have their own list.
-		const summaries = all.filter(a => !a.project);
-		const isActive = (a: AgentSummary) => a.state === 'working' || a.state === 'waiting' || a.state === 'done' || a.state === 'error' || !!a.changes?.files;
-		const toView = (a: AgentSummary): HomeAgent => ({
-			id: a.id, title: a.title, workspace: path.basename(a.folder), state: a.state, status: a.status,
-			...(a.changes?.files ? { changes: a.changes.files === 1 ? vscode.l10n.t("{0} in 1 file", formatCounts(a.changes)) : vscode.l10n.t("{0} in {1} files", formatCounts(a.changes), a.changes.files) } : {}),
-			...(a.worktree ? { branch: a.worktree.branch } : {}),
-			...(a.trying ? { trying: true } : {}),
-			...(a.tryChoice ? { tryChoice: a.tryChoice } : {}),
-			updated: relativeTime(a.updatedAt, now),
-			buttons: this.cardButtons(a),
-		});
 		return {
 			workspaces,
-			active: summaries.filter(isActive).map(toView),
-			earlier: summaries.filter(a => !isActive(a)).slice(0, maxEarlier).map(toView),
+			// The projects are for On a branch's chevron; the Agents card lists the agents.
 			...(projectsEnabled() ? {
 				projects: all.flatMap((a): HomeProject[] => a.project?.role === 'coordinator' ? [{
 					id: a.id, title: a.title, workspace: path.basename(a.folder), folder: a.folder, state: a.state, updated: relativeTime(a.updatedAt, now),
@@ -418,19 +404,6 @@ export class AgentHome implements vscode.Disposable {
 	 * sends the task to its coordinator. Resolves with whether it started; when
 	 * not, the user has been told why, or turned it down.
 	 */
-	/** A card's buttons: Stop, Review and the Try button with its chevron, from the one action set, then Open. */
-	private cardButtons(a: AgentSummary): HomeAgentButton[] {
-		const actions = branchAgentActions({ state: a.state, hasChanges: !!a.changes?.files, onBranch: !!a.worktree, trying: a.trying });
-		const tryLabel = a.trying ? vscode.l10n.t("Keep or Take Back\u2026") : a.tryChoice === 'merge' ? vscode.l10n.t("Merge Back") : a.tryChoice === 'mr' ? vscode.l10n.t("Open Merge Request") : vscode.l10n.t("Try in Workspace");
-		const tryIcon = a.trying ? 'beaker' : a.tryChoice === 'merge' ? 'git-merge' : a.tryChoice === 'mr' ? 'git-pull-request' : 'beaker';
-		return [
-			...actions.primary.includes('stop') ? [{ do: 'stop' as const, label: vscode.l10n.t("Stop"), icon: 'debug-stop' }] : [],
-			...actions.check.includes('review') ? [{ do: 'review' as const, label: vscode.l10n.t("Review"), icon: 'diff' }] : [],
-			...actions.work.length ? [{ do: 'mergeBack' as const, label: tryLabel, icon: tryIcon }, ...a.trying ? [] : [{ do: 'tryMenu' as const, label: '', icon: 'chevron-down' }]] : [],
-			{ do: 'open' as const, label: vscode.l10n.t("Open"), primary: true },
-		];
-	}
-
 	private async startProject(folder: string, text: string, attachments: Extract<FromHome, { type: 'start' }>['attachments']): Promise<boolean> {
 		const coordinators = () => this.agents.summaries().filter(a => a.project?.role === 'coordinator').map(a => a.id);
 		const before = new Set(coordinators());
@@ -562,9 +535,6 @@ export class AgentHome implements vscode.Disposable {
 					await this.agents.folderTrust.ask(message.folder, { explicit: message.type === 'trust' });
 				}
 				return;
-			case 'newProject':
-				await vscode.commands.executeCommand('gemini.projects.new');
-				return;
 			case 'addFolder': {
 				// For agents only: the window's folders stay as they are.
 				const folder = await chooseFolder(true);
@@ -589,12 +559,6 @@ export class AgentHome implements vscode.Disposable {
 				}
 				return;
 			}
-			case 'agentSetup':
-				await vscode.commands.executeCommand('gemini.projectSettings');
-				return;
-			case 'openIndex':
-				await vscode.commands.executeCommand('gemini.index.open');
-				return;
 			case 'open':
 				await this.agents.open(message.id);
 				return;
@@ -606,9 +570,6 @@ export class AgentHome implements vscode.Disposable {
 				return;
 			case 'mergeBack':
 				await this.agents.mergeBack(message.id);
-				return;
-			case 'tryMenu':
-				await this.agents.pickTryChoice(message.id);
 				return;
 			case 'action':
 				await this.runAction(message.action);
@@ -665,11 +626,11 @@ export class AgentHome implements vscode.Disposable {
 			calloutCaution: vscode.l10n.t("Caution"),
 			subtitle: vscode.l10n.t("Describe the task. A new agent starts on it right away, and you can start more while it works."),
 			placeholder: vscode.l10n.t("Fix the rounding in the cart total and add a test"),
-			start: vscode.l10n.t("Start Agent"),
+			start: vscode.l10n.t("Start agent"),
 			startAs: vscode.l10n.t("Where the agent works"),
 			startHere: vscode.l10n.t("Here"),
 			startHereHint: vscode.l10n.t("Works in this folder, on your current branch."),
-			startOwnBranch: vscode.l10n.t("On a Branch"),
+			startOwnBranch: vscode.l10n.t("On a branch"),
 			startOwnBranchHint: vscode.l10n.t("A new branch and folder. Take the work with Try in Workspace, Merge Back or a merge request when it's done."),
 			startProject: vscode.l10n.t("In a project"),
 			startProjectHint: vscode.l10n.t("Goes to a project's coordinator, which makes it a thread or passes it on."),
@@ -692,38 +653,29 @@ export class AgentHome implements vscode.Disposable {
 			needsTrustedFolder: vscode.l10n.t("Needs a trusted folder"),
 			workspace: vscode.l10n.t("Workspace"),
 			addFolder: vscode.l10n.t("Open Folder..."),
-			agentSetup: vscode.l10n.t("Agent Setup"),
-			agentSetupHint: vscode.l10n.t("MCP servers, skills, rules and hooks your agents load"),
-			plusMenu: vscode.l10n.t("Add files and pick a mode"),
+			settings: vscode.l10n.t("Settings"),
+			settingsDetail: vscode.l10n.t("MCP servers, skills, rules and hooks your agents load"),
+			plusMenu: vscode.l10n.t("Actions and files"),
 			mode: vscode.l10n.t("Mode"),
+			actions: vscode.l10n.t("Actions"),
 			files: vscode.l10n.t("Files"),
 			filesDetail: vscode.l10n.t("Attach files or images"),
 			remove: vscode.l10n.t("Remove"),
-			active: vscode.l10n.t("Agents"),
-			earlier: vscode.l10n.t("Earlier"),
-			projects: vscode.l10n.t("Projects"),
-			noProjects: vscode.l10n.t("No projects yet. A project's coordinator splits work into threads, each an agent on its own branch."),
 			newProject: vscode.l10n.t("New Project"),
-			open: vscode.l10n.t("Open"),
-			tryMenu: vscode.l10n.t("Other ways to take the work"),
-			noAgents: vscode.l10n.t("No agents are running. Start one above."),
 			noWorkspace: vscode.l10n.t("Add a workspace folder for agents to work in."),
 			customize: vscode.l10n.t("Customize"),
 			refresh: vscode.l10n.t("Refresh"),
-			needsYou: vscode.l10n.t("Needs you"),
-			showCard: vscode.l10n.t("Show"),
-			moveUp: vscode.l10n.t("Move Up"),
-			moveDown: vscode.l10n.t("Move Down"),
+			moveUp: vscode.l10n.t("Move up"),
 			cards: vscode.l10n.t("Cards"),
 			qualityBranch: vscode.l10n.t("Release branch for Quality"),
 			getStarted: vscode.l10n.t("Get started"),
 			composerPlaceholder: vscode.l10n.t("Describe a task, or paste a Jira, GitLab or Figma link..."),
 			moreActions: vscode.l10n.t("More Actions"),
-			fromTools: vscode.l10n.t("From Your Tools..."),
+			fromTools: vscode.l10n.t("From your tools..."),
 			fromToolsEmpty: vscode.l10n.t("Connect Jira or GitLab in Connections to start from a ticket or a merge request."),
-			tickets: vscode.l10n.t("My tickets"),
+			tickets: vscode.l10n.t("Your tickets"),
 			mergeRequests: vscode.l10n.t("Merge requests"),
-			showAll: vscode.l10n.t("Show All ({0})"),
+			showAll: vscode.l10n.t("Show all ({0})"),
 			filterList: vscode.l10n.t("Filter"),
 			noMatches: vscode.l10n.t("Nothing matches."),
 			close: vscode.l10n.t("Close"),
@@ -782,13 +734,14 @@ export class AgentHome implements vscode.Disposable {
 		const draftMarkdown = webview.asWebviewUri(vscode.Uri.joinPath(media, 'draftMarkdown.js'));
 		// The comment box for Jira tickets, loaded the first time it opens.
 		const commentBox = webview.asWebviewUri(vscode.Uri.joinPath(media, 'commentBox.js'));
-		// Show All's popup and the Customize menu, loaded the first time either opens.
+		// Show all's popup and the gear menu, loaded the first time either opens.
 		const homePopups = webview.asWebviewUri(vscode.Uri.joinPath(media, 'homePopups.js'));
 		// The composer's and the rows' menus, loaded once Home has settled or on the first click on one of their buttons.
 		const homeMenus = webview.asWebviewUri(vscode.Uri.joinPath(media, 'homeMenus.js'));
 		const style = webview.asWebviewUri(vscode.Uri.joinPath(media, 'panels.css'));
 		const menuStyle = webview.asWebviewUri(vscode.Uri.joinPath(media, 'menu.css'));
 		const homeStyle = webview.asWebviewUri(vscode.Uri.joinPath(media, 'home.css'));
+		const tokens = webview.asWebviewUri(vscode.Uri.joinPath(media, 'tokens.css'));
 		const codicons = webview.asWebviewUri(vscode.Uri.joinPath(media, 'codicon.css'));
 		const glassStyle = webview.asWebviewUri(vscode.Uri.joinPath(media, 'glass.css'));
 		return `<!DOCTYPE html>
@@ -797,6 +750,7 @@ export class AgentHome implements vscode.Disposable {
 	<meta charset="UTF-8">
 	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; font-src data: ${webview.cspSource}; img-src data:; style-src ${webview.cspSource}; script-src 'nonce-${nonce}' ${webview.cspSource};">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<link href="${tokens}" rel="stylesheet">
 	<link href="${codicons}" rel="stylesheet">
 	<link href="${menuStyle}" rel="stylesheet">
 	<link href="${style}" rel="stylesheet">
@@ -808,7 +762,7 @@ export class AgentHome implements vscode.Disposable {
 	<main class="home dash">
 		<header class="dash-head">
 			<h1 id="title"></h1><p id="subtitle" class="muted"></p><span id="stale" class="dash-pill" hidden></span>
-			<div class="dash-tools"><span id="tools" class="dash-tool-logos"></span><button type="button" id="refresh" class="icon-button"><i class="codicon codicon-refresh" aria-hidden="true"></i></button><span class="dash-customize"><button type="button" id="customize" class="icon-button" aria-haspopup="menu" aria-expanded="false"><i class="codicon codicon-settings-gear" aria-hidden="true"></i></button><div id="customize-menu" class="home-menu" hidden></div></span></div>
+			<div class="dash-tools"><span class="dash-customize"><button type="button" id="customize" class="icon-button" aria-haspopup="menu" aria-expanded="false"><i class="codicon codicon-settings-gear" aria-hidden="true"></i></button><div id="customize-menu" class="home-menu" hidden></div></span></div>
 		</header>
 		<div id="banners" class="dash-banners" hidden></div>
 		<section class="home-start">
@@ -820,7 +774,7 @@ export class AgentHome implements vscode.Disposable {
 				<div class="home-start-row"><div id="start-as" class="home-start-as" role="radiogroup" hidden><span class="home-project" hidden><button type="button" id="project" class="start-as-chevron" aria-haspopup="menu" aria-expanded="false"><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button><div id="project-menu" class="home-menu" hidden></div></span></div><span id="needs-trust" class="needs-trust" hidden><i class="codicon codicon-workspace-untrusted" aria-hidden="true"></i><span></span><button type="button" class="primary"></button></span></div>
 				<div class="home-composer-bar">
 					<span class="home-plus"><button type="button" id="plus" class="plus-button" aria-haspopup="menu" aria-expanded="false"><i class="codicon codicon-add" aria-hidden="true"></i></button><div id="plus-menu" class="home-menu" hidden></div></span>
-					<span class="home-folder"><button type="button" id="workspace" class="option-button" aria-haspopup="menu" aria-expanded="false"><i class="codicon codicon-folder" aria-hidden="true"></i><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button><div id="workspace-menu" class="home-menu" hidden></div></span><button type="button" id="index-state" class="index-state" hidden></button>
+					<span class="home-folder"><button type="button" id="workspace" class="option-button" aria-haspopup="menu" aria-expanded="false"><i class="codicon codicon-folder" aria-hidden="true"></i><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button><div id="workspace-menu" class="home-menu" hidden></div></span>
 					<span class="home-mode"><button type="button" id="mode" class="option-button" aria-haspopup="menu" aria-expanded="false"><i class="codicon" aria-hidden="true"></i><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button><div id="mode-menu" class="home-menu" hidden></div></span>
 					<span id="model" class="home-model" hidden><span></span></span>
 					<span id="coordinator" class="home-model" hidden></span>
@@ -829,15 +783,10 @@ export class AgentHome implements vscode.Disposable {
 					<button type="submit" id="start" class="primary"><span></span></button>
 				</div>
 			</form>
-			<div class="dash-quick-row"><div id="quick" class="dash-quick"></div><button type="button" id="helpers" class="option-button helpers-button"><i class="codicon codicon-tools" aria-hidden="true"></i><span></span></button></div>
 		</section>
 		<section id="setup" class="dash-setup" hidden></section>
-		<section id="needs" class="dash-needs" hidden></section>
 		<section id="cards" class="dash-cards"></section>
 		<div id="row-menu" class="home-menu" hidden></div>
-		<section id="active" class="home-section"></section>
-		<section id="projects" class="home-section" hidden></section>
-		<section id="earlier" class="home-section"></section>
 	</main>
 	<script nonce="${nonce}" type="module" src="${script}" data-draft-markdown="${draftMarkdown}" data-comment-box="${commentBox}" data-home-popups="${homePopups}" data-home-menus="${homeMenus}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
 </body>
@@ -851,27 +800,4 @@ function openTabs(): number {
 
 function isHomeTab(tab: vscode.Tab): boolean {
 	return tab.input instanceof vscode.TabInputWebview && tab.input.viewType.endsWith(homeViewType);
-}
-
-/** A folder's index for the icon beside its pill on Home: full, filling or empty, and a tooltip saying which. */
-function homeIndex(summary: 'ready' | 'building' | 'paused' | 'failed' | 'none', status: IndexStatus | undefined): HomeIndex {
-	const open = vscode.l10n.t("Click to open the Index page.");
-	switch (summary) {
-		case 'ready':
-			return { state: 'ready', label: `${vscode.l10n.t("Indexed: agents find code here in one step.")} ${open}` };
-		case 'building':
-		case 'paused': {
-			const state = status?.state;
-			const share = state && (state.kind === 'building' || state.kind === 'paused') && state.total ? Math.floor(state.done / state.total * 100) : undefined;
-			const text = summary === 'paused' ? vscode.l10n.t("Indexing paused.") : share === undefined ? vscode.l10n.t("Indexing.") : vscode.l10n.t("Indexing: {0}% done.", share);
-			return { state: 'building', label: `${text} ${open}` };
-		}
-		case 'failed':
-			return { state: 'none', label: `${vscode.l10n.t("Not indexed: the last build failed.")} ${open}` };
-		default: {
-			const buildOn = indexBuildOn();
-			const when = buildOn === 'manual' ? vscode.l10n.t("Choose Index Now on the Index page to build one.") : buildOn === 'workspaceOpen' ? vscode.l10n.t("It is built when the window opens.") : vscode.l10n.t("It is built when an agent first starts here.");
-			return { state: 'none', label: `${vscode.l10n.t("Not indexed yet.")} ${when} ${open}` };
-		}
-	}
 }

@@ -13,7 +13,7 @@ body.files-page {
 	background: var(--vscode-editor-background);
 	color: var(--vscode-foreground);
 	font-family: var(--vscode-font-family);
-	font-size: 13px;
+	font-size: var(--gc-text-md);
 }
 
 .files-page #page {
@@ -62,9 +62,9 @@ body.files-page {
 	align-items: center;
 	gap: 8px;
 	margin-bottom: 16px;
-	padding: 6px 12px;
+	padding: 8px 12px;
 	border: 1px solid var(--gemini-border-strong);
-	border-radius: 999px;
+	border-radius: var(--gc-radius-pill);
 	background: var(--vscode-input-background);
 	color: var(--gemini-muted);
 }
@@ -84,11 +84,11 @@ body.files-page {
 }
 
 .files-heading {
-	margin: 20px 0 6px;
+	margin: 24px 0 8px;
 	padding: 0 8px;
 	color: var(--gemini-muted);
-	font-size: 13px;
-	font-weight: normal;
+	font-size: var(--gc-text-sm);
+	font-weight: var(--gc-weight-semibold);
 }
 
 button.files-row {

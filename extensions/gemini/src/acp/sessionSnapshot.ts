@@ -14,7 +14,7 @@
 // the older messages replaced by a summary.
 
 import { randomUUID } from 'node:crypto';
-import { promises as fs } from 'node:fs';
+import { writeFileAtomic } from './fsUtil';
 import * as path from 'node:path';
 import { isPrompt, MessageRecord, projectHash, registeredChatsFolder, squashSpaces, textOf } from './cliSessions';
 
@@ -171,10 +171,7 @@ export async function writeSessionCopy(cwd: string, messages: readonly MessageRe
 	const time = now.toISOString();
 	const header = { sessionId: id, projectHash: projectHash(cwd), startTime: time, lastUpdated: time, kind: 'main' };
 	const text = [header, ...messages].map(record => JSON.stringify(record)).join('\n') + '\n';
-	await fs.mkdir(folder, { recursive: true });
-	// Written whole, then renamed, so the CLI never reads half a file.
-	const file = path.join(folder, sessionFileName(id, now));
-	await fs.writeFile(`${file}.tmp`, text, 'utf8');
-	await fs.rename(`${file}.tmp`, file);
+	// Written whole, then renamed, so the CLI never reads half a file; the temporary name is this window's own.
+	await writeFileAtomic(path.join(folder, sessionFileName(id, now)), text);
 	return id;
 }

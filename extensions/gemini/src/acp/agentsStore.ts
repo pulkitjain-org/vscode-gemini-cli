@@ -11,6 +11,7 @@
 // it was, and the host still writes it when a window closes, for a downgrade.
 
 import { promises as fs } from 'node:fs';
+import { writeFileAtomic } from './fsUtil';
 import * as path from 'node:path';
 import { agentsSnapshotVersion, type AgentRecord, type AgentsModel, type AgentsSnapshot, type SavedRecord, type StoredAgents } from './agents';
 import { RecordStore } from './recordStore';
@@ -48,7 +49,7 @@ export class AgentsStore {
 			agents: withMissing(agents, legacy?.agents),
 		};
 		await Promise.all([this.workspaces.save(merged.workspaces), this.agents.save(merged.agents)]);
-		await fs.writeFile(path.join(this.dir, migratedFile), JSON.stringify({ version: 1, at: new Date().toISOString(), workspaces: merged.workspaces.length, agents: merged.agents.length }));
+		await writeFileAtomic(path.join(this.dir, migratedFile), JSON.stringify({ version: 1, at: new Date().toISOString(), workspaces: merged.workspaces.length, agents: merged.agents.length }));
 		return merged;
 	}
 

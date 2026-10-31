@@ -19,17 +19,15 @@ const byId = (id: string) => document.getElementById(id) as HTMLElement;
 
 const gitlabDown: HomeBanner = { tool: 'gitlab', tone: 'warn', text: 'GitLab is unreachable, probably the VPN. Showing results from 10:42.', button: { label: 'Retry', action: { kind: 'retry', tool: 'gitlab' } } };
 const jiraRefused: HomeBanner = { tool: 'jira', tone: 'error', text: 'Jira rejected your token.', button: { label: 'Replace Token...', action: { kind: 'command', command: 'gemini.connections' }, primary: true } };
-const mergeRequests: HomeCard = { id: 'mergeRequests', title: 'Pending on me', tool: 'gitlab', stale: true, asOf: '10:42', rows: [{ key: '!482', title: 'Rate limit login' }] };
+const mergeRequests: HomeCard = { id: 'mergeRequests', title: 'Pending on you', tool: 'gitlab', stale: true, asOf: '10:42', rows: [{ key: '!482', title: 'Rate limit login' }] };
 
 function view(banners?: readonly HomeBanner[]): HomeView {
 	return {
 		workspaces: [{ name: 'shop', description: '~/work', folder: '/work/shop', git: true }],
-		active: [],
-		earlier: [],
 		ownBranch: false,
 		modes: [],
 		dashboard: {
-			greeting: 'Good morning', context: 'shop', tools: [], quickActions: [], needs: [], needsQuery: '', cards: [mergeRequests], layout: [], releaseBranches: [], refreshing: false,
+			greeting: 'Good morning', context: 'shop', quickActions: [], cards: [mergeRequests], layout: [], releaseBranches: [], refreshing: false,
 			...banners ? { banners } : {},
 		},
 	};

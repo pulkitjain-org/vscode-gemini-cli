@@ -3,18 +3,18 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// Home's menus: the composer's "+", folder, mode, project and From Your Tools
-// menus, and a dashboard row's "..." menu. A chunk of its own, with the menu class,
-// which Home loads once it has settled or on the first click on one of their
-// buttons, so Home's startup script stays small. Show All and Customize
-// (homePopups.ts) get the same menu class from here, so opening one menu
-// closes the others.
+// Home's menus: the composer's "+" (Review and Run checks..., then Files),
+// folder, mode, project and From your tools menus, and a dashboard row's
+// "..." menu. A chunk of its own, with the menu class, which Home loads once
+// it has settled or on the first click on one of their buttons, so Home's
+// startup script stays small. Show all and the gear menu (homePopups.ts) get
+// the same menu class from here, so opening one menu closes the others.
 
 import type { HomeAction, HomeButton, HomeCard, HomeRow, HomeView } from '../src/host/panelProtocol';
 import type { HomeStrings } from '../src/host/panelStrings';
 import { Menu, type MenuRow, type MenuSection } from './menu';
 import { modeIcon } from './modeIcon';
-import { format } from './panelDom';
+import { format, icon } from './panelDom';
 
 export { Menu };
 
@@ -38,7 +38,8 @@ export interface HomeMenusHost {
 	pickProject(id: string): void;
 	pickBranch(): void;
 	run(action: HomeAction): void;
-	logo(tool: 'jira' | 'gitlab', size: number): Element;
+	/** A tool's logo, or the sparkle for Gemini. */
+	logo(tool: HomeRow['tool'], size: number): Element;
 	/** Home's themed tooltip, for the rows. */
 	tip(node: HTMLElement, tip: string): void;
 	/** Where focus goes when a row's menu closes and its button is gone. */
@@ -91,12 +92,23 @@ export function createHomeMenus(host: HomeMenusHost): HomeMenus {
 		});
 	};
 
+	/** "+": Review and Run checks... (what the host offers now, under Actions), then Files. The mode has its own picker in the bar. */
 	const plusMenu: Menu = menu('plus', strings.plusMenu, () => [
-		{ heading: strings.mode, rows: modeRows(() => plusMenu) },
+		{
+			heading: strings.actions,
+			rows: (host.view()?.dashboard.quickActions ?? []).map((action): MenuRow => ({
+				iconElement: () => action.tool ? host.logo(action.tool, 14) : icon(action.icon ?? 'play'),
+				name: action.label,
+				run: () => {
+					plusMenu.close();
+					host.run(action.action);
+				},
+			})),
+		},
 		{ rows: [{ icon: 'files', name: strings.files, detail: strings.filesDetail, run: () => { plusMenu.close(); host.pickFiles(); } }] },
 	]);
 
-	/** "From Your Tools...": the tickets and merge requests on the cards, each starting an agent or a review on it. */
+	/** "From your tools...": the tickets and merge requests on the cards, each starting an agent or a review on it. */
 	const fromToolsMenu: Menu = menu('from-tools', strings.fromTools, () => {
 		const cards = host.view()?.dashboard.cards ?? [];
 		const rowsOf = (id: HomeCard['id'], tool: 'jira' | 'gitlab', actionOf: (row: HomeRow) => HomeAction | undefined): MenuRow[] =>

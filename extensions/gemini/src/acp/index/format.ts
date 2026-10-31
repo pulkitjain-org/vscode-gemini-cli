@@ -16,14 +16,23 @@ import type { RelatedResult, SearchResult, SymbolResult } from './query';
  * lines it needs instead of checking them with grep_search, which it did
  * otherwise (FINDINGS.md, workspace index).
  */
-export const searchFooter = 'These are the best matches in the whole folder, ranked. Read only the lines you need with read_file; you don\'t need to grep for what they show.';
+export const searchFooter = 'These are the best matches in the whole folder, ranked, each shown in full or up to its last line here. Work from what is shown; read a file only for lines past a snippet\'s end, and don\'t grep for what they show.';
 
 /** Instead of claiming completeness, when the index covers only part of the folder. */
 export const partialNote = 'The index covers only part of this folder (it has more files than can be listed without git), so files it doesn\'t cover can also match.';
 
 /** The most a tool result says, in characters. */
 export const maxResultChars = 8_000;
-const snippetLines = 14;
+/**
+ * Lines a search hit shows at most: the chunk's whole text when it is
+ * shorter, so the model reads what it found instead of opening the file
+ * again (FINDINGS.md: it re-read what the index had shown it). A full
+ * result shares its characters among the hits, down to `minSnippetLines`.
+ */
+export const snippetLines = 30;
+const minSnippetLines = 6;
+/** Lines find_symbol shows under its first definition. */
+export const bodyLines = 25;
 const docsSectionChars = 1_200;
 
 export interface Progress {
@@ -47,9 +56,16 @@ export function formatSearch(query: string, result: SearchResult, progress?: Pro
 	const head = `${result.hits.length} ${result.hits.length === 1 ? 'result' : 'results'} for "${query}"${result.total > result.hits.length ? ` (showing ${result.hits.length} of ${result.total}; narrow with path or lang)` : ''}`;
 	const parts: string[] = [head];
 	let length = head.length;
+	// Each hit's share of the result; a hit past it shows fewer lines, never fewer than the match and its neighbours.
+	const share = Math.floor((maxResultChars - head.length) / result.hits.length);
 	result.hits.forEach((hit, index) => {
 		const title = `\n${index + 1}. ${hit.path}:${hit.startLine}-${hit.endLine}${hit.symbol ? ` · ${hit.symbol}` : ''}`;
-		const block = `${title}\n${snippet(hit.text, hit.startLine, result.terms)}`;
+		let lines = snippetLines;
+		let block = `${title}\n${snippet(hit.text, hit.startLine, result.terms, lines)}`;
+		while (block.length > share && lines > minSnippetLines) {
+			lines = Math.max(minSnippetLines, Math.floor(lines / 2));
+			block = `${title}\n${snippet(hit.text, hit.startLine, result.terms, lines)}`;
+		}
 		if (length + block.length > maxResultChars) {
 			if (length + title.length <= maxResultChars) {
 				parts.push(title);
@@ -64,19 +80,29 @@ export function formatSearch(query: string, result: SearchResult, progress?: Pro
 	return parts.join('\n') + fallbackNote(progress);
 }
 
-/** Up to `snippetLines` lines of a chunk, from just before its first matching line, numbered. */
-export function snippet(text: string, startLine: number, terms: readonly string[]): string {
+/** Up to `maxLines` lines of a chunk, from just before its first matching line, numbered. */
+export function snippet(text: string, startLine: number, terms: readonly string[], maxLines = snippetLines): string {
 	const lines = text.split('\n');
 	const lowered = terms.map(t => t.toLowerCase());
 	const first = lines.findIndex(line => lowered.some(term => line.toLowerCase().includes(term)));
-	const from = first <= 3 ? 0 : Math.min(first - 2, Math.max(0, lines.length - snippetLines));
-	const shown = lines.slice(from, from + snippetLines);
+	const from = first <= 3 ? 0 : Math.min(first - 2, Math.max(0, lines.length - maxLines));
+	const shown = lines.slice(from, from + maxLines);
 	const width = String(startLine + from + shown.length).length;
 	const out = shown.map((line, i) => `${String(startLine + from + i).padStart(width)}  ${line}`);
-	if (from + snippetLines < lines.length) {
+	if (from + maxLines < lines.length) {
 		out.push(`${' '.repeat(width)}  …`);
 	}
 	return out.join('\n');
+}
+
+/** A definition's lines after its signature, numbered. */
+function body(definition: { readonly line: number; readonly body?: string }): string[] {
+	if (!definition.body) {
+		return [];
+	}
+	const lines = definition.body.split('\n');
+	const width = String(definition.line + lines.length).length;
+	return lines.map((line, i) => `    ${String(definition.line + 1 + i).padStart(width)}  ${line}`);
 }
 
 export function formatSymbol(name: string, result: SymbolResult, progress?: Progress, partial = false): string {
@@ -88,6 +114,8 @@ export function formatSymbol(name: string, result: SymbolResult, progress?: Prog
 			if (d.signature) {
 				parts.push(`    ${d.signature}`);
 			}
+			// The first definition's body, so the model reads it here rather than opening the file.
+			parts.push(...body(d));
 		}
 	} else if (result.similar.length) {
 		parts.push(`No definition named ${name}. Similar names:`);
@@ -106,7 +134,7 @@ export function formatSymbol(name: string, result: SymbolResult, progress?: Prog
 	if (partial) {
 		parts.push('', partialNote);
 	} else if (result.definitions.length && !progress) {
-		parts.push('', 'These are every definition the index has, and every line that uses the name; no need to grep for them.');
+		parts.push('', `These are every definition the index has, and every line that uses the name; no need to grep for them.${result.definitions[0]?.body !== undefined ? ' The first definition is shown in full above; read the file only for what comes after it.' : ''}`);
 	}
 	return capped(parts.join('\n')) + fallbackNote(progress);
 }

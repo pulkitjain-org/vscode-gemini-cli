@@ -21,12 +21,12 @@ import { CliManager } from './host/cliManager';
 import { DiffPreview } from './host/diffPreview';
 import { errorMessage } from './acp/errors';
 import { PromptEnhancer } from './acp/promptEnhancer';
-import { configSection, getAgentCommand, getWorkspaceCwd, loadProductInfo, productInfo, setAgentEnvOverride, setStorageDirs } from './host/configuration';
+import { configSection, getAgentCommand, getProjectSettings, getWorkspaceCwd, loadProductInfo, productInfo, setAgentEnvOverride, setStorageDirs } from './host/configuration';
 import { initModelList, initModelPreference, knownModelList } from './host/modelPreference';
 import { initReactionRecents } from './host/chatReactions';
 import { defaultConcurrency } from './acp/research';
 import { SetupState } from './host/setupState';
-import { GeminiStatusBar } from './host/statusBar';
+import { describeCliSource, GeminiStatusBar } from './host/statusBar';
 import { findCliEntry, QuickEdits } from './host/quickEdits';
 import { UsageMeter } from './host/usageMeter';
 import { forgetSkills, initTeamCommands } from './host/teamCommands';
@@ -48,8 +48,15 @@ import { measureFolderContextCost } from './host/contextCostProbe';
 import { ContextMeasures } from './host/chat/chatContext';
 import { FixWithGemini } from './host/quickFix';
 import { parseMemoryList, runCliCommands } from './acp/cliCommands';
-import { disposeGitIgnore } from './host/workspaceFileSystem';
+import { agentFileAccessPolicy, disposeGitIgnore } from './host/workspaceFileSystem';
+import { checkFileAccess } from './acp/fileAccess';
+import { DebugEntry } from './host/debug/debugEntry';
 import { logErrorCommand } from './host/errorNotice';
+import { beginStartup } from './host/startup';
+import { background, setBackgroundLog } from './host/background';
+import { withRecentLog } from './host/recentLog';
+import { registerReportProblem } from './host/reportProblem';
+import { registerTroubleshoot } from './host/troubleshoot';
 
 /** Finishes the writes that must outlive the window; set by activate. */
 let saveBeforeExit: (() => Promise<void>) | undefined;
@@ -58,10 +65,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	const activationStart = Date.now();
 	// Modules that load a chunk find it beside this file, which in a development build is not beside them.
 	setExtensionDir(__dirname);
-	const log = vscode.window.createOutputChannel('Gemini', { log: true });
+	// The log's recent lines are kept for Report a Problem.
+	const { channel: log, recent: recentLog } = withRecentLog(vscode.window.createOutputChannel('Gemini', { log: true }));
+	setBackgroundLog(log);
+	// One line per launch, to measure startup on real machines (FINDINGS.md, startup marks): once the first
+	// session opens, and again with every mark once the first reply's text arrives. scripts/startup-log.mts reads them.
+	const marks = beginStartup(activationStart, () => log.info(marks.line()));
 	// The agent list is read while the product info loads.
 	const savedAgents = loadSavedAgents(context);
 	await loadProductInfo();
+	marks.mark('product loaded');
 	initModelPreference(context.globalState);
 	initReactionRecents(context.globalState);
 	setStorageDirs({
@@ -73,7 +86,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	// The CLI's debug log, one per window's process (GEMINI_DEBUG_LOG_FILE), so windows never empty each other's.
 	const service = new AgentService(log, vscode.Uri.joinPath(context.globalStorageUri, 'cli-logs', debugLogName()).fsPath, context.globalState);
 	// GeminiCode's own trust rules once the window has settled: Agent Setup lists them, and reviews are never trusted.
-	const ownTrust = setTimeout(() => void service.trust.startup(), 3000);
+	const ownTrust = setTimeout(() => background('Setting up GeminiCode\'s own trust rules', service.trust.startup()), 3000);
 	context.subscriptions.push({ dispose: () => clearTimeout(ownTrust) });
 	const diffPreview = new DiffPreview();
 	// The @ picker's list comes from the workspace index once it is built (set below), else from the host's own walk.
@@ -88,7 +101,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		onDirectFailed: err => log.info(`Prompt enhancement's direct request failed (${errorMessage(err)}); asking the CLI`),
 		onDidEnhance: ({ ms, model }) => log.info(`Prompt enhanced in ${ms} ms with ${model ?? 'the default model'}`),
 	});
-	const agentsView = new AgentsView(context, service, diffPreview, fileIndex, enhancer, await savedAgents);
+	const agents = await savedAgents;
+	marks.mark('records loaded');
+	const agentsView = new AgentsView(context, service, diffPreview, fileIndex, enhancer, agents);
 	saveBeforeExit = () => agentsView.saveAll();
 	// Agents mode's Changes panel follows the agent in front, as the Changes view does.
 	const changesPanel = new ChangesPanel(context.extensionUri);
@@ -209,6 +224,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		agentInFront: () => agentsView.activeAgentId(),
 		log,
 	}));
+	// Debug mode: its route is in every session while it is turned on, and its code loads with its first command.
+	const debug = chunkLoader<typeof import('./debug')>(__dirname, 'debug');
+	const debugEntry = agentsView.debug = new DebugEntry(String(context.extension.packageJSON.version ?? ''), context.globalStorageUri, entry => new LazyFeature(['gemini.debug.start', 'gemini.debug.askWhy', 'gemini.debug.stop', 'gemini.debug.showEvidence', 'gemini.debug.action'], () => new (debug().DebugFeature)({
+		context, log, agents: agentsView, entry, service,
+		fileAccess: (folder, file) => checkFileAccess(file, 'write', agentFileAccessPolicy(folder)),
+	})));
+	context.subscriptions.push(debugEntry);
 	const teamFlows = new TeamFlows(context.extensionUri, teamTools, agentsView, context.globalState, onDemand);
 	// A reviewer agent's chat has a chip that opens its review.
 	agentsView.reviewChip = agentId => {
@@ -297,6 +319,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 			return (await chatInFront(true))?.addAttachments(attachments);
 		}),
 		vscode.commands.registerCommand('gemini.showLog', () => log.show()),
+		registerTroubleshoot({
+			phase: () => agentPhase(service.status.phase),
+			account: () => statusBar.accountName,
+			project: () => getProjectSettings().resolved?.projectId,
+			cli: () => service.status.agentVersion,
+			stopped: () => service.status.phase === 'stopped',
+		}),
+		registerReportProblem({
+			recent: recentLog,
+			cli: () => service.status.agentVersion ? `${service.status.agentVersion}${describeCliSource(service.cli)}` : undefined,
+			lastError: () => {
+				const error = agentsView.activeController()?.lastTurnError;
+				return error ? { kind: error.error.kind, message: error.text } : undefined;
+			},
+		}),
 		vscode.commands.registerCommand(logErrorCommand, (message: unknown) => typeof message === 'string' && log.error(message)),
 		new LazyFeature(['gemini.designSystem.sync'], () => new (onDemand().DesignSystemSync)({
 			figma: () => teamTools.connectors.figma,
@@ -320,11 +357,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		vscode.commands.registerCommand('gemini.setProjectId', () => setProjectId()),
 		vscode.commands.registerCommand('gemini.signIn', () => setup.signIn()),
 	);
-	// One line per launch, to measure startup on real machines (FINDINGS.md, starting the agent).
-	const servicesUpMs = Date.now() - activationStart;
+	marks.mark('services up');
 	const started = service.onDidStart(times => {
 		started.dispose();
-		log.info(`Startup: services up ${servicesUpMs} ms after activation; agent spawned ${times.spawnedAt - activationStart} ms after activation, process ready ${times.processReadyMs} ms after spawn, first session ready ${times.firstSessionMs} ms after spawn`);
+		marks.mark('agent spawned', times.spawnedAt);
+		marks.mark('agent ready', times.spawnedAt + times.processReadyMs);
+		marks.mark('first session', times.spawnedAt + times.firstSessionMs);
+		log.info(marks.line());
 	});
 	context.subscriptions.push(started);
 }

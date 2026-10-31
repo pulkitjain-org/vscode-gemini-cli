@@ -5,10 +5,12 @@
 
 // The "/" menu, and what a command typed in the composer sends: the agent's
 // own commands go as typed, a team command as its prompt, and a skill as a
-// request to load it.
+// request to load it. GeminiCode's own commands (/resume, /compress, /plan
+// and the rest) run in the feature that owns each.
 
 import * as vscode from 'vscode';
 import type { AgentClient } from '../../acp/agentClient';
+import type { Attachment } from '../../acp/attachments';
 import type { ChatTranscript } from '../../acp/chatTranscript';
 import { skillPrompt } from '../../acp/skills';
 import { mergeCommands, parseInvocation, SlashCommand } from '../../acp/slashCommands';
@@ -16,6 +18,24 @@ import { expandTeamCommandWithInjections } from '../../acp/teamCommandExpansion'
 import type { ToWebview } from '../chatProtocol';
 import { teamCommandHost } from '../teamCommandHost';
 import { skills, teamCommands } from '../teamCommands';
+import type { ChatCheckpoints } from './chatCheckpoints';
+import { type ChatCompact, compactCommand } from './chatCompact';
+import { type ChatFork, forkCommand } from './chatFork';
+import type { ChatControllerOptions } from './chatOptions';
+import type { ChatPlan } from './chatPlan';
+import { type ChatSessions, chatCommand, resumeCommand } from './chatSessions';
+import { type ChatUsage, contextCommand, statsCommand } from './chatUsage';
+import { rewindCommand } from './cliCommands';
+
+/** The chat's features GeminiCode's own commands run in. */
+export interface CommandFeatures {
+	readonly sessions: ChatSessions;
+	readonly compacting: ChatCompact;
+	readonly usage: ChatUsage;
+	readonly checkpoints: ChatCheckpoints;
+	readonly plan: ChatPlan;
+	readonly forks: ChatFork;
+}
 
 export class ChatCommands implements vscode.Disposable {
 
@@ -29,9 +49,53 @@ export class ChatCommands implements vscode.Disposable {
 		/** Whether a webview shows the chat. */
 		isAttached: () => boolean,
 		private readonly post: (message: ToWebview) => void,
+		private readonly options: Pick<ChatControllerOptions, 'savedSessions'>,
+		private readonly features: CommandFeatures,
+		/** The CLI's folder trust dialog, for /permissions trust. */
+		private readonly askToTrust: (folder: string) => Promise<boolean>,
 	) {
 		// Keeps an open "/" menu current; the agent lists its commands just after a session opens.
 		this.listener = client.onDidChangeCommands(() => isAttached() && void this.postCommands());
+	}
+
+	/**
+	 * Runs GeminiCode's own command when `text` is one (/resume and /chat,
+	 * /compress, /context and /stats, /rewind, /permissions, /plan, /fork),
+	 * the chat being idle; false when `text` is a prompt to send.
+	 */
+	async run(text: string, attachments: readonly Attachment[]): Promise<boolean> {
+		const { sessions, compacting, usage, checkpoints, plan, forks } = this.features;
+		if (this.options.savedSessions && (text.trim() === `/${resumeCommand().name}` || text.trim() === `/${chatCommand().name}`) && !attachments.length) {
+			void sessions.pick();
+			return true;
+		}
+		if (text.trim() === `/${compactCommand().name}` && !attachments.length) {
+			void compacting.compact();
+			return true;
+		}
+		if ((text.trim() === `/${contextCommand().name}` || text.trim() === `/${statsCommand().name}`) && !attachments.length) {
+			void usage.show(true);
+			return true;
+		}
+		if (text.trim() === `/${rewindCommand().name}` && !attachments.length) {
+			void checkpoints.pickRewindCommand();
+			return true;
+		}
+		if (/^\/permissions(\s+trust)?$/.test(text.trim()) && !attachments.length) {
+			// The CLI's /permissions trust: the folder trust dialog.
+			void this.askToTrust(this.client.cwd);
+			return true;
+		}
+		const planMatch = /^\/plan(?:\s+(?<rest>.*))?$/s.exec(text.trim());
+		if (planMatch && !attachments.length) {
+			await plan.planCommand(planMatch.groups?.rest?.trim() ?? '');
+			return true;
+		}
+		if (forks.available && text.trim() === `/${forkCommand().name}` && !attachments.length) {
+			void forks.open();
+			return true;
+		}
+		return false;
 	}
 
 	/**

@@ -17,6 +17,7 @@ import type { ThreadCard } from '../src/acp/chatTranscript';
 import type { FromWebview, ThreadAction } from '../src/host/chatProtocol';
 import type { ProjectChatStrings } from '../src/host/chatStrings';
 import type { Menu, MenuOptions } from './menu';
+import { createTryChoiceMenu, type TryChoiceMenu } from './tryChoiceMenu';
 
 export interface ThreadCardDeps {
 	readonly strings: ProjectChatStrings;
@@ -35,6 +36,8 @@ export interface ThreadCardDeps {
 
 /** The ⋯ menu, one for every card, moved to the button that opens it. */
 let shared: { readonly menu: Menu; rows: readonly { readonly name: string; readonly icon: string; run(): void }[]; anchor?: HTMLElement } | undefined;
+/** The Try chevron's menu, one for every card. */
+let tryMenu: TryChoiceMenu | undefined;
 
 /** Draws `item` into `card`, replacing what it held. */
 export function renderThreadCard(item: ThreadCard, d: ThreadCardDeps, card: HTMLElement): void {
@@ -115,7 +118,10 @@ export function renderThreadCard(item: ThreadCard, d: ThreadCardDeps, card: HTML
 		row.append(node);
 		if (action === 'try' || action === 'merge') {
 			// The chevron: the other ways to take the work, remembered for the repository.
-			const menu = d.button(`${primary ? 'primary' : 'secondary'} thread-try-menu`, '', () => send('tryMenu'), 'chevron-down');
+			const menu = d.button(`${primary ? 'primary' : 'secondary'} thread-try-menu`, '', () => {
+				tryMenu ??= createTryChoiceMenu(d.Menu, p.tryChoices, d.setTip);
+				tryMenu.toggle(menu, item.tryChoice ?? 'try', !!item.mergeRequests, choice => d.post({ type: 'threadAction', thread: item.thread, action: 'tryMenu', choice }));
+			}, 'chevron-down');
 			menu.setAttribute('aria-label', p.actions.tryMenu);
 			d.setTip(menu, p.tips.tryMenu ?? '');
 			row.append(menu);

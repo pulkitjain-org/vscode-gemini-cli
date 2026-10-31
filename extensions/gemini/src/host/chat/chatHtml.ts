@@ -21,12 +21,25 @@ export function setProjectStrings(load: () => ProjectChatStrings): void {
 	projectStringsOf = load;
 }
 
+/** The chat view's strings as the script tag carries them, per kind of chat; the window's language never changes while it is open. */
+const stringsCache = new Map<string, string>();
+
+function cachedStrings(key: string, build: () => ChatStrings): string {
+	let attribute = stringsCache.get(key);
+	if (attribute === undefined) {
+		attribute = escapeAttribute(JSON.stringify(build()));
+		stringsCache.set(key, attribute);
+	}
+	return attribute;
+}
+
 /** The chat view's page for `webview`, loading its script and styles from `mediaUri`; `project` adds a project chat's strings, `fork` Fork Agent's. */
 export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project: boolean, fork: boolean): string {
 	const nonce = createNonce();
 	const script = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'chat.js'));
 	const style = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'chat.css'));
 	const menuStyle = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'menu.css'));
+	const tokens = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'tokens.css'));
 	const codicons = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'codicon.css'));
 	const glassStyle = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'glass.css'));
 	// Loaded by the view when it first shows code.
@@ -40,13 +53,18 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 	const threadCard = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'threadCard.js'));
 	const projectSettings = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'projectSettings.js'));
 	const sideChat = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'sideChat.js'));
-	const strings: ChatStrings = {
+	const debugCard = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'debugCard.js'));
+	const debugStyle = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'debug.css'));
+	// About 470 strings, built once per kind of chat and kept: a chat's tab attaches its view again on every open and every agent switch.
+	const debugOn = !project && vscode.workspace.getConfiguration('gemini').get('debugMode.enabled') === true;
+	const stringsAttribute = cachedStrings(`${project}|${fork}|${!project && reactionsOn()}|${debugOn}`, (): ChatStrings => ({
 		placeholder: vscode.l10n.t("Ask Gemini anything about this workspace · / for commands, @ for files"),
 		fromCoordinator: vscode.l10n.t("From coordinator"),
 		// A project chat's strings load with the code they serve, from dist/onDemand.js: most chats aren't project chats.
 		...(project && projectStringsOf ? { project: projectStringsOf() } : {}),
 		...(fork ? { fork: forkStrings() } : {}),
 		side: sideStrings(),
+		...(debugOn ? { debugStart: [vscode.l10n.t("Debug with Gemini"), vscode.l10n.t("Find the bug from the running program's evidence before fixing it")] as const } : {}),
 		...(project ? {} : { reactions: reactionStrings() }),
 		placeholderFollowUp: vscode.l10n.t("Ask a follow-up · /btw asks on the side"),
 		placeholderWorking: process.platform === 'darwin' ? vscode.l10n.t("↩ to steer, Tab or ⌘↩ to queue · ⌥⌘; asks on the side") : vscode.l10n.t("Enter to steer, Ctrl+Enter to queue · Ctrl+Alt+; asks on the side"),
@@ -300,6 +318,8 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 		menuSearch: vscode.l10n.t("Search modes, files, commands\u2026"),
 		menuFiles: vscode.l10n.t("Files"),
 		menuFilesDetail: vscode.l10n.t("Attach files or images"),
+		menuTeamTools: vscode.l10n.t("Use team tools"),
+		menuTeamToolsDetail: vscode.l10n.t("Give this agent Jira, GitLab and the other connected tools; a ticket or merge request in a message does this by itself"),
 		menuContext: vscode.l10n.t("Context"),
 		menuContextDetail: vscode.l10n.t("Add workspace files (@)"),
 		menuFollow: vscode.l10n.t("Follow the agent"),
@@ -418,21 +438,19 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 		usageAllModels: vscode.l10n.t("All {0} models"),
 		usageFewerModels: vscode.l10n.t("Fewer models"),
 		contextParts: {
-			conversation: vscode.l10n.t("Conversation"),
-			servers: vscode.l10n.t("MCP servers ({0})"),
-			rules: vscode.l10n.t("Rule files ({0})"),
-			geminicode: vscode.l10n.t("GeminiCode tools"),
-			cli: vscode.l10n.t("CLI system prompt"),
+			empty: vscode.l10n.t("Empty folder"),
+			folder: vscode.l10n.t("This folder"),
+			server: vscode.l10n.t("This folder with {0}"),
+			geminicode: vscode.l10n.t("This folder with GeminiCode's tools"),
+			all: vscode.l10n.t("Everything agents get"),
 			ruleFiles: vscode.l10n.t("Rule files loaded"),
 			kilobytes: vscode.l10n.t("{0} KB"),
-			aboutTokens: vscode.l10n.t("about {0} tokens"),
 			large: vscode.l10n.t("{0} is large: every turn carries it. Trim it or split it with @imports."),
 			measured: vscode.l10n.t("Measured {0}"),
 			measureAgain: vscode.l10n.t("Measure Again"),
 			measuring: vscode.l10n.t("Measuring what each turn carries\u2026"),
 			notMeasured: vscode.l10n.t("Not measured yet."),
 			failed: vscode.l10n.t("Couldn't measure: {0}"),
-			compactNote: vscode.l10n.t("/compact frees the conversation part"),
 		},
 		mentions: {
 			files: vscode.l10n.t("Files"),
@@ -482,13 +500,14 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 		calloutCaution: vscode.l10n.t("Caution"),
 		openFile: vscode.l10n.t("Open file"),
 		cannotAttach: vscode.l10n.t("{0} can't be attached: only text files, images and PDFs can be dropped here. Use the attach button to add other files."),
-	};
+	}));
 	return `<!DOCTYPE html>
 <html lang="en">
 <head>
 	<meta charset="UTF-8">
 	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; font-src data: ${webview.cspSource}; img-src data:; style-src ${webview.cspSource}; script-src 'nonce-${nonce}' ${webview.cspSource};">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<link href="${tokens}" rel="stylesheet">
 	<link href="${codicons}" rel="stylesheet">
 	<link href="${menuStyle}" rel="stylesheet">
 	<link href="${style}" rel="stylesheet">
@@ -552,7 +571,7 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 			<div id="commit-box" class="usage-popover commit-box" role="dialog" hidden><label class="usage-heading" for="commit-message"></label><textarea id="commit-message" class="commit-message" rows="4" spellcheck="true"></textarea><p class="usage-note commit-note" role="status"></p><div class="permission-actions"><button type="button" class="secondary commit-cancel"></button><button type="button" class="primary commit-confirm"></button></div></div>
 		</div>
 	</div>
-	<script nonce="${nonce}" type="module" src="${script}" data-highlighter="${highlighter}" data-katex="${katex}" data-katex-style="${katexStyle}" data-fold-work="${foldWorkOn()}" data-emoji-picker="${emojiPicker}" data-figma-design="${figmaDesign}" data-thread-card="${threadCard}" data-project-settings="${projectSettings}" data-side-chat="${sideChat}" data-reactions="${!project && reactionsOn()}" data-research="${!project}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
+	<script nonce="${nonce}" type="module" src="${script}" data-highlighter="${highlighter}" data-katex="${katex}" data-katex-style="${katexStyle}" data-fold-work="${foldWorkOn()}" data-emoji-picker="${emojiPicker}" data-figma-design="${figmaDesign}" data-thread-card="${threadCard}" data-project-settings="${projectSettings}" data-side-chat="${sideChat}" data-debug-card="${debugCard}" data-debug-style="${debugStyle}" data-reactions="${!project && reactionsOn()}" data-research="${!project}" data-developer="${developerToolsOn()}" data-strings="${stringsAttribute}"></script>
 </body>
 </html>`;
 }

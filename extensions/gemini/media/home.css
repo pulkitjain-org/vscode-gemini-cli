@@ -5,27 +5,27 @@
 
 /*
  * Home's dashboard (webview-src/home.ts), on top of panels.css's Agent Home styles: the
- * greeting line, the composer's bar, Needs you and the cards.
+ * greeting line with the gear, the composer's bar, the banners and the cards.
  */
 
 .home.dash {
 	max-width: 1180px;
-	padding: 22px 28px 48px;
+	padding: 24px 32px 48px;
 }
 
-/* The greeting, the day and sprint beside it, the tools at the end of the line. */
+/* The greeting, the day and sprint beside it, the gear at the end of the line. */
 .dash-head {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: baseline;
 	gap: 6px 14px;
-	margin-bottom: 14px;
+	margin-bottom: 16px;
 }
 
 .dash-head h1 {
 	margin: 0;
-	font-size: 22px;
-	font-weight: 600;
+	font-size: var(--gc-text-xl);
+	font-weight: var(--gc-weight-semibold);
 }
 
 .dash-head p {
@@ -40,39 +40,6 @@
 	align-self: center;
 }
 
-.dash-tool-logos {
-	display: flex;
-	align-items: center;
-	gap: 7px;
-}
-
-.dash-tool {
-	position: relative;
-	display: inline-flex;
-	cursor: pointer;
-}
-
-.dash-tool.off,
-.dash-tool.warn {
-	opacity: 0.45;
-	filter: grayscale(1);
-}
-
-.dash-tool.checking {
-	opacity: 0.7;
-}
-
-.dash-tool.error::after {
-	content: "";
-	position: absolute;
-	right: -2px;
-	bottom: -2px;
-	width: 7px;
-	height: 7px;
-	border-radius: 50%;
-	background: var(--gemini-error);
-}
-
 .dash-customize {
 	position: relative;
 }
@@ -85,7 +52,7 @@
 
 button.link-button {
 	gap: 4px;
-	padding: 2px 6px;
+	padding: 2px 8px;
 	border-color: transparent;
 	background: none;
 	color: var(--vscode-textLink-foreground);
@@ -95,23 +62,11 @@ button.link-button:hover {
 	background: var(--gemini-hover);
 }
 
-#refresh.spinning .codicon {
-	animation: dash-spin 1s linear infinite;
-}
-
-@keyframes dash-spin {
-	to { transform: rotate(360deg); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-	#refresh.spinning .codicon { animation: none; }
-}
-
 /* One banner per team server that is down (warn) or refused the token (error), above the composer. */
 .dash-banners {
 	display: grid;
 	gap: 8px;
-	margin-bottom: 14px;
+	margin-bottom: 16px;
 }
 
 .dash-banners[hidden] { display: none; }
@@ -152,9 +107,9 @@ button.link-button:hover {
 	gap: 2px;
 	padding: 2px;
 	border: 1px solid var(--gemini-border);
-	border-radius: 8px;
+	border-radius: var(--gc-radius-md);
 	background: var(--gemini-surface);
-	font-size: 12px;
+	font-size: var(--gc-text-sm);
 }
 
 .home-start-as[hidden] { display: none; }
@@ -187,7 +142,7 @@ button.start-as-chevron[aria-expanded="true"] {
 }
 
 .home-project button.option-button {
-	height: 26px;
+	height: var(--gc-control);
 	padding: 0 8px;
 	border-radius: var(--gemini-radius-small);
 }
@@ -197,24 +152,24 @@ button.start-as-chevron[aria-expanded="true"] {
 	display: inline-flex;
 	align-items: center;
 	gap: 8px;
-	height: 26px;
-	padding: 0 3px 0 8px;
+	height: var(--gc-control);
+	padding: 0 4px 0 8px;
 	border: 1px solid color-mix(in srgb, var(--gemini-warn) 35%, transparent);
 	border-radius: var(--gemini-radius-small);
 	background: color-mix(in srgb, var(--gemini-warn) 10%, transparent);
 	color: var(--gemini-warn);
-	font-size: 12px;
+	font-size: var(--gc-text-sm);
 }
 
 .needs-trust button.primary {
 	height: 20px;
-	padding: 0 9px;
-	font-size: 12px;
+	padding: 0 8px;
+	font-size: var(--gc-text-sm);
 }
 
 button.start-as-option {
 	height: 22px;
-	padding: 0 10px;
+	padding: 0 8px;
 	border: none;
 	border-radius: var(--gemini-radius-small);
 	background: none;
@@ -246,13 +201,13 @@ button.start-as-option:focus-visible {
 .dash .home-composer-bar {
 	flex-wrap: wrap;
 	gap: 4px;
-	margin-top: 10px;
-	font-size: 12px;
+	margin-top: 8px;
+	font-size: var(--gc-text-sm);
 	color: var(--gemini-muted);
 }
 
 .home-composer-bar button.option-button {
-	height: 26px;
+	height: var(--gc-control-lg);
 	padding: 0 8px;
 	border-radius: var(--gemini-radius-small);
 }
@@ -287,119 +242,31 @@ button.start-as-option:focus-visible {
 }
 
 .home-composer-bar button.primary {
-	padding: 3px 10px;
+	padding: 4px 8px;
 }
 
-/* The quick actions, and Agent Setup at the far right under the composer. */
-.dash-quick-row {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	margin-top: 12px;
-}
-
-.dash-quick {
-	display: flex;
-	flex: 1;
-	flex-wrap: wrap;
-	gap: 8px;
-}
-
-.dash-quick-row .helpers-button {
-	flex: none;
-	color: var(--gemini-muted);
-}
-
-/* The workspace's index beside its folder: a drum, full when indexed, half while indexing, empty when not. */
-button.index-state {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	width: 22px;
-	height: 26px;
-	margin-left: -4px;
-	padding: 0;
-	border: none;
-	border-radius: var(--gemini-radius-small);
-	background: none;
-	color: var(--gemini-muted);
-	cursor: pointer;
-}
-
-button.index-state[hidden] {
-	display: none;
-}
-
-button.index-state svg {
-	fill: none;
-	stroke: currentColor;
-	stroke-width: 1.2;
-}
-
-button.index-state svg .fill-full,
-button.index-state svg .fill-half {
-	stroke: none;
-	fill: currentColor;
-	opacity: 0;
-}
-
-button.index-state.ready {
-	color: var(--vscode-testing-iconPassed, #3fb86b);
-}
-
-button.index-state.ready svg .fill-full {
-	opacity: 0.55;
-}
-
-button.index-state.building {
-	color: var(--vscode-button-background, #2f7bd8);
-}
-
-button.index-state.building svg .fill-half {
-	opacity: 0.55;
-}
-
-button.index-state:hover {
-	background: var(--gemini-hover);
-}
-
-button.dash-quick-action {
-	gap: 6px;
-	padding: 5px 12px;
-	border: 1px solid var(--gemini-border);
-	border-radius: var(--gemini-radius-small);
-	background: var(--gemini-card);
-}
-
-button.dash-quick-action:hover {
-	background: var(--gemini-hover);
-}
-
-/* Get started, Needs you and the cards: panels with a hairline, a step above the page. */
+/* Get started and the cards: panels with a hairline, a step above the page. */
 .dash-setup,
-.dash-needs,
 .dash-card {
 	display: flex;
 	flex-direction: column;
 	min-width: 0;
-	padding: 12px 14px;
+	padding: 12px 16px;
 	border: 1px solid var(--gemini-border);
 	border-radius: var(--gemini-radius-large);
 	background: var(--gemini-card);
 }
 
-.dash-setup,
-.dash-needs {
-	margin-top: 14px;
+.dash-setup {
+	margin-top: 16px;
 }
 
-.dash-setup[hidden],
-.dash-needs[hidden] { display: none; }
+.dash-setup[hidden] { display: none; }
 
 .dash-setup h2 {
-	margin: 0 0 10px;
-	font-size: 13px;
-	font-weight: 600;
+	margin: 0 0 8px;
+	font-size: var(--gc-text-md);
+	font-weight: var(--gc-weight-semibold);
 }
 
 .dash-steps {
@@ -415,7 +282,7 @@ button.dash-quick-action:hover {
 	display: flex;
 	align-items: flex-start;
 	gap: 10px;
-	padding: 10px;
+	padding: 12px;
 	border: 1px solid var(--gemini-border);
 	border-radius: var(--gemini-radius);
 }
@@ -429,7 +296,7 @@ button.dash-quick-action:hover {
 	height: 22px;
 	border-radius: 50%;
 	background: var(--gemini-hover);
-	font-weight: 600;
+	font-weight: var(--gc-weight-semibold);
 }
 
 .dash-step.done .dash-step-mark {
@@ -449,7 +316,7 @@ button.dash-quick-action:hover {
 	display: grid;
 	grid-template-columns: repeat(2, minmax(0, 1fr));
 	gap: 14px;
-	margin-top: 14px;
+	margin-top: 16px;
 }
 
 .dash-card.stale .dash-rows {
@@ -465,7 +332,7 @@ button.dash-quick-action:hover {
 	align-self: center;
 }
 
-/* A card's title line: the tool's logo, the title, and the query that fills it at the end. */
+/* A card's title line: the tool's logo, the title (the query that fills it is its tooltip), and its link. */
 .dash-card-head {
 	display: flex;
 	align-items: center;
@@ -479,8 +346,8 @@ button.dash-quick-action:hover {
 	max-width: 55%;
 	margin: 0;
 	overflow: hidden;
-	font-size: 13px;
-	font-weight: 600;
+	font-size: var(--gc-text-md);
+	font-weight: var(--gc-weight-semibold);
 	white-space: nowrap;
 	text-overflow: ellipsis;
 }
@@ -493,21 +360,9 @@ button.dash-quick-action:hover {
 	background: var(--gemini-warn);
 }
 
-.dash-query {
-	flex: 0 1 auto;
-	max-width: 60%;
-	margin-left: auto;
-	overflow: hidden;
-	font-family: var(--vscode-editor-font-family);
-	font-size: 11px;
-	color: var(--gemini-faint);
-	white-space: nowrap;
-	text-overflow: ellipsis;
-}
-
 .dash-card.unconnected p {
 	margin: 4px 0 12px;
-	line-height: 1.5;
+	line-height: var(--gc-leading-body);
 }
 
 .dash-card.unconnected > button {
@@ -519,29 +374,29 @@ button.dash-quick-action:hover {
 	flex-direction: column;
 }
 
-/* A heading inside a card, such as Mine under Pending on me, with its own query. */
+/* A heading inside a card, such as Mine under Pending on you; what is behind it is its tooltip. */
 .dash-group {
 	display: flex;
 	align-items: center;
 	gap: 8px;
-	margin: 10px 0 2px;
-	font-size: 12px;
-	font-weight: 600;
+	margin: 8px 0 2px;
+	font-size: var(--gc-text-sm);
+	font-weight: var(--gc-weight-semibold);
 	color: var(--gemini-muted);
 }
 
 .dash-row {
 	display: flex;
 	align-items: center;
-	gap: 10px;
+	gap: 8px;
 	min-width: 0;
-	min-height: 30px;
-	padding: 3px 0;
+	min-height: var(--gc-row);
+	padding: 4px 0;
 	border-top: 1px solid var(--gemini-border);
 }
 
 /* A Jira site that can't be reached now: its heading says so, and its last tickets show dimmed. */
-.dash-group .dash-query.warn {
+.dash-group.warn {
 	color: var(--gemini-warn);
 }
 
@@ -557,7 +412,7 @@ button.dash-quick-action:hover {
 /* A ticket's type before its key, in the theme's chart colours after Jira's own. */
 .dash-type {
 	flex: none;
-	font-size: 14px;
+	font-size: var(--gc-text-lg);
 	color: var(--gemini-muted);
 }
 
@@ -588,7 +443,7 @@ button.dash-quick-action:hover {
 .dash-key {
 	flex: none;
 	font-family: var(--vscode-editor-font-family);
-	font-size: 12px;
+	font-size: var(--gc-text-sm);
 	color: var(--gemini-muted);
 }
 
@@ -599,9 +454,9 @@ button.dash-quick-action:hover {
 	overflow: hidden;
 	white-space: nowrap;
 	text-overflow: ellipsis;
-	padding: 0 6px;
-	border-radius: 4px;
-	font-size: 11px;
+	padding: 0 8px;
+	border-radius: var(--gc-radius-sm);
+	font-size: var(--gc-text-xs);
 	line-height: 18px;
 	color: var(--gemini-muted);
 	background: color-mix(in srgb, var(--gemini-muted) 14%, transparent);
@@ -634,19 +489,8 @@ button.dash-row-title:hover {
 .dash-row-detail {
 	flex: none;
 	max-width: 40%;
-	font-size: 12px;
+	font-size: var(--gc-text-sm);
 	color: var(--gemini-faint);
-}
-
-/* Needs you reads as one line: the title, then what it is about, then the state and the action. */
-.dash-needs .dash-row-title {
-	flex: none;
-	max-width: 45%;
-}
-
-.dash-needs .dash-row-detail {
-	flex: 1;
-	max-width: none;
 }
 
 /* A bar in a row: the sprint's progress, today's quota. */
@@ -655,14 +499,14 @@ button.dash-row-title:hover {
 	width: 120px;
 	height: 8px;
 	overflow: hidden;
-	border-radius: 4px;
+	border-radius: var(--gc-radius-sm);
 	background: var(--gemini-hover);
 }
 
 .dash-row-bar-fill {
 	display: block;
 	height: 100%;
-	border-radius: 4px;
+	border-radius: var(--gc-radius-sm);
 	background: var(--gemini-accent);
 }
 
@@ -679,8 +523,9 @@ button.dash-row-title:hover {
 	flex: none;
 	padding: 1px 8px;
 	border: 1px solid var(--gemini-border);
-	border-radius: 999px;
-	font-size: 11px;
+	border-radius: var(--gc-radius-pill);
+	font-size: var(--gc-text-xs);
+	font-weight: var(--gc-weight-medium);
 	color: var(--gemini-muted);
 	white-space: nowrap;
 }
@@ -694,17 +539,17 @@ button.dash-row-title:hover {
 .dash-row > button.primary {
 	flex: none;
 	padding: 1px 8px;
-	font-size: 11px;
+	font-size: var(--gc-text-xs);
 }
 
 .dash-row > button.link-button {
 	flex: none;
 	padding: 0 4px;
-	font-size: 12px;
+	font-size: var(--gc-text-sm);
 }
 
 .dash-row .codicon-circle-filled {
-	font-size: 10px;
+	font-size: var(--gc-text-xs);
 	color: var(--gemini-muted);
 }
 
@@ -721,8 +566,8 @@ button.dash-row-title:hover {
 
 .dash-note {
 	margin: 8px 0 0;
-	font-size: 12px;
-	line-height: 1.4;
+	font-size: var(--gc-text-sm);
+	line-height: var(--gc-leading-row);
 }
 
 @media (max-width: 760px) {
@@ -735,11 +580,11 @@ button.dash-row-title:hover {
 	}
 }
 
-/* Show All: under a card whose list is longer than it shows. */
+/* Show all: under a card whose list is longer than it shows. */
 .dash-show-all {
 	align-self: flex-start;
-	margin-top: 6px;
-	font-size: 12px;
+	margin-top: 8px;
+	font-size: var(--gc-text-sm);
 }
 
 /* While the popup is open the page behind it holds still; the gutter stays so nothing shifts. */
@@ -758,11 +603,11 @@ html:has(.dash-comment-dialog[open]) {
 	box-sizing: border-box;
 	margin: max(24px, 5vh) auto auto;
 	padding: 0;
-	border: 1px solid var(--gemini-border-strong);
-	border-radius: var(--gemini-radius-large);
+	border: var(--gc-hairline);
+	border-radius: var(--gc-radius-overlay);
 	background: var(--gemini-popover);
 	color: var(--vscode-foreground);
-	box-shadow: 0 20px 60px var(--gemini-shadow);
+	box-shadow: var(--gc-shadow);
 	overflow: hidden;
 }
 
@@ -775,7 +620,7 @@ html:has(.dash-comment-dialog[open]) {
 	flex-direction: column;
 	height: 100%;
 	box-sizing: border-box;
-	padding: 16px 20px 8px;
+	padding: 16px 24px 8px;
 }
 
 .dash-list-head h2 {
@@ -783,15 +628,15 @@ html:has(.dash-comment-dialog[open]) {
 	max-width: 50%;
 	margin: 0;
 	overflow: hidden;
-	font-size: 14px;
-	font-weight: 600;
+	font-size: var(--gc-text-lg);
+	font-weight: var(--gc-weight-semibold);
 	white-space: nowrap;
 	text-overflow: ellipsis;
 }
 
 .dash-list-count {
 	flex: none;
-	font-size: 12px;
+	font-size: var(--gc-text-sm);
 	font-variant-numeric: tabular-nums;
 	color: var(--gemini-muted);
 }
@@ -801,13 +646,9 @@ html:has(.dash-comment-dialog[open]) {
 	margin-left: auto;
 }
 
-.dash-list-head .dash-query + .dash-list-close {
-	margin-left: 0;
-}
-
 .dash-list-filter {
-	margin: 8px 0 6px;
-	padding: 5px 9px;
+	margin: 8px 0 8px;
+	padding: 4px 8px;
 	border: 1px solid var(--gemini-border-strong);
 	border-radius: var(--gemini-radius-small);
 	background: var(--vscode-input-background);
@@ -823,8 +664,8 @@ html:has(.dash-comment-dialog[open]) {
 .dash-list-rows {
 	flex: 1;
 	min-height: 0;
-	margin: 0 -20px;
-	padding: 0 20px 8px;
+	margin: 0 -24px;
+	padding: 0 24px 8px;
 	overscroll-behavior: contain;
 	overflow-y: auto;
 }
@@ -835,11 +676,11 @@ html:has(.dash-comment-dialog[open]) {
 	box-sizing: border-box;
 	margin: max(32px, 12vh) auto auto;
 	padding: 0;
-	border: 1px solid var(--gemini-border-strong);
-	border-radius: var(--gemini-radius-large);
+	border: var(--gc-hairline);
+	border-radius: var(--gc-radius-overlay);
 	background: var(--gemini-popover);
 	color: var(--vscode-foreground);
-	box-shadow: 0 20px 60px var(--gemini-shadow);
+	box-shadow: var(--gc-shadow);
 }
 
 .dash-comment-dialog::backdrop {
@@ -850,7 +691,7 @@ html:has(.dash-comment-dialog[open]) {
 	display: flex;
 	flex-direction: column;
 	gap: 8px;
-	padding: 16px 20px;
+	padding: 16px 24px;
 }
 
 .dash-comment-summary {
@@ -876,7 +717,7 @@ html:has(.dash-comment-dialog[open]) {
 	gap: 12px;
 	min-width: 0;
 	min-height: 34px;
-	padding: 0 6px 0 12px;
+	padding: 0 8px 0 12px;
 	border-bottom: 1px solid var(--gemini-border);
 }
 
@@ -887,7 +728,7 @@ html:has(.dash-comment-dialog[open]) {
 	align-items: stretch;
 	gap: 16px;
 	margin: 0;
-	font-size: 12px;
+	font-size: var(--gc-text-sm);
 }
 
 .dash-comment-tabs .composer-tab {
@@ -920,7 +761,7 @@ html:has(.dash-comment-dialog[open]) {
 }
 
 .dash-comment-strike {
-	font-weight: 600;
+	font-weight: var(--gc-weight-semibold);
 	text-decoration: line-through;
 }
 
@@ -934,19 +775,19 @@ html:has(.dash-comment-dialog[open]) {
 .dash-comment-text {
 	min-height: 160px;
 	max-height: 50vh;
-	padding: 10px 12px;
+	padding: 8px 12px;
 	border: none;
 	outline: none;
 	background: transparent;
 	color: var(--vscode-input-foreground);
 	font: inherit;
-	line-height: 1.5;
+	line-height: var(--gc-leading-body);
 	resize: vertical;
 }
 
 .dash-comment-preview {
 	max-height: 50vh;
-	padding: 10px 12px;
+	padding: 8px 12px;
 	overflow-y: auto;
 }
 
@@ -973,12 +814,12 @@ html:has(.dash-comment-dialog[open]) {
 	z-index: 2;
 	width: min(360px, calc(100% - 16px));
 	max-height: 240px;
-	padding: 4px;
+	padding: var(--gc-space-1);
 	overflow-y: auto;
-	border: 1px solid var(--gemini-border-strong);
-	border-radius: var(--gemini-radius);
+	border: var(--gc-hairline);
+	border-radius: var(--gc-radius-overlay);
 	background: var(--gemini-popover);
-	box-shadow: 0 8px 24px var(--gemini-shadow);
+	box-shadow: var(--gc-shadow);
 }
 
 .dash-comment-person {
@@ -986,7 +827,7 @@ html:has(.dash-comment-dialog[open]) {
 	align-items: center;
 	gap: 8px;
 	min-width: 0;
-	padding: 5px 8px;
+	padding: 4px 8px;
 	border-radius: var(--gemini-radius-small);
 	cursor: pointer;
 	white-space: nowrap;
@@ -1017,14 +858,14 @@ html:has(.dash-comment-dialog[open]) {
 	align-items: center;
 	gap: 6px;
 	min-width: 0;
-	font-size: 12px;
+	font-size: var(--gc-text-sm);
 	color: var(--gemini-muted);
 }
 
 .dash-comment-visibility {
 	min-width: 0;
 	max-width: 260px;
-	padding: 3px 6px;
+	padding: 4px 8px;
 	border: 1px solid var(--gemini-border-strong);
 	border-radius: var(--gemini-radius-small);
 	background: var(--vscode-dropdown-background, var(--vscode-input-background));
@@ -1053,8 +894,8 @@ html:has(.dash-comment-dialog[open]) {
 
 .dash-comment-note {
 	margin: 0;
-	font-size: 12px;
-	line-height: 1.4;
+	font-size: var(--gc-text-sm);
+	line-height: var(--gc-leading-row);
 }
 
 /* A short confirmation at the foot of the page, at the overlay tier. */
@@ -1064,21 +905,13 @@ html:has(.dash-comment-dialog[open]) {
 	bottom: 24px;
 	transform: translateX(-50%);
 	max-width: calc(100vw - 48px);
-	padding: 8px 14px;
-	border: 1px solid var(--gemini-border-strong);
-	border-radius: var(--gemini-radius);
+	padding: 8px 16px;
+	border: var(--gc-hairline);
+	border-radius: var(--gc-radius-overlay);
 	background: var(--gemini-popover);
-	box-shadow: 0 8px 24px var(--gemini-shadow);
+	box-shadow: var(--gc-shadow);
 }
 
 .dash-toast[hidden] {
 	display: none;
-}
-
-/* The chevron beside an agent card's Try button: the other ways to take the work. */
-.card-actions button.try-menu {
-	margin-left: -4px;
-	padding-left: 4px;
-	padding-right: 4px;
-	min-width: 0;
 }

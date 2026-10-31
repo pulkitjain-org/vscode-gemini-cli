@@ -256,17 +256,11 @@ export function showProjectPanel(next: ProjectPanel): void {
 	if (next.requests) {
 		threads.append(el('p', 'panel-row panel-requests', next.requests));
 	}
-	const context = el('section', 'panel-section');
-	context.append(el('h3', undefined, text.context));
-	context.append(el('p', 'panel-row', next.conductor ? format(text.conductorTracks, String(next.conductor.openTracks)) : text.noConductor));
+	// Only what a person acts on: the threads, and the repositories a project spans. How the coordinator is set up is Project settings' to show.
 	if (next.repos?.length) {
-		context.append(el('p', 'panel-row', format(text.repos, next.repos.join(', '))));
+		threads.append(el('p', 'panel-row', format(text.repos, next.repos.join(', '))));
 	}
-	if (next.model) {
-		const name = state.settings.model?.available.find(choice => choice.id === next.model)?.name ?? next.model;
-		context.append(el('p', 'panel-row', format(text.model, name)));
-	}
-	aside.replaceChildren(threads, context);
+	aside.replaceChildren(threads);
 }
 
 /** Panel widths the sash allows: the chat keeps at least 520 px. */
