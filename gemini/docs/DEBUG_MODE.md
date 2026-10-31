@@ -831,8 +831,8 @@ Each stage is useful by itself and ships behind `gemini.debugMode.enabled`.
 
 | Question | Why it matters | How to answer |
 | --- | --- | --- |
-| Does `session/load` in gemini-cli 0.66 apply `mcpServers` that differ from the session's first? What does the replay cost on a 200-turn chat? | It decides how a running chat gets the debug tools. | A real CLI test, and `perf-real.mts` on a long session. |
-| Does the CLI refresh its tool list on `notifications/tools/list_changed`? | It would avoid the reload. | A spike MCP server that sends it over SSE. |
+| Answered (`test/acp/realMcpReload.test.ts`, FINDINGS.md): `session/load` with an added server starts it and declares its tools, and the CLI also refreshes a server's tools on `notifications/tools/list_changed` over the server's notification stream, so the debug tools arrive with no reload at all: the `geminicode-debug` route is listed from the start with no tools, and sends the notice on entry. The replay cost no longer matters for this. | It decides how a running chat gets the debug tools. | A real CLI test, and `perf-real.mts` on a long session. |
+| Answered: gemini-cli 0.66 keeps one notification stream open per HTTP server and lists its tools again on `notifications/tools/list_changed` (`test/acp/realMcpReload.test.ts`); `LocalMcpServer.notifyToolsChanged` sends it. | It avoids the reload. | Done. |
 | Does Plan mode let the CLI call an MCP tool that isn't read-only? | Investigate could then run in Plan for a second guard. Not needed for the design, which guards writes itself. | A real CLI test. |
 | Can a stop of a session started with `suppressDebugView` avoid revealing the line in the user's editor? | A reveal that moves the user's editor is disruptive. | Try in the real app; if not, a `GEMINI-FORK` edit in the debug service's stop handling that skips the reveal for sessions with the marker. |
 | Is debugpy (`ms-python.debugpy`) on Open VSX, and can GeminiCode offer to install it when a Python program is debugged? | Python logpoints depend on it. | Check Open VSX; install through the extensions service with the user's yes. |
@@ -850,7 +850,7 @@ Each stage is useful by itself and ships behind `gemini.debugMode.enabled`.
 | Phases and hypotheses are GeminiCode's state. | Survive Compact, overflow and rewind; checkable; drawable. | Keeping them in the model's context. |
 | The guard is on file writes, not on a CLI mode. | Works in Default and Auto Edit, needs no CLI change. | Plan mode for Investigate: unproven for MCP tools, and it can't tell instrumentation from edits. |
 | Debug mode refuses YOLO and asks the user to switch. | Launches and expressions run code; the user must see them. Never change the mode for the user. | Silently switching to Default. |
-| The debug tools come with a session reload on entry. | Zero tokens for chats that never debug. | Listing them in every session. |
+| The debug tools arrive through `tools/list_changed` on entry: the `geminicode-debug` route is in every session's list and offers nothing until then. | Zero tokens for chats that never debug, and no reload or replay (the spike found the CLI honours the notice). | Listing them in every session; a session reload on entry, the first design. |
 | Snapshot and continue by default, holds capped at 30 s. | A paused server breaks the reproduction and the user's other work. | Plain stopping breakpoints. |
 | Regions found by markers and compared normalised; changed ones ask. | Survive formatters, user edits and moves without ever deleting the user's code. | Line numbers; silent removal. |
 | A picked log file is a one-file, from-now grant to Debug mode only. | The smallest grant that works, and nothing from before the user chose to share. | Widening folder trust or the agent's file policy. |
