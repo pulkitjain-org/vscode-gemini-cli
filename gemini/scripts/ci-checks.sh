@@ -77,8 +77,9 @@ else
 	# Only the changed fork files: the rest passed on the base already.
 	lintable=$(printf '%s\n' "$changed" | grep -E '^(extensions/gemini/|gemini/site/).*\.(ts|mts)$' | while read -r file; do [ -f "$file" ] && printf '%s\n' "$file"; done || true)
 	if [ -n "$lintable" ]; then
+		# A file ESLint's config ignores (test/fixtures/) is skipped, as CI's lint of whole folders skips it, rather than warned about.
 		# shellcheck disable=SC2086
-		step 'Lint changed fork files' npx eslint --max-warnings 0 $lintable
+		step 'Lint changed fork files' npx eslint --max-warnings 0 --no-warn-ignored $lintable
 	fi
 fi
 # shellcheck disable=SC2046
