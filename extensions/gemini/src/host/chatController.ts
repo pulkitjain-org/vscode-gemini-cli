@@ -373,7 +373,7 @@ export class ChatController implements vscode.Disposable {
 		this.service.ensureReady().catch(() => undefined);
 		const mediaUri = vscode.Uri.joinPath(this.extensionUri, 'media');
 		webview.options = { enableScripts: true, localResourceRoots: [mediaUri] };
-		webview.html = chatHtml(webview, mediaUri, !!this.options.project, this.forks.available);
+		webview.html = chatHtml(webview, mediaUri, !!this.options.project, this.forks.cardChoice);
 		this.webviewListener = webview.onDidReceiveMessage((message: FromWebview) => this.onMessage(message));
 	}
 

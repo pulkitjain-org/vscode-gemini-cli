@@ -13,7 +13,7 @@ The Gemini CLI's permission card for an MCP tool offers "Allow for this session"
 - The broker strips every option except allow-once and reject.
 - It never answers at once, not even in YOLO mode.
 - The card shows the exact remote effect, and the user's choice is written to the audit log.
-- The admin policy makes the CLI ask for them in every mode.
+- GeminiCode's tool policy makes the CLI ask for them in every mode.
 - The UI flows for the same actions need a click on a button that names the effect.
 
 A test asserts that no allow-always option reaches the webview for the class.
@@ -25,4 +25,4 @@ A test asserts that no allow-always option reaches the webview for the class.
 
 ## Evidence
 
-`extensions/gemini/src/acp/permissions.ts` (`confirmOnly`) and [FINDINGS.md](../FINDINGS.md#file-requests-and-permissions) on `proceed_always`; `test/acp/permissions.test.ts` and `realAgentPolicy.test.ts`; in the pilot, audit records with a permission outcome for every confirm-class action.
+`extensions/gemini/src/acp/permissions.ts` (`confirmOnly`), `toolPolicy.ts` (`confirmTools`, in the policy file GeminiCode passes with the CLI's own `--admin-policy` flag) and [FINDINGS.md](../FINDINGS.md#file-requests-and-permissions) on `proceed_always`; `test/acp/permissions.test.ts` and `realAgentPolicy.test.ts`; in the pilot, audit records with a permission outcome for every confirm-class action.

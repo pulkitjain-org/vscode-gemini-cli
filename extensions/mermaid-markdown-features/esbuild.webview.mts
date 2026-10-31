@@ -58,24 +58,15 @@ await Promise.all([
 			},
 		}
 	}, process.argv),
-	// Markdown preview
+	// Markdown preview and notebook
+	// GEMINI-FORK: one build, so the two share mermaid's chunks (about 18 MB) instead of each shipping a copy; the notebook renderer was notebook-out/index.js
 	run({
 		entryPoints: {
 			'index': path.join(previewSrcDir, 'markdown', 'index.ts'),
+			'notebook': path.join(previewSrcDir, 'notebook', 'index.ts'),
 		},
 		srcDir: previewSrcDir,
 		outdir: path.join(rootDir, 'markdown-preview-out'),
 		additionalOptions: mermaidMarkdownBuildOptions,
-	}, process.argv),
-	// Notebook
-	run({
-		entryPoints: {
-			'index': path.join(previewSrcDir, 'notebook', 'index.ts'),
-		},
-		srcDir: previewSrcDir,
-		outdir: path.join(rootDir, 'notebook-out'),
-		additionalOptions: {
-			...mermaidMarkdownBuildOptions,
-		},
 	}, process.argv),
 ]);

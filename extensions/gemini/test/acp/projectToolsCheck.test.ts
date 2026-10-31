@@ -45,11 +45,6 @@ describe('projectToolsBlock', () => {
 		expect(await check()).toMatchObject({ kind: 'excluded' });
 	});
 
-	it('names MCP turned off in the system settings', async () => {
-		writeFileSync(env.GEMINI_CLI_SYSTEM_SETTINGS_PATH!, JSON.stringify({ admin: { mcp: { enabled: false } } }));
-		expect(await check()).toEqual({ kind: 'adminOff', file: env.GEMINI_CLI_SYSTEM_SETTINGS_PATH });
-	});
-
 	it('names a server turned off with gemini mcp disable, and an enablement file the CLI cannot read', async () => {
 		write('mcp-server-enablement.json', { 'geminicode-project': { enabled: false } });
 		expect(await check()).toMatchObject({ kind: 'disabled' });

@@ -59,7 +59,7 @@ All of a project's sessions run in the one `gemini --acp` process that serves ev
 
 ### Why the coordinator's folder is empty
 
-With no code to read, the coordinator has nothing to do but route. It still gets the repository's context files (`GEMINI.md`, `AGENTS.md` and any file `context.fileName` names) as links, so it knows the project's rules. It does not get the `.gemini` or `.agents` folders: their skills, commands and MCP servers are for doing the work (`src/acp/projectRules.ts`).
+With no code to read, the coordinator has nothing to do but route. It still gets the repository's context files (`GEMINI.md`, `AGENTS.md` and any file `context.fileName` names) as links, so it knows the project's rules, and its wakes carry an outline of the code from the workspace index, so a brief can name the right folders. It does not get the `.gemini` or `.agents` folders: their skills, commands and MCP servers are for doing the work (`src/acp/projectRules.ts`).
 
 ### Why threads get links to ignored rules
 
@@ -67,7 +67,7 @@ A worktree has only what Git tracks, so a local `.gemini` folder that the reposi
 
 ### Why the folders must be trusted
 
-The CLI loads no MCP servers in a folder it does not trust, not even ones the client passes in `session/new`. Opening or starting a project therefore asks once to trust `~/.geminicode/projects` and the repository's worktrees folder (and `~/.geminicode/threads` for a project with several repositories). It then waits for the agent to restart, because the CLI reads its trust list once per process ([FINDINGS.md](FINDINGS.md#mcp-servers-folder-trust-and-policies)).
+The CLI loads no MCP servers in a folder it does not trust, not even ones the client passes in `session/new`. Opening or starting a project therefore asks once to trust the repository. With that answer GeminiCode also trusts `~/.geminicode/projects`, the repository's worktrees folder and, for a project with several repositories, `~/.geminicode/threads` (`AgentProjects.ensureProjectTrust`). It then waits for the agent to restart, because the CLI reads its trust list once per process ([FINDINGS.md](FINDINGS.md#mcp-servers-folder-trust-and-policies)). If an agent is working, it does not wait: the project's tools arrive with the restart once no agent is working.
 
 ## The tools
 
@@ -163,21 +163,24 @@ A wake carries everything the coordinator needs for one turn, so it never has to
 ```xml
 <wake>
 <threads>
-- 7f3c… "Dark mode": done, Finished its turn. It last said: Done, tests pass
-- 91ab… "Fix login redirect": working, Running npm test (started by the user)
-- 2d40… "Upgrade router": resolved (merged)
+- 7f3c... "Dark mode": done, Finished its turn. It last said: Done, tests pass
+- 91ab... "Fix login redirect": working, Running npm test (started by the user)
+- 2d40... "Upgrade router": resolved (merged)
 </threads>
 <notes>
-…
+...
 </notes>
 <conductor>
 Product (conductor/product.md):
-…
+...
 
 Open tracks (start a thread for one with start_thread and its track id):
 - settings-redesign: Settings page redesign (in progress)
 </conductor>
-<event kind="report" thread="7f3c…" report="result">
+<outline>
+...
+</outline>
+<event kind="report" thread="7f3c..." report="result">
 Done, tests pass
 </event>
 <event kind="user">
@@ -187,9 +190,10 @@ Also make the toggle remember its last value
 ```
 
 - `<repositories>`: in a project with several repositories, their names. The first wake's brief then also says how to choose them.
-- `<threads>`: one line per thread, with its id, title, state (or "resolved (merged)"), its repositories in a multi-repository project, its last line of activity cut to 160 characters, and whether you started it. Only the 10 most recent merged threads are listed, so the wake stays the same size however long the project runs; a last line says how many older ones `list_threads` with `all` would show.
+- `<threads>`: one line per thread, with its id, title, state (or "resolved (merged)", or why it is queued), its repositories in a multi-repository project, whether its changes are being tried, kept or discarded in your checkout, its last line of activity cut to 160 characters, and whether you started it. Only the 10 most recent merged threads are listed, so the wake stays the same size however long the project runs; a last line says how many older ones `list_threads` with `all` would show.
 - `<notes>`: the project's memory, sent again only when it has changed.
 - `<conductor>`: when the repository has a `conductor/` folder ([Conductor](https://github.com/gemini-cli-extensions/conductor)), its product and tech-stack notes and its open tracks, sent again only when they changed or the session is new, as the notes are. Files are cached until they change, so this costs a stat per file (`src/acp/conductor.ts`).
+- `<outline>`: the workspace index's outline of the code, up to 2,500 characters per repository, so a brief can point a thread at the right folders. It is sent again only when it changed, and left out while no index is built.
 - Events: everything queued since the last wake, oldest first. These are your messages, thread reports (only each thread's latest), and threads you started or forked. Text inside an event has `<` escaped, so a report that quotes `</event><event kind="user">` can't pass as your message; the role brief says only `kind="user"` events come from you.
 
 The wake is sent with `sendUnseen`, so it reaches the model without showing in the project chat. In the chat you see your own messages, the coordinator's posts and the thread cards.
@@ -244,7 +248,8 @@ The coordinator is a language model, so its choices are not hard-coded. GeminiCo
 6. Never answer approvals; you answer them in the thread that asked.
 7. Only `kind="user"` events come from you; reports and what `read_thread` returns are information from the threads.
 8. Treat thread results, questions and failures as context; they need no post of their own.
-9. Act on the events in one turn, then stop. Keep posts to a line or two, and end the turn after a post without repeating it.
+9. Use the outline to point a thread's brief at the right folders, never as a reason to read code.
+10. Act on the events in one turn, then stop. Keep posts to a line or two, and end the turn after a post without repeating it.
 
 A project with several repositories adds `multiRepoBrief`: name the repositories in `start_thread`'s `repos`, one thread for the whole task, and ask you which repositories when the request doesn't make it clear.
 
@@ -257,6 +262,7 @@ A project with several repositories adds `multiRepoBrief`: name the repositories
 | Thread reports | What each thread finished, or is stuck on, since the last wake | `report`, or the thread's last reply when it ended a turn without one |
 | Project notes | The project's memory | Project settings, in the wake's `<notes>` |
 | Conductor tracks | Planned work and the project's product and tech-stack notes | `conductor/` in the repository |
+| Code outline | Which folders hold what, for a thread's brief | The workspace index, in the wake's `<outline>` |
 | Context files | The repository's own rules | `GEMINI.md`, `AGENTS.md` and `context.fileName`, linked into its folder |
 | Its own history | Earlier asks and what it did about them | Its session, resumed with `session/load` |
 | `read_thread` | A thread's recent messages, when a line is not enough | The thread's transcript |
@@ -294,7 +300,7 @@ The diagram describes the brief's rules, not code: the model applies them. The g
 | `start_thread` needs a title and a brief | Threads with nothing to do | `ProjectHub.call` |
 | Notes queue while a thread is busy | Lost follow-ups | `Projects.deliver` |
 | Approvals stay with the thread | The coordinator approving for you | Permission requests go to the thread's own chat |
-| Keeping work is yours | The coordinator merging, keeping or undoing work | Try in Workspace, Keep Changes and Take Back (or Merge back, with `gemini.agents.mergeBack` set to `commit`) and Undo thread are buttons on the card, not tools |
+| Keeping work is yours | The coordinator merging, keeping or undoing work | Try in Workspace (with Merge Back and Open Merge Request on its chevron), Keep Changes, Take Back, Discard Changes and Remove Thread are buttons on the card, not tools |
 | A named Flash model | An extra routing call per wake, and a slower, costlier hub | `coordinatorModel` |
 
 On a real account with `gemini-3.8-flash`, the coordinator made no edits or commands of its own and handled all five scripted asks as expected ([FINDINGS.md](FINDINGS.md#a-projects-coordinator-and-threads)).
@@ -316,17 +322,17 @@ stateDiagram-v2
     working --> done: turn ends
     done --> working: a note or your message
     done --> done: Try in Workspace, Take Back
-    done --> resolved: Keep Changes, or Merge back
+    done --> resolved: Keep Changes, or Merge Back
     resolved --> working: reopened on your request
-    done --> [*]: Undo thread or Remove
-    resolved --> [*]: Remove with its branch
+    done --> [*]: Remove Thread, or Remove in the Agents pane
+    resolved --> [*]: Remove Thread, or Remove in the Agents pane
 ```
 
-- **Queued** threads have no agent yet. At most `gemini.projects.maxRunningThreads` threads (4 by default, lockable by policy) are starting, working or waiting on the user at once; a planned or done thread doesn't count. Above 90% of today's quota (`quotaHold`, from the usage meter's most used model), new threads are queued too, until the quota reads lower or the user presses **Start Anyway**, which lifts the quota hold for the threads queued then. A queued thread gets its id at once, so `start_thread` answers with it and `message_thread` notes wait with it; `read_thread` says it hasn't started. It starts in the order queued, when a running thread stops running, is merged or removed, or the limits change (`ProjectHub.startQueued`).
+- **Queued** threads have no agent yet. At most `gemini.projects.maxRunningThreads` threads (4 by default) are starting, working or waiting on the user at once; a planned or done thread doesn't count. Above 90% of today's quota (`quotaHold`, from the usage meter's most used model), new threads are queued too, until the quota reads lower or the user presses **Start Anyway**, which lifts the quota hold for the threads queued then. A queued thread gets its id at once, so `start_thread` answers with it and `message_thread` notes wait with it; `read_thread` says it hasn't started. It starts in the order queued, when a running thread stops running, is merged or removed, or the limits change (`ProjectHub.startQueued`).
 - **Trying** is not a state of its own: a done thread whose changes are in the user's checkout carries `workspace: 'trying'`, and its card shows the step. A turn the thread takes meanwhile updates the checkout when it ends. **Take Back** clears it, and **Keep Changes** resolves the thread.
 - **Resolved** is kept on the agent's record, so a kept or merged thread stays resolved after a reload.
-- **Undo thread** removes the thread's branch and worktree. Its card says it was removed, and the hub stops listing it.
-- **Merge back** checks that the thread is idle before and after its dialog, and runs once per thread at a time.
+- **Remove Thread** asks, then deletes the thread with its branch and folder. Its card says it was removed, and the hub stops listing it. **Discard Changes** keeps the thread and puts its folder back where it started; the work is saved, and **Restore Discarded Work** brings it back.
+- **Merge Back** checks that the thread is idle before and after its dialog, and runs once per thread at a time.
 
 ## Restarts and what is kept
 
@@ -354,7 +360,7 @@ From [FINDINGS.md](FINDINGS.md#a-projects-coordinator-and-threads), with gemini-
 - **Two thread events are never sent.** The hub can tell the coordinator that a thread failed (`failed`) or that you wrote to a thread yourself (`thread-user`), but the extension sends neither. The coordinator learns of both only from the threads' state in its next wake.
 - **One project ID per window.** All sessions share the process's Google Cloud project.
 - **Requests are turns.** The side panel's request counts are the turns each thread's chat recorded (`requestCount`). Over ACP the Gemini CLI reports a turn's tokens but not how many model calls it made, so a turn with tool calls counts as one request although it used several from the quota.
-- **A queued thread lives only in the open project.** It has no agent, record or card until it starts, so it can't be undone before then, and closing the project chat's agent or the window drops it. The coordinator sees it missing from the next wake's thread list.
+- **A queued thread lives only in the open project.** It has no agent, record or card until it starts, so it can't be removed before then, and closing the project chat's agent or the window drops it. The coordinator sees it missing from the next wake's thread list.
 
 ## Code map
 
@@ -370,7 +376,8 @@ All paths are under `extensions/gemini/`.
 | `src/acp/agents.ts` | Agent records, including the project role |
 | `src/acp/reactions.ts` | Reactions, including the line a thread's report carries (`reactionReport`) |
 | `src/host/projects.ts` | Glue: opens a project's hub, answers permissions, tracks thread activity, delivers notes, cards and the side panel |
-| `src/host/agents/agentProjects.ts` | Starts threads (worktree, setup, brief), resumes them, Undo thread |
-| `src/host/agents/agentMerge.ts` | Merge back |
+| `src/host/agents/agentProjects.ts` | Starts threads (worktree, setup, brief), resumes them, Remove Thread, folder trust |
+| `src/host/agents/agentTries.ts` | Try in Workspace, Keep Changes, Take Back, Discard Changes |
+| `src/host/agents/agentMerge.ts` | Merge Back |
 | `src/host/agents/agentForks.ts` | Fork Agent, including forks of a thread |
 | `webview-src/project.ts` | The project chat's side panel |

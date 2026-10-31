@@ -8,7 +8,7 @@ GeminiCode's browser is shared with your agents. Point at an element, pin notes 
 
 Ask, for example, "open http://localhost:5173 and check the cart total". The agent opens the page in a tab beside its chat, with a **Gemini is using this page** bar, and reads the page, clicks, types, presses keys and takes screenshots while you watch. **Stop** on the bar stops the agent's turn. In Default mode it still asks before each browser action.
 
-The globe in the title bar opens the browser yourself. Links to `localhost` from the terminal and chat open in it too.
+To open the browser yourself, click the globe in the title bar. Links to `localhost` in the terminal and the chat open in it too.
 
 ## Point at what to change
 
@@ -34,7 +34,7 @@ The Gemini CLI's own web fetch can't reach private addresses, so for a QA or int
 
 ## Console and network
 
-Agents read the page's console (every level, filtered by text or level) and its requests (method, URL, status and time, or just the failed ones). They also go forward and reload, right-click, answer a page's alert, confirm or prompt dialog, and find the web servers already running on your Mac, so they open yours instead of starting another.
+Agents read the page's console (every level, filtered by text or level) and its requests (method, URL, status and time, or just the failed ones). They also go back, forward and reload, right-click, answer a page's alert, confirm or prompt dialog, and find the web servers already running on your Mac, so they open yours instead of starting another.
 
 ![An agent reading a page's console errors and fixing the code](../../site/media/showcase-console-dark.webp "clip")
 
@@ -42,8 +42,8 @@ Agents read the page's console (every level, filtered by text or level) and its 
 
 - Pages on your Mac (`localhost`, `127.0.0.1`) open freely; local files follow the same rules as the agent's file tools.
 - Any other site asks you first, once per agent and site, because a page can contain instructions aimed at the agent. The check uses the page's real address after every step, so a redirect or a click can't skip it.
-- `gemini.browser.allowOtherSites` (also an admin policy) limits agents to local pages, and an admin can limit agents to a list of sites with `gemini.browser.allowedOrigins`, such as `https://*.example.com`.
-- `gemini.browser.enabled` turns the agents' browser off.
+- Turn off `gemini.browser.allowOtherSites` to keep agents to local pages, or list the only sites they may open in `gemini.browser.allowedOrigins`, such as `https://*.example.com`. You can still open any site yourself.
+- Turn off `gemini.browser.enabled` to take the browser away from agents.
 
 ## Sign in once
 

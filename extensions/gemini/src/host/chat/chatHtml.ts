@@ -10,8 +10,8 @@ import * as vscode from 'vscode';
 import { developerToolsOn } from '../developerTools';
 import type { ChatStrings, ForkStrings, ProjectChatStrings, ReactionStrings, SideStrings } from '../chatStrings';
 import { reactionsOn } from '../chatReactions';
-import { configSection } from '../configuration';
 import { foldWorkOn } from '../foldWork';
+import type { TryChoice } from '../panelProtocol';
 import { createNonce, escapeAttribute } from '../webviewHtml';
 
 /** A project chat's strings, from dist/onDemand.js (projectStrings.ts); set as the extension activates. */
@@ -33,8 +33,11 @@ function cachedStrings(key: string, build: () => ChatStrings): string {
 	return attribute;
 }
 
-/** The chat view's page for `webview`, loading its script and styles from `mediaUri`; `project` adds a project chat's strings, `fork` Fork Agent's. */
-export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project: boolean, fork: boolean): string {
+/**
+ * The chat view's page for `webview`, loading its script and styles from `mediaUri`; `project` adds a project chat's strings,
+ * `fork` Fork Agent's, with what a fork card's second button does.
+ */
+export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project: boolean, fork: TryChoice | undefined): string {
 	const nonce = createNonce();
 	const script = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'chat.js'));
 	const style = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'chat.css'));
@@ -62,7 +65,7 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 		fromCoordinator: vscode.l10n.t("From coordinator"),
 		// A project chat's strings load with the code they serve, from dist/onDemand.js: most chats aren't project chats.
 		...(project && projectStringsOf ? { project: projectStringsOf() } : {}),
-		...(fork ? { fork: forkStrings() } : {}),
+		...(fork ? { fork: forkStrings(fork) } : {}),
 		side: sideStrings(),
 		...(debugOn ? { debugStart: [vscode.l10n.t("Debug with Gemini"), vscode.l10n.t("Find the bug from the running program's evidence before fixing it")] as const } : {}),
 		...(project ? {} : { reactions: reactionStrings() }),
@@ -646,7 +649,7 @@ export function sideStrings(): SideStrings {
 	};
 }
 
-function forkStrings(): ForkStrings {
+function forkStrings(choice: TryChoice): ForkStrings {
 	return {
 		button: vscode.l10n.t("Fork"),
 		buttonTip: vscode.l10n.t("Fork Agent: a new agent that starts from this conversation"),
@@ -684,7 +687,7 @@ function forkStrings(): ForkStrings {
 		cardShared: vscode.l10n.t("in this folder"),
 		cardRemoved: vscode.l10n.t("removed"),
 		open: vscode.l10n.t("Open"),
-		merge: vscode.workspace.getConfiguration(configSection).get<string>('agents.mergeBack') === 'commit' ? vscode.l10n.t("Merge Back") : vscode.l10n.t("Try in Workspace"),
+		merge: choice === 'merge' ? vscode.l10n.t("Merge Back") : choice === 'mr' ? vscode.l10n.t("Open Merge Request...") : vscode.l10n.t("Try in Workspace"),
 		from: vscode.l10n.t("Forked from \"{0}\""),
 		fromContext: {
 			whole: vscode.l10n.t("with the whole session"),

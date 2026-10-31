@@ -1,6 +1,6 @@
 # Review and safety
 
-Agents ask before they act, and every change they make can be kept, undone or rewound. This page covers approvals, reviewing changes, and what agents can't reach.
+Agents ask before they act, and every change they make can be kept, undone or rewound.
 
 ![An agent asking to run npm test, the test run after Allow once, and its summary](../../site/media/showcase-wait-dark.webp "clip")
 
@@ -9,14 +9,18 @@ Agents ask before they act, and every change they make can be kept, undone or re
 
 ## Approval modes
 
-Pick a mode from the composer's **+** menu, or press <kbd>⇧Tab</kbd> in an agent's tab (**Gemini: Cycle Approval Mode**, also <kbd>⌘.</kbd>) to step through Default, Auto Edit and Plan as the CLI's own <kbd>⇧Tab</kbd> does: it never picks YOLO, and skips Plan while a turn runs. <kbd>⌘Y</kbd> toggles YOLO (**Gemini: Toggle YOLO**), as the CLI's <kbd>Ctrl+Y</kbd> does, where your admin allows it. The list and its names come from the Gemini CLI (Default "Prompts for approval", Auto Edit "Auto-approves edit tools", YOLO "Auto-approves all tools", Plan "Read-only mode"), minus any mode your admin turned off; Home and the New Agent dialog show the same list. When the CLI switches to Auto Edit by itself after an edit is allowed for the session, GeminiCode puts your YOLO back and says so in the chat.
+Pick a mode from the composer's **+** menu. In an agent's tab, <kbd>⇧Tab</kbd> (**Gemini: Cycle Approval Mode**, also <kbd>⌘.</kbd>) steps through Default, Auto Edit and Plan as the CLI's own <kbd>⇧Tab</kbd> does: it never picks YOLO, and skips Plan while a turn runs. <kbd>⌘Y</kbd> (**Gemini: Toggle YOLO**) switches YOLO on and off, as the CLI's <kbd>Ctrl+Y</kbd> does.
+
+The modes and their names come from the Gemini CLI (Default "Prompts for approval", Auto Edit "Auto-approves edit tools", YOLO "Auto-approves all tools", Plan "Read-only mode"), less any mode your settings turn off. Home and the New Agent dialog show the same list.
 
 | Mode | What the agent does |
 | --- | --- |
 | Default | Asks before every edit and every command. Proposed edits open as a diff first. |
-| Auto Edit | Edits files without asking, but still asks before commands. |
+| Auto Edit | Edits files without asking, but still asks before commands. Offered unless you turn off `gemini.approval.allowAutoEdit`. |
 | Plan | Reads and proposes a plan without making changes. |
-| YOLO | Runs everything without asking. Off unless your admin enables it. |
+| YOLO | Runs everything without asking. Offered only when you turn on `gemini.approval.allowYolo`. |
+
+`gemini.tools.allowShell` turns shell commands off altogether: the agent then has no shell tool, in any mode. If the CLI switches from YOLO to Auto Edit by itself after an edit is allowed for the session, GeminiCode puts YOLO back and says so in the chat.
 
 ## Permission requests
 
@@ -35,7 +39,7 @@ A few test and read-only commands whose programs otherwise always ask can still 
 
 When the agent edits a build file, such as `package.json`, a `Makefile` or `build.gradle`, the task runners you allowed (`npm`, `make`, `gradle` and the like) and the git commands that run hooks (`git commit`, `git push`) ask again, since their next run would run what the agent wrote. When it edits a git hook or a hook manager's settings (`.husky/`, `.pre-commit-config.yaml`, `.lintstagedrc`), every git command asks again.
 
-In Auto Edit, an edit to a file that decides what runs next still shows a card first: a git hook or a hook manager's settings, a build file such as `package.json`, the worktree setup script (`.gemini/*.sh`), the CLI's project settings (`.gemini/settings.json`), the folder's `.vscode/settings.json` and `.vscode/tasks.json`, and the ignore files (`.gitignore`, `.geminiignore`), which decide what the agent may read. The commits GeminiCode makes for an agent (Try in Workspace, Open Merge Request) run none of the checkout's hooks.
+In Auto Edit, an edit to a file that decides what runs next still shows a card first: a git hook or a hook manager's settings, a build file such as `package.json`, the worktree setup script (`.gemini/*.sh`), the CLI's project settings (`.gemini/settings.json`), the folder's `.vscode/settings.json` and `.vscode/tasks.json`, and the ignore files (`.gitignore`, `.geminiignore`), which decide what the agent may read. The commits GeminiCode makes for an agent (Try in Workspace, Merge Back, Open Merge Request) run none of the checkout's hooks.
 
 **Gemini: Commands Allowed for This Session...** lists the command prefixes the chat in front allowed, and lets you forget any of them. Turn on **Allow for all future sessions** in [Settings](helpers.md#gemini-cli-settings) to also be offered the CLI's permanent allow. The Gemini CLI saves that rule for the whole program (`npx`, not `npx vitest`) and for every folder, in `~/.gemini/policies/auto-saved.toml`, so the card shows it with the CLI's own wording, **Allow this command for all future sessions**.
 
@@ -84,13 +88,18 @@ The last 100 replies of each agent can be undone, and they stay undoable after t
 
 **Rewind** goes back to before one of your messages, as the CLI's `/rewind` does. Click the clock icon under the message, type `/rewind`, or press <kbd>esc</kbd> twice in an empty message box, and pick a message: each shows when it was sent and how many files changed since.
 
-Then choose, in the CLI's own words: **Rewind conversation and revert code changes**, **Rewind conversation**, or **Revert code changes** (the code choices appear only when code changed since). Rewinding the conversation removes that message and everything after it from the chat and from Gemini's context, so Gemini forgets them, and the message returns to the message box, to edit and send again. Reverting the code puts back what Gemini's edit tools changed since; as in the CLI, your own edits and what shell commands changed stay as they are. **Undo changes** on a reply is the short way to revert one turn's code.
+Then choose, in the CLI's own words: **Rewind conversation and revert code changes**, **Rewind conversation**, or **Revert code changes** (the code choices appear only when code changed since). Rewinding the conversation removes that message and everything after it from the chat and from Gemini's context, so Gemini forgets them, and the message returns to the message box, to edit and send again. Reverting the code puts back what Gemini's edit tools changed since; as in the CLI, your own edits and what shell commands changed stay as they are. **Undo** on a reply is the short way to revert one turn's code.
 
 The CLI's own checkpointing (`general.checkpointing.enabled`, off by default) keeps a shadow Git commit before each edit, for its `/restore`; GeminiCode's checkpoints are its own, per turn, and need nothing turned on. Turn the CLI's on only when you also use `/restore` from a terminal in the same folder.
 
 ## Commit the agent's work
 
-The branch under a chat's composer switches to another branch or creates one. On a branch other than the repository's default (origin's HEAD, else `main` or `master`), the composer offers **Commit to** that branch: a box opens with a message written from the agent's changes, for you to edit, and **Commit** (or <kbd>⌘↩</kbd>) commits only the files that agent changed; its chevron offers **Create Branch and Commit…**. On the default branch, **Create Branch & Commit** creates a branch, stages only the files that agent changed, and commits them. Both warn first if other files are already staged. The commit message is written from the agent's diff, as the Source Control sparkle writes one, for you to edit; the agent's name is used when it can't be (inline edit turned off, or a sign-in that can't make direct requests). An agent on its own branch has **Try in Workspace** instead, or **Merge Back** with `gemini.agents.mergeBack` set to `commit`, which commits its leftovers with a message written the same way. See [Agents on their own branch](agents.md#agents-on-their-own-branch).
+The branch under a chat's composer switches to another branch or creates one. The composer also has a commit button for the files that agent changed:
+
+- On a branch other than the repository's default (origin's HEAD, else `main` or `master`), **Commit to** that branch opens a box with a message for you to edit, and **Commit** (or <kbd>⌘↩</kbd>) commits only the files that agent changed. Its chevron offers **Create Branch and Commit...**.
+- On the default branch, **Commit...** creates a branch, stages only the files that agent changed, and commits them.
+
+Both warn first if other files are already staged. The commit message is written from the agent's diff, as the Source Control sparkle writes one; the agent's name is used when it can't be (inline edit turned off, or a sign-in that can't make direct requests). An agent on its own branch has **Try in Workspace** instead, whose chevron also offers **Merge Back**, which commits the agent's leftovers with a message written the same way. See [Agents on their own branch](agents.md#agents-on-their-own-branch).
 
 In the Source Control view, the sparkle button writes a commit message for the staged changes (or, with nothing staged, all changes).
 

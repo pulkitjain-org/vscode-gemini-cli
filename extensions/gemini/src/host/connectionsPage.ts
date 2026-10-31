@@ -169,7 +169,7 @@ export class ConnectionsPage implements vscode.Disposable {
 				return;
 			case 'openAllowlistFile':
 				if (this.allowlist) {
-					await this.openFile(this.allowlist.path, this.allowlist.kind === 'excluded' ? 'excluded' : 'admin');
+					await this.openFile(this.allowlist.path, 'excluded');
 				}
 				return;
 			case 'openDefaults':
@@ -217,7 +217,7 @@ export class ConnectionsPage implements vscode.Disposable {
 			}
 			const block = await allowlistBlock(teamToolsServerName, settingsFiles({ workspace: folder.uri.fsPath }));
 			if (block) {
-				this.allowlist = { kind: block.kind, file: tildify(block.file), path: block.file };
+				this.allowlist = { file: tildify(block.file), path: block.file };
 				return;
 			}
 		}
@@ -236,7 +236,7 @@ export class ConnectionsPage implements vscode.Disposable {
 		return {
 			rows: teamToolIds.map(tool => this.row(tool)),
 			...this.defaults.file ? { defaultsFile: tildify(this.defaults.file) } : {},
-			...this.allowlist ? { allowlist: { kind: this.allowlist.kind, file: this.allowlist.file } } : {},
+			...this.allowlist ? { allowlist: { file: this.allowlist.file } } : {},
 			...this.teamServers ? { teamServers: { file: this.teamServers.file, servers: this.teamServers.servers } } : {},
 		};
 	}
@@ -355,7 +355,6 @@ export class ConnectionsPage implements vscode.Disposable {
 			askOnceOnly: vscode.l10n.t("Ask every time, Allow once only"),
 			alwaysAllowed: vscode.l10n.t("Always allowed"),
 			allowlistExcluded: vscode.l10n.t("{0} leaves out {1} in mcp.excluded, so agents won't get these tools."),
-			allowlistAdminOff: vscode.l10n.t("MCP servers are turned off in {0}, so agents won't get these tools."),
 			removeExclusion: vscode.l10n.t("Remove Exclusion"),
 			openFile: vscode.l10n.t("Open File"),
 			close: vscode.l10n.t("Close"),

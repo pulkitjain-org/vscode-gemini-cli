@@ -119,8 +119,7 @@ export class CliManager implements vscode.Disposable {
 			try {
 				await vscode.workspace.getConfiguration(configSection).update('cli.version', installed, vscode.ConfigurationTarget.Global);
 			} catch (err) {
-				// Locked by policy: the admin's version stays.
-				void vscode.window.showWarningMessage(vscode.l10n.t("Gemini CLI {0} is installed, but the version in use is set by your administrator. ({1})", installed, errorMessage(err)));
+				void vscode.window.showWarningMessage(vscode.l10n.t("Gemini CLI {0} is installed, but GeminiCode couldn't save it as the version to use: {1}", installed, errorMessage(err)));
 				return;
 			}
 		}
@@ -186,7 +185,6 @@ export class CliManager implements vscode.Disposable {
 		} else if (choice === skip) {
 			await this.globalState.update(skippedVersionKey, offer);
 		} else if (choice === turnOff) {
-			// Locked by policy, the admin's choice stays.
 			await config.update('cli.checkForUpdates', false, vscode.ConfigurationTarget.Global).then(undefined, err => this.log.warn(`Could not turn off update checks: ${errorMessage(err)}`));
 		}
 	}
@@ -214,7 +212,7 @@ export class CliManager implements vscode.Disposable {
 	}
 }
 
-/** The npm registry the CLI is installed and updated from: `gemini.cli.registry`, which policy can lock, or npm's own. */
+/** The npm registry the CLI is installed and updated from: `gemini.cli.registry`, or npm's own. */
 function registry(): string {
 	return cliRegistry(vscode.workspace.getConfiguration(configSection).get<string>('cli.registry'));
 }

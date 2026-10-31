@@ -5,11 +5,9 @@
 
 // Resolves which Google Cloud project the agent bills to.
 
-export type ProjectIdSource = 'policy' | 'workspace' | 'user' | 'org' | 'env';
+export type ProjectIdSource = 'workspace' | 'user' | 'org' | 'env';
 
 export interface ProjectIdInputs {
-	/** `gemini.projectId` as an admin set it through policy (`GeminiProjectId`), which wins over every setting. */
-	readonly policy?: string;
 	/** `gemini.projectId` from workspace or folder settings. */
 	readonly workspace?: string;
 	/** `gemini.projectId` from user settings. */
@@ -26,10 +24,9 @@ export interface ResolvedProjectId {
 
 const envVars = ['GOOGLE_CLOUD_QUOTA_PROJECT', 'GOOGLE_CLOUD_PROJECT', 'GOOGLE_CLOUD_PROJECT_ID'] as const;
 
-/** First non-empty value of: admin policy, workspace setting, user setting, org default, environment. */
+/** First non-empty value of: workspace setting, user setting, org default, environment. */
 export function resolveProjectId(inputs: ProjectIdInputs): ResolvedProjectId | undefined {
 	const candidates: [string | undefined, ProjectIdSource][] = [
-		[inputs.policy, 'policy'],
 		[inputs.workspace, 'workspace'],
 		[inputs.user, 'user'],
 		[inputs.orgDefault, 'org'],
@@ -51,7 +48,7 @@ export function resolveProjectId(inputs: ProjectIdInputs): ResolvedProjectId | u
  */
 export function workspaceOverride(inputs: ProjectIdInputs): string | undefined {
 	const workspace = inputs.workspace?.trim();
-	const replaced = inputs.policy?.trim() ? undefined : inputs.user?.trim() || inputs.orgDefault?.trim();
+	const replaced = inputs.user?.trim() || inputs.orgDefault?.trim();
 	return workspace && replaced && replaced !== workspace ? replaced : undefined;
 }
 

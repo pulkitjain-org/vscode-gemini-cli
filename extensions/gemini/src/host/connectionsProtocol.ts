@@ -56,8 +56,8 @@ export interface ConnectionsView {
 	readonly rows: readonly ConnectionRowView[];
 	/** The team's defaults file, as the page names it (with its folder), when one was found. */
 	readonly defaultsFile?: string;
-	/** A settings file that excludes geminicode-tools or turns MCP off, as the page names it. */
-	readonly allowlist?: { readonly file: string; readonly kind: 'excluded' | 'adminOff' };
+	/** A settings file that leaves geminicode-tools out in `mcp.excluded`, as the page names it. */
+	readonly allowlist?: { readonly file: string };
 	/** Jira and GitLab run as MCP servers of the CLI from the repository's own settings: what the file says about each. */
 	readonly teamServers?: { readonly file: string; readonly servers: readonly TeamServerView[] };
 }
@@ -135,7 +135,6 @@ export interface ConnectionsStrings {
 	readonly askOnceOnly: string;
 	readonly alwaysAllowed: string;
 	readonly allowlistExcluded: string;
-	readonly allowlistAdminOff: string;
 	readonly removeExclusion: string;
 	readonly openFile: string;
 	readonly close: string;

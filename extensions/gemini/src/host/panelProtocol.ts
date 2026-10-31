@@ -496,8 +496,6 @@ export interface SettingRowView {
 	readonly maximum?: number;
 	/** Where a change goes: the user's settings, or the workspace's for a resource-scoped setting while a folder is open. */
 	readonly target: SettingTarget;
-	/** An administrator's policy decides it: shown locked, with its control disabled. */
-	readonly locked: boolean;
 	/** The value differs from the default, so Reset shows. */
 	readonly modified: boolean;
 	readonly advanced: boolean;

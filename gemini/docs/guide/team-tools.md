@@ -6,18 +6,20 @@ Everything runs from your Mac, over your VPN. Nothing goes through a GeminiCode 
 
 ## Connect your tools
 
-Open **Connections** from the Command Palette (**Gemini: Connections**), the **Gemini** status bar item's menu (its tooltip lists each connected tool's state), or the Agents pane's **...** menu. The actions Home's cards offer, Open Merge Request, Run Checks, Run Checks on a Branch, Move, Log Time and Reassign, are one Command Palette entry, **Gemini: Jira and GitLab Actions...**, which asks what to do and then which ticket, agent or branch. Each tool shows who you're signed in as, the server and when the token expires.
+Open **Connections** from the Command Palette (**Gemini: Connections**), the **Gemini** status bar item's menu (its tooltip lists each connected tool's state), or the Agents pane's **...** menu. Each tool shows who you're signed in as, the server and when the token expires.
 
 | Tool | How it connects | What you need |
 | --- | --- | --- |
 | Jira (Cloud) | REST API, your email and an API token | A token from id.atlassian.com; **Create Token** opens the page. **Add Another Jira** connects more sites. |
-| Confluence (Cloud) | REST API, with the account of a Jira site you connected | Nothing to paste: **Use My … Jira Account** turns it on for that site. |
+| Confluence (Cloud) | REST API, with the account of a Jira site you connected | Nothing to paste: **Use My ... Jira Account** turns it on for that site. |
 | GitLab | REST API v4, a personal access token | Scope `api` to open merge requests and comment (`read_api` can only read). **Create Token** opens GitLab's page with the name and scope filled in. VPN on. |
 | SonarQube | Web API, a user token | VPN on. |
 | Snyk | Your Snyk CLI | `snyk` installed, `snyk config set endpoint=<your Snyk>` and `snyk auth` once. VPN on. |
 | Figma | The Figma desktop app's Dev Mode MCP server | A Dev or Full seat, with the Dev Mode MCP server turned on in Figma's preferences. |
 
-Tokens go to the macOS keychain only, never to settings files or an agent's environment, and each is checked as you paste it. When a VPN-only tool doesn't answer, GeminiCode says "Can't reach … Check that your VPN is on" instead of waiting; the rest keep working. An outage is reported once: for a while after a server stops answering (30 s, then 1, 2 and up to 5 minutes), calls to it fail at once, and agents read one line, such as "GitLab is unreachable right now (VPN?)". GeminiCode tries the server again when the wait ends, so it comes back by itself once your VPN is on. When a tool refuses your token, GeminiCode stops calling it with that token, and Connections asks you to replace it.
+Tokens go to the macOS keychain only, never to settings files or an agent's environment, and each is checked as you paste it. When a tool refuses your token, GeminiCode stops calling it with that token, and Connections asks you to replace it.
+
+When a VPN-only tool doesn't answer, GeminiCode says "Can't reach ... Check that your VPN is on" rather than waiting, and the other tools keep working. For a while after a server stops answering (30 s, then 1, 2 and up to 5 minutes), calls to it fail at once, and agents read one line, such as "GitLab is unreachable right now (VPN?)". When the wait ends GeminiCode tries the server again, so it comes back by itself once your VPN is on.
 
 A read that meets a busy server (it answers 429, 502, 503 or 504) is tried once more, after the wait the server asks for when that is 5 seconds or less. A write is never sent twice. A write may take 20 seconds; one that gets no answer in that time says it may have gone through, and stays open in the audit log until you check.
 
@@ -27,7 +29,7 @@ If you work with more than one Jira, such as two client teams' sites, connect th
 
 With several sites:
 
-- **My tickets** on Home groups your tickets by site, each with its own sprint. A site that can't be reached keeps its last tickets, dimmed, and says so.
+- **Your tickets** on Home groups your tickets by site, each with its own sprint. A site that can't be reached keeps its last tickets, dimmed, and says so.
 - A ticket goes to the site it belongs to. A link goes by its address. A key goes to the site its project was read from, and a key never seen before is looked for on every site.
 - A key that two sites both have is refused rather than guessed, and the agent is asked for the ticket's link instead.
 - A search runs on every site, and its result says which sites didn't answer or had more matches than it shows.
@@ -35,7 +37,7 @@ With several sites:
 
 ### Confluence
 
-Confluence on Atlassian Cloud shares one account and token with Jira on the same site, so there is nothing to paste. Connect Jira first, then under **Connect Confluence** choose **Use My … Jira Account**. **Turn On for Another Site** does the same for another Jira site you connected.
+Confluence on Atlassian Cloud shares one account and token with Jira on the same site, so there is nothing to paste. Connect Jira first, then under **Connect Confluence** choose **Use My ... Jira Account**. **Turn On for Another Site** does the same for another Jira site you connected.
 
 ## Team defaults
 
@@ -59,23 +61,25 @@ A checked-in `.gemini/geminicode-tools.json` saves everyone typing addresses. It
 - `figma.designSystem` names your team's design system in Figma, for [Sync Design System](#your-design-system).
 
 > [!IMPORTANT]
-> GeminiCode's own servers (`geminicode-tools`, `geminicode-project`, `geminicode-browser`) are always allowed, even when your Gemini settings have an `mcp.allowed` list without them; only `mcp.excluded` keeps them out. Once you've connected, remove any older `jira` and `gitlab` entries from `mcp.allowed` and `mcpServers` yourself; until then agents see two sets of Jira and GitLab tools. The terminal's `gemini` doesn't get these tools.
+> GeminiCode's own servers, such as `geminicode-tools`, `geminicode-project` and `geminicode-browser`, are always allowed, even when your Gemini settings have an `mcp.allowed` list without them; only `mcp.excluded` keeps them out. Once you've connected, remove any older `jira` and `gitlab` entries from `mcp.allowed` and `mcpServers` yourself; until then agents see two sets of Jira and GitLab tools. The terminal's `gemini` doesn't get these tools.
 
 ## Home
 
-**Home** opens in front of your restored tabs every time GeminiCode starts. Under the **Start Agent** composer and quick actions, cards follow:
+**Home** opens in front of your restored tabs every time GeminiCode starts. Below the composer, these cards show your team's work:
 
-- **Agents.**
-- **My tickets**: every open ticket assigned to you. The current sprint's come first, under the sprint's name with how many are done, then the rest under **Not in this sprint**. With several Jira sites, each site has its own group. Each has **Start**, and in its menu **Add Comment…**, **Log Time…**, **Move…** and **Reassign…**.
-- **Merge requests**: **Pending on me** (asked to review, or assigned to finish) and **Mine**, each with its pipeline and approvals; one that can merge shows **Merge…**. Reviews you started come first, then those where you are the only reviewer, then the longest waiting; one the author must fix first, with conflicts or a failing pipeline, goes after them, and drafts and reviews you already gave go last. One of yours with unresolved threads says so, with **Reply**.
-- **Quality** on the release branch: the SonarQube gate and Snyk, with **Fix**.
-- **Gemini.**
+- **Pending on you**: merge requests you're asked to review or assigned to finish, then your own under **Mine**, each with its pipeline and approvals. Reviews you started come first, then those where you are the only reviewer, then the longest waiting; one the author must fix first, with conflicts or a failing pipeline, goes after them, and drafts and reviews you already gave go last. One of yours that can merge shows **Merge...**, and one with unresolved threads says so, with **Reply**.
+- **Your tickets**: every open ticket assigned to you. The current sprint's come first, under the sprint's name with how many are done, then the rest under **Not in this sprint**. With several Jira sites, each site has its own group. A ticket not yet started has **Start**, and every ticket's menu has **Start Agent**, **Add Comment...**, **Log Time...**, **Move...** and **Reassign...**.
+- **Quality** on the release branch: the SonarQube gate and Snyk, with **Fix**. It is off until you turn it on with **Customize**.
 
-**Unfinished** appears only after GeminiCode quit while something was running: a flow tab (Move, Open Merge Request, Review) to **Reopen** from the same inputs or **Discard**, and a write whose result never came back, to check in the tool before doing it again (**Mark as Checked** once you have). Nothing is redone on its own. A chat whose agent was working when the app quit says so under the last message.
+The **Agents** and **Gemini** cards are there too; see [Agents](agents.md#home).
 
-A card shows its first few items. When it has more, **Show All** opens the whole list in a popup, with a filter for long lists: click an item to open it, as on the card. In the merge requests' popup each row also names its repository after the `!number` (point at it for the full `group/repo` path), and the filter matches it, so merge requests with the same title in different repositories stay apart. A ticket or merge request opens in your browser and leaves the list open; an agent opens in its tab.
+**Unfinished when GeminiCode last quit** appears only after GeminiCode quit while something was running: a flow tab (Move, Open Merge Request, Review) to **Reopen** from the same inputs or **Discard**, and a write whose result never came back, to check in the tool before doing it again (**Mark as Checked** once you have). Nothing is redone on its own. A chat whose agent was working when the app quit says so under the last message.
 
-**Customize** hides and reorders cards and picks the release branch. Home shows the last data at once and refreshes each tool in the background; with the VPN off, VPN-only cards keep their last results, dimmed, with their time. One banner per server says so, such as "GitLab is unreachable, probably the VPN. Showing results from 10:42.", with **Retry**, and it clears by itself once the server answers. When a server refuses your token, a banner says so, such as "Jira rejected your token.", with **Replace Token...**, which opens Connections. Turn off opening it at start-up with `gemini.home.openOnStartup`; <kbd>⇧⌘H</kbd> or **Gemini: Home** brings it back.
+A card shows its first few items. When it has more, **Show all** opens the whole list in a popup, with a filter for long lists: click an item to open it, as on the card. In the merge requests' popup each row also names its repository after the `!number` (point at it for the full `group/repo` path), and the filter matches it, so merge requests with the same title in different repositories stay apart. A ticket or merge request opens in your browser and leaves the list open; an agent opens in its tab.
+
+**Customize**, the gear, hides and reorders cards and picks the release branch for Quality. Home shows the last data at once and refreshes each tool in the background. With the VPN off, VPN-only cards keep their last results, dimmed, with their time, and a banner per server says so, such as "GitLab is unreachable, probably the VPN. Showing results from 10:42.", with **Retry**; it clears by itself once the server answers. When a server refuses your token, a banner such as "Jira rejected your token." offers **Replace Token...**, which opens Connections.
+
+The ticket and merge request actions are also in the Command Palette: **Gemini: Jira and GitLab Actions...** offers Open Merge Request, Run Checks, Run Checks on a Branch, Move, Log Time and Reassign, then asks which ticket, agent or branch.
 
 ## In chat
 
@@ -103,7 +107,9 @@ Name the file in the team defaults:
 }
 ```
 
-Then open the design-system file in the Figma desktop app and run **Sync Design System** on Figma's row in Connections (or **Gemini: Sync Design System** from the Command Palette, with `gemini.developer.showTools` on). Until the team file names one, **Add Figma Design** offers **Set Up Your Design System**, which says what to add. GeminiCode reads each page you named (every visible page when `pages` is left out, as long as the file has no more than eight; Figma limits how many reads its Dev Mode server answers a day, so a larger file has to name its pages), says what changed since the last sync, such as "4 new tokens, 1 component removed", and offers **Review Changes**, which shows each file's diff, and **Write Files**. It writes:
+Until the team file names one, **Add Figma Design** offers **Set Up Your Design System**, which says what to add.
+
+Then open the design-system file in the Figma desktop app and run **Sync Design System** on Figma's row in Connections (or **Gemini: Sync Design System** from the Command Palette, with `gemini.developer.showTools` on). GeminiCode reads the pages you named, up to eight. When `pages` is left out it reads every visible page, as long as the file has no more than eight; Figma limits how many reads its Dev Mode server answers a day, so a larger file has to name its pages. The sync says what changed since the last one, such as "4 new tokens, 1 component removed", and offers **Review Changes**, which shows each file's diff, and **Write Files**. It writes:
 
 - a skill in `.gemini/skills/design-system/` (or the folder `skill` names), with the rules for using the design system;
 - `references/tokens.md`, every variable with its value, and `references/components.md`, every component with its variants;
@@ -119,15 +125,15 @@ Figma gives each variable's value in the mode the file shows, and only the varia
 
 A ticket's whole journey can happen in GeminiCode:
 
-1. **Start an agent on the ticket.** **Start** on Home, or **Gemini: Start Agent on Jira Ticket**, starts an agent on its own branch named after the ticket. It reads the ticket and plans first, and offers to move the ticket to In Progress.
+1. **Start an agent on the ticket.** **Start** on Home, or **Gemini: Start Agent on Jira Ticket...**, starts an agent on its own branch named after the ticket. It reads the ticket and plans first, and offers to move the ticket to In Progress.
 2. **Run the checks.** **Run Checks** runs Snyk on the dependencies and code, and lists SonarQube's issues in new code on the agent's branch. Each finding has **Fix**, and **Fix All with This Agent** hands them all over. When SonarQube has more issues than the page lists, the row says so, such as "50 of 312 issues shown", with **Open in SonarQube** for the rest.
-3. **Open the merge request.** **Open Merge Request**, beside Merge back in Changes, pushes the branch and opens the merge request.
+3. **Open the merge request.** Choose **Open Merge Request** from the chevron beside **Try in Workspace** in Changes, or from the chat's **+** menu. The page below sets the target and description, then pushes the branch and opens the merge request.
 4. **Fix what comes back.** The merge request panel in Changes shows the pipeline, the quality gate and open review threads. **Fix Pipeline and N Comments** sends them to the agent on the merge request's branch, in a clone of the same project. The agent commits its fix; when its turn ends, GeminiCode pushes the commits (an agent's shell can't sign in to GitLab) and asks it to reply to each thread. Without an agent on the branch, Fix starts one: where the branch is checked out already, in that checkout; otherwise in a worktree of its own. Fix never resets your branch: when your local copy has commits that aren't pushed, it says how many and stops.
-5. **Merge.** **Merge…** turns on when every one of GitLab's checks passes.
+5. **Merge.** **Merge...** turns on when every one of GitLab's checks passes.
 
 ### Checks on any branch
 
-**Run Checks on a Branch…**, on Home or under **Gemini: Jira and GitLab Actions...** in the Command Palette, runs the same checks on any branch before a merge request exists: the branch checked out here, an agent's, a local one or one on origin. In a window with several folders it works in the repository of the agent in front, else of the active editor; when neither says which, it asks, with the agent last in front first, then each folder. Start on Ticket and Move's team defaults pick their folder the same way. A window with one folder never asks.
+**Run Checks on a Branch...** (**Run checks...** in Home's **+** menu, or under **Gemini: Jira and GitLab Actions...** in the Command Palette) runs the same checks on any branch before a merge request exists: the branch checked out here, an agent's, a local one or one on origin. In a window with several folders it works in the repository of the agent in front, else of the active editor; when neither says which, it asks, with the agent last in front first, then each folder. **Start Agent on Jira Ticket** and **Move** choose the folder whose team defaults they read in the same way. A window with one folder never asks.
 
 A branch that isn't checked out gets a checkout of its own under `~/.geminicode/worktrees/<repository>/checks/`, with your `gemini.agents.worktreeSetup` command, or the repository's own setup script once you allow it, run in it once. Later runs reuse it, and your own checkout never moves. SonarQube's gate comes from the server's last analysis of the branch, so it needs one push first. With no agent on the branch, **Fix** starts one in that checkout, with the findings as its first prompt.
 
@@ -139,27 +145,27 @@ Below it are the title, a description Gemini drafts against that target for you 
 
 A push, a fetch and other git commands that talk to the server give up after a minute, and say "Check your VPN" or "Sign in with git once in a terminal" for the usual problems.
 
-An agent that is reviewing someone else's merge request works on a local copy of that branch, so its Open Merge Request button points to the merge request under review instead.
+An agent that is reviewing someone else's merge request works on a local copy of that branch, so its Open Merge Request button points to the merge request under review.
 
 ### The merge request panel
 
 The panel in Changes shows the pipeline, with **Fix** on each failed job, the SonarQube gate, Snyk and the open review threads.
 
-It also lists the checks GitLab applies before a merge, read live: the merge request is open and not a draft, the pipeline, each approval rule by name with who approved, resolved threads, no conflicts, and GitLab's own verdict. A check GitLab didn't answer for counts as pending ("couldn't read, counted as pending"), never as passed, with **Retry** to read it again; the review page's Approvals row and the merge dialog say the same. **Merge…** is on only when every line holds.
+It also lists the checks GitLab applies before a merge, read live: the merge request is open and not a draft, the pipeline, each approval rule by name with who approved, resolved threads, no conflicts, and GitLab's own verdict. A check GitLab didn't answer for counts as pending ("couldn't read, counted as pending"), never as passed, with **Retry** to read it again; the review page's Approvals row and the merge dialog say the same. **Merge...** is on only when every line holds.
 
 Merge asks once more, naming the commit it read and whether the commits are squashed and the branch deleted, as the project's settings say. GitLab checks again as it merges, so if someone pushes in between, GitLab refuses rather than merging something you didn't see. Afterwards it offers to move the ticket.
 
-**Gemini: Merge Merge Request…** does the same for the agent in front, and so does **Merge…** on Home for a merge request listed as ready.
+**Gemini: Merge Merge Request...** does the same for the agent in front, and so does **Merge...** on Home for a merge request listed as ready to merge.
 
 ### Move, reassign and log time
 
 - **Move Ticket** shows the moves your Jira workflow allows, any field a move needs, and a comment Gemini drafts for you to edit. With **Log time** ticked as well, a failure in one step says which went through; pressing again does only the step that's left.
 - **Log Time** records time spent, such as "1h 30m", on its own or with a move.
-- **Reassign…**, on Home or with **Gemini: Reassign Jira Ticket…**, lists the people Jira lets take the ticket, plus you and nobody.
+- **Reassign...**, in a ticket's menu on Home or under **Gemini: Jira and GitLab Actions...**, lists the people Jira lets take the ticket, plus you and nobody.
 
 ## Comment on a ticket
 
-**Add Comment…** on a ticket (in its menu on Home) opens a comment box over Home, and the comment is posted to Jira as you, with Jira's own formatting:
+**Add Comment...** on a ticket (in its menu on Home) opens a comment box over Home, and the comment is posted to Jira as you, with Jira's own formatting:
 
 - Write in Markdown, or use the toolbar: bold, italic, strikethrough, code, links, bulleted, numbered and task lists, quotes, info panels (`> [!NOTE]`), code blocks, tables and dividers. **Preview** shows it as Jira will.
 - Type `@` to mention someone who can see the ticket; Jira notifies them.
@@ -185,7 +191,7 @@ A new version of a page opens on the page as it is in Confluence now, with the a
 
 ## Review a merge request
 
-**Review** on a merge request waiting for you (on Home, or **A Merge Request** under **Gemini: Review...**) starts a reviewer agent in a checkout of its own, which reads the merge request against its ticket. The reviewer's team tools only read: it can't comment, move a ticket or merge, since you choose what to post. Reviewing the same merge request again, after its author pushes or with **Start a New Review…**, reuses the reviewer and its worktree, moved to the new commits. A merge request with more than 100 changed files is read whole, up to 1,000. Its findings become the first comments of your review, each marked **Bug**, **Should fix**, **Question** or **Nit**. Your review is a draft: nothing reaches GitLab until you post it. Your own checkout is never changed.
+**Review** on a merge request waiting for you (on Home, or **A Merge Request** under **Gemini: Review...**) starts a reviewer agent in a checkout of its own, which reads the merge request against its ticket. The reviewer's team tools only read: it can't comment, move a ticket or merge, since you choose what to post. Reviewing the same merge request again, after its author pushes or with **Start a New Review...**, reuses the reviewer and its worktree, moved to the new commits. A merge request with more than 100 changed files is read whole, up to 1,000. Its findings become the first comments of your review, each marked **Bug**, **Should fix**, **Question** or **Nit**. Your review is a draft: nothing reaches GitLab until you post it. Your own checkout is never changed.
 
 A review checks the branch out from your clone of the repository. GeminiCode looks for one in the clone it remembers for the project, the window's folders, the folders agents have used and your recent folders, and remembers what it finds. When there is none, it asks **Where is your copy of** the project: **Choose Folder...** picks a clone, and **Clone It...** clones the repository, over HTTPS or SSH when GitLab offers both, into a folder you pick, in a terminal where you answer git's questions. **Fix Pipeline and N Comments** asks the same way.
 
@@ -198,9 +204,9 @@ The **Review** page lists the merge request's files, its threads and your draft.
 - **Threads.** The merge request's GitLab threads show on their lines and under **Threads** on the page, open and resolved. **Reply**, **Resolve** and **Add Reply and Resolve** go into your draft and are posted with it. Gemini reads the open threads too, and can draft a reply for you to edit.
 - **Suggested changes.** Any line comment can carry a suggestion that the author applies in GitLab with one click. Write it with **Add Suggestion** (**Suggest Change** in the diff), keep the one Gemini wrote with its finding, or press **Ask Gemini to Suggest**.
 
-When you are done, **Post N Comments**, **Post N Comments and Approve** or **Post N Comments and Request Changes** posts the ticked comments as you, on their lines, against the version you reviewed. **Approve** on its own approves without comments. Afterwards the page says the reviewer agent and its checkout are still on your Mac: **Remove Reviewer and Checkout** removes both, and **Keep for Re-review** leaves them, so the next review of that merge request reuses the checkout. **Discard Draft…** offers the same. Reviewers' checkouts of reviews that ended also show in Settings' **Clean Up**.
+When you are done, **Post N Comments**, **Post N Comments and Approve** or **Post N Comments and Request Changes** posts the ticked comments as you, on their lines, against the version you reviewed. **Approve** on its own approves without comments. Afterwards the page says the reviewer agent and its checkout are still on your Mac: **Remove Reviewer and Checkout** removes both, and **Keep for Re-review** leaves them, so the next review of that merge request reuses the checkout. **Discard Draft...** offers the same. Reviewers' checkouts of reviews that ended also show in Settings' **Clean Up**.
 
-The draft is saved as it changes, so closing the page or quitting GeminiCode loses nothing. **Continue Review** on Home, the **Review !N** chip in the reviewer's chat and **Gemini: Open Merge Request Review** (reviews in progress, the last changed first) open it again where you left it. **Ask Gemini Again** reviews the merge request once more and replaces Gemini's comments you haven't touched; yours, and Gemini's that you edited, stay. **Start a New Review…** starts over without the draft, and **Discard Draft…** throws it away. A draft nobody opens for two weeks is removed.
+The draft is saved as it changes, so closing the page or quitting GeminiCode loses nothing. **Continue Review** on Home, the **Review !N** chip in the reviewer's chat and **Gemini: Open Merge Request Review** (reviews in progress, the last changed first) open it again where you left it. **Ask Gemini Again** reviews the merge request once more and replaces Gemini's comments you haven't touched; yours, and Gemini's that you edited, stay. **Start a New Review...** starts over without the draft, and **Discard Draft...** throws it away. A draft nobody opens for two weeks is removed.
 
 When the source branch gets new commits during a review, the page says so. **Refresh** reads the new version and moves each comment to its line there; a comment whose line changed is marked **Line changed** and unticked, so you check it before it is posted.
 
@@ -212,7 +218,7 @@ Clicking a merge request opens it in GeminiCode's browser; `gemini.team.openMerg
 
 Every write GeminiCode makes to Jira, Confluence or GitLab for you is recorded on your Mac, whether an agent asked for it or you pressed a button: a comment, a move, a time log, a reassignment, a published page, a merge request, a review comment, an approval, a merge. With several Jira or Confluence sites, the record names the site. Each write gets two lines in a file per day under GeminiCode's storage, one before the call and one after, with what the tool gave back (a comment id, a worklog id, `!321`, the merge commit). The lines hold what changed and where, not the text; the text is in the chat.
 
-**Gemini: Open Audit Log** (also in the **Gemini** status bar item's menu; its tooltip counts today's actions and any left unfinished) shows the log as a page: one row per write with the time, who asked (an agent or a button of yours), the action, its effect, how you answered, the id the tool gave back and the state. Pick a day, a tool, or only the intents without a result. A row with no result is a write that was running when GeminiCode last quit; it is highlighted, and Home lists it under **Unfinished**. Check the tool before doing it again, then **Mark as Checked**. **Export the Day…** writes the day as Markdown to your home folder, and **Open Folder** shows the files.
+**Gemini: Open Audit Log** (also in the **Gemini** status bar item's menu; its tooltip counts today's actions and any left unfinished) shows the log as a page: one row per write with the time, who asked (an agent or a button of yours), the action, its effect, how you answered, the id the tool gave back and the state. Pick a day, a tool, or only the intents without a result. A row with no result is a write that was running when GeminiCode last quit; it is highlighted, and Home lists it under **Unfinished when GeminiCode last quit**. Check the tool before doing it again, then **Mark as Checked**. **Export the Day...** writes the day as Markdown to your home folder, and **Open Folder** shows the files.
 
 ## Your team's own servers
 
@@ -224,11 +230,15 @@ Some teams already run Jira and GitLab MCP servers (mcp-atlassian and gitlab-mcp
 
 Agents then see one set of Jira and GitLab tools, and an agent's shell can't read the tokens. The settings file is shared, so commit the change, or ask whoever owns the file. Without Docker, the team tools call Jira and GitLab directly.
 
-The same setting, **Gemini › Team: Run Team Servers** (`gemini.team.runTeamServers`), also runs SonarQube's own server in Docker and Snyk's own server from your Snyk CLI. With SonarQube's server running, **Checks** adds a row that analyses the files your branch changed, on your Mac, before you push.
+Taking over turns on **Gemini › Team: Run Team Servers** (`gemini.team.runTeamServers`), which also runs SonarQube's own server in Docker and Snyk's own server from your Snyk CLI. With SonarQube's server running, **Checks** adds a row that analyses the files your branch changed, on your Mac, before you push.
 
 ## What agents get
 
-Every agent session gets a `geminicode-tools` MCP server. It lists no tools until the agent's task needs them, since their definitions were about half of every model call on a team repository: a ticket, merge request, page or design in a message or an attachment, a flow such as a review, or **Use team tools** in the composer's + menu turns them on for that agent, for good, and a running chat gets them without a restart. The tools are only for the tools you connected, such as `jira_get_issue`, `confluence_get_page`, `gitlab_get_mr`, `gitlab_job_log`, `sonar_quality_gate`, `snyk_test` and `figma_design`. Reading runs without asking, except Snyk's tests: `snyk_test` runs your project's build tools to resolve its dependencies and `snyk_code_test` uploads your source to Snyk, so each shows a permission card, and both are off while your admin has shell commands turned off. Home's Snyk card refreshes on its own only in a folder that both GeminiCode and the Gemini CLI trust, while shell commands are allowed; elsewhere it shows results once Snyk has run from a chat. A Jira comment, a reassignment and a comment on a merge request show you a permission card with the exact text first, and you can allow the rest of the session.
+Every agent session gets a `geminicode-tools` MCP server, with tools only for the tools you connected, such as `jira_get_issue`, `confluence_get_page`, `gitlab_get_mr`, `gitlab_job_log`, `sonar_quality_gate`, `snyk_test` and `figma_design`. Their definitions would be about half of every model call on a team repository, so the server lists none until the agent's task needs them. A ticket, merge request, page or design in a message or an attachment, a flow such as a review, or **Use team tools** in the composer's **+** menu turns them on for that agent for good, and a running chat gets them without a restart.
+
+Reading runs without asking, except Snyk's tests: `snyk_test` runs your project's build tools to resolve its dependencies and `snyk_code_test` uploads your source to Snyk, so each shows a permission card, and both are off while `gemini.tools.allowShell` turns shell commands off. Snyk on Home's Quality card refreshes on its own only in a folder that both GeminiCode and the Gemini CLI trust, while shell commands are allowed; elsewhere it shows results once Snyk has run from a chat.
+
+A Jira comment, a reassignment and a comment on a merge request show you a permission card with the exact text first, and you can allow the rest of the session.
 
 Four actions are harder to take back, so they ask every time, with Allow once and Reject only: moving a ticket (`jira_transition`), logging time (`jira_log_time`), opening a merge request (`gitlab_create_mr`) and merging one (`gitlab_merge`, which needs the merge request named). The same goes for the matching tools of a `jira` or `gitlab` MCP server your team runs beside GeminiCode. `gitlab_merge` reads GitLab's own checks first (pipeline, approval rules, threads, conflicts, GitLab's mergeable verdict) and refuses when any fails, saying which; when it merges, it names the commit it read, so a push in between makes GitLab refuse rather than merge something else.
 

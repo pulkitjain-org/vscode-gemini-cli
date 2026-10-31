@@ -15,7 +15,7 @@ import { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterEach, expect, it } from 'vitest';
-import { ApprovalPolicy, prepareAdminPolicy, shellToolName } from '../../src/acp/adminPolicy';
+import { ApprovalPolicy, prepareToolPolicy, shellToolName } from '../../src/acp/toolPolicy';
 import type * as acp from '@agentclientprotocol/sdk';
 import { confirmToolGroups, teamToolsServerName } from '../../src/acp/teamTools';
 import { AgentErrorInfo, classifyAgentError } from '../../src/acp/errors';
@@ -59,7 +59,7 @@ async function startFakeGemini(responses: FunctionResponse[], command = 'touch r
 	return server;
 }
 
-describeRealCli('gemini --acp with a GeminiCode admin policy', () => {
+describeRealCli('gemini --acp with GeminiCode\'s tool policy', () => {
 	let child: ChildProcessWithoutNullStreams | undefined;
 	let connection: AgentConnection | undefined;
 	let server: Server | undefined;
@@ -97,7 +97,7 @@ describeRealCli('gemini --acp with a GeminiCode admin policy', () => {
 		for (const key of Object.keys(env).filter(k => k.startsWith('VITEST') || /^https?_proxy$/i.test(k))) {
 			delete env[key];
 		}
-		const extraArgs = await prepareAdminPolicy(path.join(home, 'geminicode-policy'), policy);
+		const extraArgs = await prepareToolPolicy(path.join(home, 'geminicode-policy'), policy);
 		child = spawnAgent(resolveAgentCommand({ cliPath, execPath: process.execPath, env, platform: process.platform, extraArgs }), work);
 		child.stderr.resume();
 		let permissions = 0;

@@ -16,11 +16,10 @@ describe('aliasedSetting', () => {
 		]).toEqual([true, false, true, false]);
 	});
 
-	it('lets a more specific level of either key win, and policy over everything', () => {
+	it('lets a more specific level of either key win', () => {
 		expect([
 			aliasedSetting({ globalValue: true }, { workspaceValue: false }, true),
 			aliasedSetting({ workspaceFolderValue: true }, { workspaceValue: false }, false),
-			aliasedSetting({ globalValue: true, workspaceValue: true }, { policyValue: false }, true),
-		]).toEqual([false, true, false]);
+		]).toEqual([false, true]);
 	});
 });

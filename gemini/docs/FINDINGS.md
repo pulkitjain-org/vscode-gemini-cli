@@ -35,10 +35,10 @@ Re-check both kinds when GeminiCode moves to a new CLI version.
 `perf-first-reply.mts --runs 3`, stand-in, median of three: 745 ms in an empty folder, 812 ms in this repository, trusted.
 
 - Unless `GEMINI_CLI_NO_RELAUNCH` is set, the CLI's entry point starts a second Node process to raise its heap limit, even when the heap is already large enough. That costs about 0.4 s of every start. In a trial run before these measurements, a relaunched CLI never answered `initialize` at all, which is why `perf-real.mts` gives it 30 s.
-- GeminiCode therefore starts the agent with `GEMINI_CLI_NO_RELAUNCH=true` and the heap the CLI would pick for itself: half the machine's memory, unless `advanced.autoConfigureMemory` is off in `~/.gemini/settings.json`. For a JavaScript entry point the heap flag goes on Node's command line. For a `gemini` executable it goes in `NODE_OPTIONS`, as the CLI does for its single-file binary.
-- Without the wrapper process, two things change. The interactive terminal used for sign-in keeps the CLI's own behaviour.
+- GeminiCode therefore starts the agent with `GEMINI_CLI_NO_RELAUNCH=true` and the heap the CLI would pick for itself: half the machine's memory, unless `advanced.autoConfigureMemory` is off in `~/.gemini/settings.json`. For a JavaScript entry point the heap flag goes on Node's command line. For a `gemini` executable it goes in `NODE_OPTIONS`, as the CLI does for its single-file binary. The interactive terminal used for sign-in keeps the CLI's own behaviour.
+- Without the wrapper process, two things change:
   - The CLI asks its wrapper to restart it by exiting with code 199 (`RELAUNCH_EXIT_CODE`). The sidecar restarts it at once on that code, at most three times in a row.
-  - The wrapper forwards admin settings over IPC between relaunches. The CLI does that only when `process.send` exists, so it is skipped.
+  - The wrapper forwards the CLI's admin settings (from Code Assist) over IPC between relaunches. The CLI does that only when `process.send` exists, so it is skipped.
 - In ACP mode the CLI ends when its standard input closes: `runAcpClient` awaits the connection's end and runs its exit cleanup. Measured with 0.64.0: it exits within about 10 ms of the end of input, with and without a `session/new` before it. So the CLI dies with the extension host however the host ends; on an ordinary exit the sidecar also kills it.
 - GeminiCode logs one line per launch, "Startup: product loaded … ms, records loaded …, services up …, home shown …, agent spawned …, agent ready …, first session …, first prompt sent …, first text … after activation", to measure this on real machines: once when the first session opens and again, with every mark, after the first reply's text. `scripts/startup-log.mts` reads the installed app's logs and shows each mark's median across launches. Each chat turn logs one line too, "Turn: … ms, first output … ms after send; the view rendered … updates in … ms".
 
@@ -55,7 +55,7 @@ Re-check both kinds when GeminiCode moves to a new CLI version.
 - The agent was spawned about 3 s after services were up: the warm-up's delay (`agentWarmup.ts`), there so the window's own startup went first. Since the process then took 6 to 21 s to answer `initialize`, the delay only pushed the first chat's wait later; 1.8 starts the process as soon as activation ends.
 - From spawn to `initialize` took 6 to 21 s (median 9.8 s), against 2.9 s for `perf-real.mts` on the same CLI. The difference is what the window is doing meanwhile (the index, the team tools' keychain reads, Home) and the sign-in.
 - The first session opens when the user opens a chat, so its mark says when they did, not what they waited; the first prompt's marks are the ones to read for that.
-- Activation reads every agent record before the pane is built. On this machine that is 3 files (60 KB), so it is not where the time goes; the reads are now bounded to 16 at a time (`recordStore.ts`) for a window with hundreds, and the "records loaded" mark says what they cost on any machine.
+- Activation reads every agent record before the pane is built. On this machine that is 3 files (60 KB), so it is not where the time goes; the reads run at most 16 at a time (`recordStore.ts`) for a window with hundreds, and the "records loaded" mark says what they cost on any machine.
 - The real start takes about 2.1 s longer than the stand-in's. The stand-in uses an API key, so the difference is the Google sign-in's own work at start (inferred from the two setups, not traced). GeminiCode hides it by starting the agent as soon as the window has opened when a sign-in is saved.
 
 ## Sessions
@@ -114,7 +114,7 @@ Same runs as above.
 - No rewrite used a tool. Flash-Lite once dropped an `@` mention from its rewrite, which GeminiCode's cleanup puts back. Every other automatic check passed on every route.
 - Each run, about twenty requests, moved the day's Flash quota by about one percentage point.
 
-So Enhance prompt is a direct request on the inline-edit model. It goes through the CLI (Flash-Lite in an empty folder) only when direct requests are off, cannot use the sign-in, or failed in the last five minutes.
+So Enhance prompt is a direct request on the inline-edit model. It goes through the CLI (Flash-Lite in an empty folder) when direct requests are off or cannot use the sign-in, when the direct request fails, and for five minutes after one failed. A direct request with no answer after 4 s starts the CLI's rewrite alongside it, and the first answer wins (`promptEnhancer.ts`).
 
 ## A project's coordinator and threads
 
@@ -159,19 +159,19 @@ Read from the CLI and checked by `realAgentSessions.test.ts`.
 
 ### Finding the session
 
-The CLI registers two folders for one directory reached through a link: its process's `process.cwd()`, the real path, when it starts, and the path `session/new` was given. Sessions are saved under the given path's folder. GeminiCode opens every session on the real path, so both coincide; for a session opened elsewhere on the given path, the lookup reads every folder the directory is registered under (`chatsFolders` in `cliSessions.ts`), and a copy for `session/load` goes in the folder of the path the load will be given.
+The CLI registers two folders for one directory reached through a link: its process's `process.cwd()`, the real path, when it starts, and the path `session/new` was given. Sessions are saved under the given path's folder. GeminiCode opens every session on the real path (`realFolder` in `agentRuntime.ts`), so both coincide; for a session opened elsewhere on the given path, the lookup reads every folder the directory is registered under (`chatsFolders` in `cliSessions.ts`), and a copy for `session/load` goes in the folder of the path the load will be given.
 
 - `session/load` takes `sessionId`, `cwd` and `mcpServers`. It finds the session among the chat files the CLI saves for the folder: `~/.gemini/tmp/<project>/chats/session-<time>-<first 8 characters of the id>.jsonl`, where `<project>` is the short name `~/.gemini/projects.json` gives the folder (older CLIs used a SHA-256 of its path).
 - The CLI matches the exact id and does not reset the session, so the same session can be reopened again and again.
 - A chat is saved only once it has messages, so an empty session cannot be reopened. Like `session/new`, `session/load` needs `security.auth.selectedType` in the user's settings.
-- The CLI keys a folder in `projects.json` by its path as given (`path.resolve`, not the real path). The terminal's folder is its process's working folder, which is always the real path. An ACP session's folder is the `cwd` the client sends. For a workspace opened through a symbolic link the two differ, so sessions started in the terminal there are saved under another key, and neither the CLI over ACP nor **Pick Up a Gemini CLI Session** finds them. This came to light when `realAgentSessions.test.ts` failed in macOS's temporary folder, which is a link; the test works in the real path.
+- The CLI keys a folder in `projects.json` by its path as given (`path.resolve`, not the real path). The terminal's folder is its process's working folder, which is always the real path. An ACP session's folder is the `cwd` the client sends. For a workspace opened through a symbolic link the two differ, so a client that sends the linked path saves its sessions under another key than the terminal's, and neither finds the other's; hence the real path above. This came to light when `realAgentSessions.test.ts` failed in macOS's temporary folder, which is a link; the test works in the real path.
 
 ### The replay
 
 - The CLI replays the history as `session/update` notifications without waiting for them, so some arrive after the answer. The answer carries the modes and models but not the session id.
 - Each saved message becomes text through the CLI's verbose converter, so thoughts, tool calls and tool results come through as markers: `[Thought: true]`, `[Function Call: replace]`, and tool results (which the CLI saves as user messages) as user messages such as `[Function Response: run_shell_command]`. A pasted image is `[Image: image/png, 45.2 KB]`.
 - It sends one update per user message with any text or part. Per model message it sends one per thought, one for its text or parts, and one per tool call.
-- GeminiCode works the count out from the session file (`replayUpdateCount`) and holds a prompt until the counted replay is over, or until no update has come for 250 ms. It keeps replayed updates apart from the new turn and strips the markers wherever the replay is shown.
+- GeminiCode works the count out from the session file (`replayUpdateCount`) and holds a prompt until the counted replay is over. Until the count is known, 250 ms with no update ends the replay; once it is known, 3 s does, in case the count is off (`replayTracker.ts`). It keeps replayed updates apart from the new turn and strips the markers wherever the replay is shown.
 - Tool calls replay with title, kind, locations, diffs and text only, so a client cannot rebuild its own view from the replay. GeminiCode keeps its own copy of each conversation for display and uses `session/load` only so the agent remembers it.
 
 ### The chat file
@@ -254,7 +254,7 @@ The ACP list and the terminal's differ:
 - In a folder the CLI does not trust, a session loads no MCP servers at all, not even those the client passes in `session/new`'s `mcpServers`, and no project settings or skills. That is why a project asks to trust its coordinators' and threads' folders.
 - Trust follows the longest matching rule in `~/.gemini/trustedFolders.json` (`TRUST_FOLDER`, `TRUST_PARENT` or `DO_NOT_TRUST`). Trusting `~/.geminicode/projects` and `~/.geminicode/worktrees/<repository>` therefore covers every coordinator and thread folder under them.
 - An MCP server that cannot start is reported with the reason. `realAgentMcp.test.ts` checks it.
-- A policy rule with `mcpName` does not match a server the session brings in `mcpServers`, so rules for those servers name each tool as the model calls it, `mcp_<server>_<tool>`. `realAgentPolicy.test.ts` checks GeminiCode's admin policy against the CLI: modes turned off, shell off, the environment commands refused, and the confirm class asking in every mode.
+- A policy rule with `mcpName` does not match a server the session brings in `mcpServers`, so rules for those servers name each tool as the model calls it, `mcp_<server>_<tool>`. `realAgentPolicy.test.ts` checks GeminiCode's tool policy against the CLI: modes turned off, shell off, the environment commands refused, and the confirm class asking in every mode.
 - `--allowed-mcp-server-names` outranks `mcp.allowed` in any settings file.
 
 ## Workspace index
@@ -303,7 +303,7 @@ The indexer's memory on a folder of 100,000 generated TypeScript files (`test/ac
 
 ### When the indexer gives up
 
-After three crashes the indexer stops for ten minutes. New sessions then get no `geminicode-index` server in `session/new` and no `indexHint`; `mcpServers` per session is what the CLI already supports. The CLI 0.64.0 does handle `notifications/tools/list_changed` (its MCP client calls `refreshTools`), but GeminiCode's local MCP server (`localMcpServer.ts`) answers requests only and has no stream to send notifications on, so a session already running keeps the tools, and their calls fail with a message.
+The indexer is restarted after a crash, 1, 4 and then 16 s later. On a fourth crash in a row it stays stopped for ten minutes (`indexClient.ts`). New sessions then get no `geminicode-index` server in `session/new` and no `indexHint`, since `mcpServers` is given per session. A session already running keeps the tools, and their calls fail with a message.
 
 ### Ripgrep
 
@@ -332,7 +332,7 @@ One "reply OK" prompt with `gemini-3.8-flash` in `cms-vca2`:
 | With neither | 32,209 |
 | In an empty folder | 9,620 |
 
-So the CLI's own prompt and tools were 15% of the call, the context files 36% (`GEMINI.md` importing nine rule files, 68 KB, and the skills list), GitLab's tools 32% and Jira's 17%. GeminiCode's own servers added about 4,200 tokens. Every step of an agent sends all of it again. Agent Setup' **Measure** (`contextCost.ts`) repeats this measurement for any folder.
+So the CLI's own prompt and tools were 15% of the call, the context files 36% (`GEMINI.md` importing nine rule files, 68 KB, and the skills list), GitLab's tools 32% and Jira's 17%. GeminiCode's own servers added about 4,200 tokens. Every step of an agent sends all of it again. Agent Setup's **Measure** (`contextCost.ts`) repeats this measurement for any folder.
 
 ### How the CLI finds code
 
@@ -410,14 +410,14 @@ With prompts off, the file still carries the CLI's system prompt and tool declar
 Measured with GeminiCode's own code, not the CLI.
 
 - Re-rendering only the blocks of a streaming reply after its last finished one keeps an update at about 2 ms for a 30 KB reply. Re-rendering the whole reply cost about 25 ms.
-- `test/perf/budgets.test.ts` times this and the other paths a user waits on (a keystroke, a streamed chunk, switching agents, Enter to the first chunk, a 500-thread project) and fails CI past each budget. All 16 checks pass.
+- `test/perf/budgets.test.ts` times this and the other paths a user waits on (a keystroke, a streamed chunk, switching agents, Enter to the first chunk, a 500-thread project), checks each bundle's size, and fails CI past any budget.
 
 Production bundle sizes:
 
 | File | Bytes |
 | --- | --- |
 | `dist/extension.js` | 955,144 (29 Oct 2026; 1,212,205 before the ACP SDK moved out) |
-| `dist/connection.js` | 253,633 (the ACP SDK and zod with English messages only, loaded when the first agent process starts) |
+| `dist/connection.js` | 253,633 (the ACP SDK and zod with English messages only) |
 | `media/chat.js` | 253,936 |
 | `media/draftMarkdown.js` | 126,052 |
 | `media/home.js` | 28,043 |

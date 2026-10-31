@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 // Whether a repository's worktree setup script may run without asking. The
-// `gemini.agents.worktreeSetup` command is the user's or the admin's (it is
+// `gemini.agents.worktreeSetup` command is the user's own (it is
 // machine-scoped), so it runs as set. A repository's own
 // `.gemini/worktree-setup.sh` is the repository's: it runs once the user
 // allowed that exact content, remembered by hash, and asks again when the

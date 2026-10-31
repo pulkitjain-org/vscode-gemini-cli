@@ -28,7 +28,7 @@ const cliOwn = /^(GEMINI|GOOGLE)_/;
  * Gemini CLI's own. The agent's shell inherits its process environment, and a
  * tool it runs could print it, so a token meant for another program never
  * reaches the agent. A program the agent needs a token for gets it from the
- * user, as the environment denial's message says (adminPolicy.ts).
+ * user, as the environment denial's message says (toolPolicy.ts).
  */
 export function withoutSecrets(base: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
 	const env: NodeJS.ProcessEnv = {};

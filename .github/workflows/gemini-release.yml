@@ -202,10 +202,16 @@ jobs:
           test -f "$CLI_BUNDLE/gemini.js" || { echo "::error::The bundled Gemini CLI is missing from the app"; exit 1; }
           # The app's ripgrep where the CLI looks for its own (src/acp/cliRipgrep.ts); without it search falls back to git grep.
           test -x "$CLI_BUNDLE/vendor/ripgrep/rg-darwin-arm64" || { echo "::error::The bundled Gemini CLI has no ripgrep (bundle/vendor/ripgrep/rg-darwin-arm64)"; exit 1; }
+          test ! -e "$CLI_BUNDLE/vendor/ripgrep/rg-darwin-x64" || { echo "::error::The bundled Gemini CLI carries an Intel ripgrep the app never runs"; exit 1; }
           # The ACP output cap (src/acp/cliPatches.ts).
           grep -qF 'GeminiCode patch: acp-output-cap' "$CLI_BUNDLE"/gemini-*.js || { echo "::error::The bundled Gemini CLI is not patched (src/acp/cliPatches.ts)"; exit 1; }
           test -s "$RESOURCES/extensions/gemini/ThirdPartyNotices.txt" || { echo "::error::The Gemini extension's ThirdPartyNotices.txt is missing from the app"; exit 1; }
           test ! -e "$RESOURCES/extensions/copilot" || { echo "::error::Upstream's Copilot extension is in the app"; exit 1; }
+          # About 140 MB GeminiCode never runs (build/gulpfile.vscode.ts).
+          test ! -e "$RESOURCES/node_modules.asar.unpacked/@github/copilot-sdk-darwin-arm64" || { echo "::error::The Copilot agent runtime is in the app"; exit 1; }
+          # Mermaid's notebook renderer shares the Markdown preview's chunks (extensions/mermaid-markdown-features/esbuild.webview.mts).
+          test -f "$RESOURCES/extensions/mermaid-markdown-features/markdown-preview-out/notebook.js" || { echo "::error::Mermaid's notebook renderer is missing from the app"; exit 1; }
+          test ! -e "$RESOURCES/extensions/mermaid-markdown-features/notebook-out" || { echo "::error::Mermaid's notebook renderer still ships its own copy of mermaid"; exit 1; }
           # shellcheck disable=SC2016 # a JavaScript template string, not shell
           node -e 'const p = require(process.argv[1]); if (p.geminiCodeVersion !== process.argv[2]) { throw new Error(`product.json has ${p.geminiCodeVersion}`); }' "$RESOURCES/product.json" "${{ steps.version.outputs.version }}"
           echo "build-dir=$BUILD_DIR" >> "$GITHUB_OUTPUT"
@@ -446,7 +452,7 @@ jobs:
             echo "2. Run **Gemini: Run Benchmark...** from the Command Palette (or the Gemini status menu) once on Flash and once on Pro."
             echo "3. Open a pull request that adds the two files it writes to \`gemini/bench/results/\` and closes this issue."
             echo
-            echo "About 900 requests for 30 tasks on two models: keep a full day's work off that seat. The docs site shows the results once the pull request merges."
+            echo "About 900 requests for 30 tasks on two models: keep a full day's work off that seat."
           } > "$BODY"
           gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --body-file "$BODY"
 

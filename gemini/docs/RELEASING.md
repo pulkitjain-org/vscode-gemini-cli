@@ -4,7 +4,7 @@ GeminiCode ships as a Mac app for Apple silicon on macOS 26 or later, from this 
 
 ## Versions
 
-GeminiCode has its own version, separate from upstream's numbering. The release tag carries it (`v1.1.0`), and the build stamps it into `product.json` as `geminiCodeVersion`. **About** shows both, as `1.1.0 (Code - OSS 1.142.0)`. A build without a stamp, such as a dev build, shows only upstream's version.
+GeminiCode has its own version, separate from upstream's numbering. The release tag carries it (`v1.1.0`), and the build stamps it into `product.json` as `geminiCodeVersion`, with the bundled CLI's version as `geminiCliVersion`. **About** shows GeminiCode's version with upstream's, as `1.1.0 (Code - OSS 1.142.0)`, and the Gemini CLI's on a line of its own. A build without a stamp, such as a dev build, shows only upstream's version.
 
 There is one stable channel. A tag with a suffix, such as `v1.2.0-rc.1`, publishes a prerelease, which the download page and the update notice ignore.
 
@@ -25,19 +25,19 @@ There is one stable channel. A tag with a suffix, such as `v1.2.0-rc.1`, publish
 
 Run **Gemini Release** from the Actions tab:
 
-- With no tag, it builds `GeminiCode-0.0.0-dev.<run>-arm64.dmg` and its `.sha256` as workflow artifacts, kept for 14 days, and publishes nothing. Use this to try the pipeline. The artifacts are uploaded unzipped, so the `.dmg` downloads as is: Chrome can block a `.dmg` inside a `.zip` as a dangerous download.
+- With no tag, it builds `GeminiCode-0.0.0-dev.<run>-arm64.dmg` and publishes nothing. Use this to try the pipeline.
 - With an existing tag, such as `v1.1.0`, it builds and publishes that tag as a tag push would, for example to retry a failed release.
 
-Every run keeps the `.dmg` as an artifact.
+Every run keeps the `.dmg` and its `.sha256` as workflow artifacts for 14 days. They are uploaded unzipped, so the `.dmg` downloads as is: Chrome can block a `.dmg` inside a `.zip` as a dangerous download.
 
 If the release already exists, for example because it was made in GitHub's UI, the workflow uploads the `.dmg` and checksum to it, replacing any files with the same names, and keeps its title and notes.
 
 ## What the workflow does
 
 1. For a tag, checks that its commit is on `main` and that Gemini CI passed on it (the GitHub API's comparison with `main`, and the commit's check runs).
-2. Stamps the version into `product.json`.
-3. Installs dependencies, leaves out upstream's Copilot extension, bundles the pinned Gemini CLI (`npm run bundle-cli` in `extensions/gemini`), writes the Gemini extension's `ThirdPartyNotices.txt` (`gemini/scripts/third-party-notices.mts`: the bundled CLI's Apache-2.0 licence, the packages bundled into the extension, the emoji data and ripgrep), and builds the app with `npm run gulp vscode-darwin-arm64-min`.
-4. Checks that the app holds the bundled CLI with its ripgrep (`bundle/vendor/ripgrep/`) and GeminiCode's output cap, the extension's notices and the stamped version, and no Copilot extension.
+2. Stamps the version and the bundled CLI's version into `product.json`.
+3. Installs dependencies, leaves out upstream's Copilot extension, bundles the pinned Gemini CLI (`npm run bundle-cli` in `extensions/gemini`), writes the Gemini extension's `ThirdPartyNotices.txt` (`gemini/scripts/third-party-notices.mts`: the bundled CLI's Apache-2.0 licence, the packages bundled into the extension, the emoji data and ripgrep), and builds the app with `npm run gulp vscode-darwin-arm64-min`. The build leaves out the Copilot SDK's runtime, about 140 MB that GeminiCode never runs (`build/gulpfile.vscode.ts`).
+4. Checks that the app holds the bundled CLI with its ripgrep (`bundle/vendor/ripgrep/`) and GeminiCode's output cap, the extension's notices and the stamped version. It also checks that the app has neither the Copilot extension nor the Copilot SDK's runtime, and that Mermaid's notebook renderer is the one built with the Markdown preview (`markdown-preview-out/notebook.js`), which shares its copy of mermaid.
 5. Sets the app's `LSMinimumSystemVersion` to macOS 26 (`GEMINI_MIN_MACOS`) and checks that its executable is arm64 only. Electron declares an older minimum, and its packager has no option for it. With this set, macOS refuses to open the app on an older release or an Intel Mac, and says why.
 6. Copies the layered app icon, `resources/darwin/Assets.car` (compiled by `gemini/scripts/make-icons.sh`, see [branding/README.md](../branding/README.md)), into the app and names it in `Info.plist`, so the Dock and Finder use it.
 7. Signs the app with the Developer ID, using upstream's `build/darwin/sign.ts`: hardened runtime and upstream's entitlements for the app and each helper.
@@ -61,10 +61,11 @@ The landing page has, in order:
 - The hero: the headline, **Download for Mac**, a line with the version, macOS 26 or later, Apple silicon, the download size and the licence (MIT). Twenty-four capability tiles turn around it on two rings, fourteen on the outer and ten on the inner, each capability once.
 - A showcase card with the `showcase-work` screenshot, and a play button for its clip.
 - A strip of things you can do.
+- Three short points on what GeminiCode is, and the five steps from a plan to kept changes.
 - Sections on agents, review and safety, Projects, and the browser and team tools, which link to the feature pages.
 - The install steps, with the steps to open an unsigned build when the release is unsigned.
 
-All of its text is written out in `renderPage()` in `build.mts`, including the capability tiles (`capabilities`), the strip (`strip`) and the install steps (`steps`). Update it when a release changes the headline features, and keep every sentence true to the README and the guide.
+All of its text is written out in `renderPage()` in `build.mts`, including the capability tiles (`outer` and `inner`), the strip (`strip`), the five steps (`flowSteps`) and the install steps (`steps`). Update it when a release changes the headline features, and keep every sentence true to the README and the guide.
 
 Its screenshots are listed in `mediaFiles` in `build.mts` and kept in `gemini/site/media/`. See [Screenshots and clips](#screenshots-and-clips).
 
@@ -144,7 +145,7 @@ Run `node gemini/site/build.mts /tmp/site --sample` (or `--none`, for the page b
 
 ## Opening an unsigned build
 
-Until the Developer ID is in place, macOS blocks GeminiCode on first launch. After dragging it to Applications:
+macOS blocks an unsigned build, one made without the Apple secrets, on first launch. After dragging it to Applications:
 
 1. Open GeminiCode once. macOS says it cannot verify it; choose **Done**.
 2. Open **System Settings → Privacy & Security**, scroll to Security and choose **Open Anyway** next to GeminiCode.
@@ -188,4 +189,4 @@ The next tag then publishes a signed and notarized build. To check the setup fir
 
 ## When notarization fails
 
-The workflow prints Apple's log, which names each file Apple rejected. Upstream's signing script signs every binary VS Code ships; the bundled Gemini CLI is plain JavaScript and needs no signature. If something new with a native binary is added to the app, make sure `build/darwin/sign.ts` reaches it.
+The workflow prints Apple's log, which names each file Apple rejected. Upstream's signing script signs every binary in the app. The bundled Gemini CLI is JavaScript apart from the ripgrep GeminiCode adds to it (`bundle/vendor/ripgrep/rg-darwin-arm64`), which the script signs with the rest. If something with a native binary is added to the app, make sure `build/darwin/sign.ts` reaches it.

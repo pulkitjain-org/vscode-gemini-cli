@@ -5,7 +5,7 @@
 
 import type * as acp from '@agentclientprotocol/sdk';
 import * as vscode from 'vscode';
-import { isModeAllowed } from '../acp/adminPolicy';
+import { isModeAllowed } from '../acp/toolPolicy';
 import { AgentClient, type AgentClientOptions } from '../acp/agentClient';
 import { createFileHandlers, isInside } from '../acp/fileAccess';
 import { PermissionBroker } from '../acp/permissions';

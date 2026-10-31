@@ -116,7 +116,7 @@ export interface AgentClientOptions {
 	readonly modelList?: (available: readonly SessionChoice[]) => readonly SessionChoice[];
 	/** Which approval modes the picker may offer; all of them when unset. */
 	readonly isModeAllowed?: (modeId: string) => boolean;
-	/** Requests the user answers even in YOLO: the confirm class, which the admin policy makes ask in every mode. */
+	/** Requests the user answers even in YOLO: the confirm class, which GeminiCode's tool policy makes ask in every mode (toolPolicy.ts). */
 	readonly alwaysAsks?: (params: acp.RequestPermissionRequest) => boolean;
 	/** Told after the agent wrote a file through the client. */
 	readonly onDidWriteFile?: (filePath: string) => void;
@@ -794,8 +794,8 @@ export class AgentClient {
 	/**
 	 * Asks the user, through the chat. In YOLO a request should not come; when
 	 * one does anyway, it is allowed at once, as the user chose (and as the
-	 * admin policy allows, else YOLO would not be offered), except for the
-	 * confirm class, which the admin policy makes ask in every mode.
+	 * settings allow, else YOLO would not be offered), except for the
+	 * confirm class, which the tool policy makes ask in every mode.
 	 */
 	private requestPermission(params: acp.RequestPermissionRequest): Promise<acp.RequestPermissionResponse> {
 		const allow = params.options.find(option => option.kind === 'allow_once') ?? params.options.find(option => option.kind === 'allow_always');

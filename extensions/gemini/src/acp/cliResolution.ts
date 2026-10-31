@@ -7,9 +7,7 @@
 // `gemini.cliPath` setting, the copies installed from GeminiCode (one folder
 // per version), the copy bundled with the app, then `gemini` on PATH. Without
 // a version set, a bundled copy newer than every installed one wins, so an app
-// update is not held back by an older install. An admin pins a path or a
-// version by locking those settings through policy, which the workbench
-// applies before the extension reads them.
+// update is not held back by an older install.
 
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';

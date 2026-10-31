@@ -1869,7 +1869,7 @@
         }
       },
       {
-        "title": "%configuration.adminTitle%",
+        "title": "%configuration.safetyTitle%",
         "order": 7,
         "properties": {
           "gemini.approval.allowAutoEdit": {

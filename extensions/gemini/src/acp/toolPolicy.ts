@@ -3,12 +3,12 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// Approval modes and shell access as policy. GeminiCode's settings, which an
-// admin can lock through VS Code's policy system, become two things: the modes
-// the picker offers, and a policy file passed to the CLI with `--admin-policy`.
-// The CLI ranks that file above user and workspace policies, so a disallowed
-// mode still asks before every tool, and a blocked shell tool is removed from
-// the agent. Checked against gemini-cli 0.62 in
+// Approval modes and shell access as policy. GeminiCode's settings become two
+// things: the modes the picker offers, and a policy file passed to the CLI with
+// `--admin-policy`, the CLI's name for its highest tier. The CLI ranks that
+// file above user and workspace policies, so a repository's own policy cannot
+// undo it: a disallowed mode still asks before every tool, and a blocked shell
+// tool is removed from the agent. Checked against gemini-cli 0.62 in
 // test/acp/realAgentPolicy.test.ts.
 
 import { promises as fs } from 'node:fs';
@@ -64,7 +64,7 @@ export function isModeAllowed(policy: ApprovalPolicy, modeId: string): boolean {
 }
 
 /** The CLI policy file for `policy`, or undefined when it allows everything. */
-export function buildAdminPolicy(policy: ApprovalPolicy): string | undefined {
+export function buildToolPolicy(policy: ApprovalPolicy): string | undefined {
 	const askModes = [...policy.allowAutoEdit ? [] : ['autoEdit'], ...policy.allowYolo ? [] : ['yolo']];
 	const rules: string[] = [];
 	if (askModes.length) {
@@ -132,9 +132,9 @@ export function buildAdminPolicy(policy: ApprovalPolicy): string | undefined {
  * or removes it and returns none. Rewrites only when the content changed, so
  * a start costs one small read.
  */
-export async function prepareAdminPolicy(dir: string, policy: ApprovalPolicy): Promise<string[]> {
+export async function prepareToolPolicy(dir: string, policy: ApprovalPolicy): Promise<string[]> {
 	const file = path.join(dir, policyFileName);
-	const content = buildAdminPolicy(policy);
+	const content = buildToolPolicy(policy);
 	if (!content) {
 		await fs.rm(file, { force: true });
 		return [];
@@ -144,6 +144,6 @@ export async function prepareAdminPolicy(dir: string, policy: ApprovalPolicy): P
 		// Replaced in one rename, so an agent starting in another window never reads half a policy.
 		await writeFileAtomic(file, content);
 	}
-	// The CLI ranks a directory passed this way as admin policy.
+	// The CLI ranks a directory passed this way above user and workspace policies.
 	return ['--admin-policy', dir];
 }

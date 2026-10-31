@@ -39,9 +39,9 @@ const agentViewType = 'mainThreadWebview-gemini.agent';
 /**
  * The extension's pages that open beside their agent, in its side group, and
  * so hide and come back with it like its files: a team flow's (Review !706,
- * Log Time), Plan Review, and Confluence's Review Page.
+ * Log Time), Plan Review, Confluence's Review Page and Debug mode's Evidence.
  */
-const sidePageViewTypes: ReadonlySet<string> = new Set(['teamFlow', 'planReview', 'confluenceReview', 'agentFiles'].map(name => `${geminiViewTypePrefix}${name}`));
+const sidePageViewTypes: ReadonlySet<string> = new Set(['teamFlow', 'planReview', 'confluenceReview', 'agentFiles', 'debugEvidence'].map(name => `${geminiViewTypePrefix}${name}`));
 /** An agent's Files page (the extension's agentFilesPage.ts). */
 const filesViewType = `${geminiViewTypePrefix}agentFiles`;
 /** The Files page's width beside an open file: its tree alone. */

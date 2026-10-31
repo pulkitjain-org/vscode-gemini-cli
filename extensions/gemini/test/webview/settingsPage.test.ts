@@ -6,8 +6,8 @@
 // @vitest-environment happy-dom
 
 // The Settings page (webview-src/settings.ts): every contributed section in
-// the side index and on the page, the search, a row an administrator's policy
-// locks, the messages a control sends, and rows patched in place.
+// the side index and on the page, the search, Reset, the messages a control
+// sends, and rows patched in place.
 
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { HTMLButtonElement, HTMLElement, HTMLInputElement } from 'happy-dom';
@@ -16,7 +16,7 @@ import type { SettingsPageStrings } from '../../src/host/panelStrings';
 import { hostExport, page, posted, sendToPage, startScript } from './pages';
 
 function row(key: string, more: Partial<SettingRowView> = {}): SettingRowView {
-	return { key, label: key.split('.').pop()!, help: `About ${key}.`, control: 'toggle', value: false, default: false, target: 'global', locked: false, modified: false, advanced: false, ...more };
+	return { key, label: key.split('.').pop()!, help: `About ${key}.`, control: 'toggle', value: false, default: false, target: 'global', modified: false, advanced: false, ...more };
 }
 
 const sections: SettingSectionView[] = [
@@ -26,7 +26,7 @@ const sections: SettingSectionView[] = [
 	{ id: 'browser', title: 'Browser', settings: [row('gemini.browser.enabled', { value: true, default: true })] },
 	{ id: 'index', title: 'Workspace Index and Docs', settings: [row('gemini.index.include', { control: 'list', value: ['src/**'], default: [], target: 'workspace', modified: true })] },
 	{ id: 'team', title: 'Team Tools', settings: [row('gemini.team.runTeamServers', { value: true, default: true })] },
-	{ id: 'admin', title: 'Administration', settings: [row('gemini.approval.allowYolo', { value: false, default: false, locked: true }), row('gemini.mcp.allowedServers', { control: 'list', value: ['github'], default: [], locked: true, modified: true })] },
+	{ id: 'safety', title: 'Safety and Limits', settings: [row('gemini.approval.allowYolo', { value: false, default: false }), row('gemini.mcp.allowedServers', { control: 'list', value: ['github'], default: [], modified: true })] },
 	{ id: 'developer', title: 'Developer', settings: [row('gemini.developer.showTools', { value: true, default: false, modified: true }), row('gemini.old', { deprecated: 'Use gemini.developer.showTools.' })] },
 ];
 
@@ -129,29 +129,14 @@ describe('the Settings page', () => {
 		});
 	});
 
-	it('shows a setting an administrator locks with a lock, its control disabled and no Reset', () => {
-		const yolo = main().querySelector('.row.setting[data-key="gemini.approval.allowYolo"]')!;
-		const servers = main().querySelector('.row.setting[data-key="gemini.mcp.allowedServers"]')!;
-		const tools = main().querySelector('.row.setting[data-key="gemini.developer.showTools"]')!;
+	it('shows Reset only on a changed setting', () => {
+		const reset = (key: string) => (main().querySelector(`.row.setting[data-key="${key}"] .reset`) as HTMLElement).hidden;
 		expect({
-			locked: yolo.classList.contains('locked'),
-			note: yolo.querySelector('.row-note')?.textContent,
-			lockIcon: yolo.querySelector('.row-note .codicon')?.className,
-			switchDisabled: (yolo.querySelector('.switch') as HTMLButtonElement).disabled,
-			resetHidden: (yolo.querySelector('.reset') as HTMLElement).hidden,
-			listDisabled: [...servers.querySelectorAll('.setting-list input, .setting-list button')].map(node => (node as HTMLButtonElement).disabled),
-			modifiedReset: (tools.querySelector('.reset') as HTMLElement).hidden,
-			plainReset: (main().querySelector('.row.setting[data-key="gemini.agents.ownBranch"] .reset') as HTMLElement).hidden,
-		}).toEqual({
-			locked: true,
-			note: 'Set by your administrator',
-			lockIcon: 'codicon codicon-lock',
-			switchDisabled: true,
-			resetHidden: true,
-			listDisabled: [true, true, true],
-			modifiedReset: false,
-			plainReset: true,
-		});
+			yoloNoteHidden: (main().querySelector('.row.setting[data-key="gemini.approval.allowYolo"] .row-note') as HTMLElement).hidden,
+			yolo: reset('gemini.approval.allowYolo'),
+			servers: reset('gemini.mcp.allowedServers'),
+			showTools: reset('gemini.developer.showTools'),
+		}).toEqual({ yoloNoteHidden: true, yolo: true, servers: false, showTools: false });
 	});
 
 	it('posts a setting\'s new value when a control changes, and Reset', () => {

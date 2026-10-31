@@ -8,15 +8,15 @@ Every agent has a terminal of its own. Commands Gemini suggests in a reply run t
 
 An agent's terminal is named after it, such as "fix-login · Gemini", and opens in the folder the agent works in. For an agent on its own branch, that is the branch's folder. A thread that works in several repositories gets one terminal per repository.
 
-Open it with **Terminal** in the column beside the agent's chat, or with **Open Terminal**, which is in the agent's right-click menu, in its tab's right-click menu and in the composer's **+** menu. It opens as a tab in the agent's group beside the chat, so it hides and comes back with the agent, as its files do. Removing the agent closes its terminals, and they don't come back after the window reloads.
+Open it with **Terminal** in the column beside the agent's chat, or with **Open Terminal**: in the composer's **+** menu, in the agent's tab's right-click menu, and under **More** in the agent's right-click menu in the Agents pane. It opens as a tab in the agent's group beside the chat, so it hides and comes back with the agent, as its files do. Removing the agent closes its terminals. They aren't restored when the window reloads: **Open Terminal** starts a new one.
 
 These terminals are yours. The agent runs its own commands through the Gemini CLI, after asking you, and they don't appear here.
 
 ## Run a command from a reply
 
-A shell code block in a reply (`bash`, `sh`, `zsh`, `console` or PowerShell) has a ▷ button, **Run in Terminal**, beside **Copy**. It sends the command to the agent's terminal and shows the terminal, while the chat stays where it is. In a `console` block, only the lines after a `$` prompt run.
+A shell code block in a reply (`bash`, `sh`, `zsh`, `fish`, `console` or PowerShell) has a ▷ button, **Run in Terminal**, beside **Copy**. It sends the command to the agent's terminal and shows the terminal, while the chat stays where it is. In a `console` block, only the lines after a `$` prompt run.
 
-When the command finishes, the block shows how it went: ✓ for success, or ✗ with the exit code and **Send Output to Gemini**. That button attaches the command and the last 200 lines of its output to the composer, so you can add a word and send it.
+When the command finishes, the block shows how it went: ✓ for success, or ✗ with the exit code and **Send Output to Gemini**. That button attaches the command and the last 200 lines of its output to the composer, for you to add a note and send.
 
 The ⌄ beside it, **More Ways to Run**, has more choices:
 
@@ -43,7 +43,7 @@ A block with several commands asks too, and Run in a project's coordinator chat 
 
 The check reads the command line only. A script the command runs can still write anywhere, so read what you run.
 
-Set how Run behaves with `gemini.chat.runCommands`: `askWhenRisky` (the default), `alwaysAsk`, or `off`, which leaves only Copy. Your administrator can set it for you.
+`gemini.chat.runCommands` sets how Run behaves: `askWhenRisky` (the default), `alwaysAsk`, or `off`, which leaves only Copy.
 
 ## Send terminal output to Gemini
 

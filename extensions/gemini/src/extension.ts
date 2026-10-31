@@ -80,7 +80,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	setStorageDirs({
 		managedCli: vscode.Uri.joinPath(context.globalStorageUri, 'gemini-cli').fsPath,
 		bundledCli: vscode.Uri.joinPath(context.extensionUri, 'cli').fsPath,
-		adminPolicy: vscode.Uri.joinPath(context.globalStorageUri, 'policy').fsPath,
+		toolPolicy: vscode.Uri.joinPath(context.globalStorageUri, 'policy').fsPath,
 	});
 	const teamCommandStore = initTeamCommands(log);
 	// The CLI's debug log, one per window's process (GEMINI_DEBUG_LOG_FILE), so windows never empty each other's.

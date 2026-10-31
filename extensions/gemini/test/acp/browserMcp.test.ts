@@ -303,7 +303,7 @@ describe('BrowserToolHost', () => {
 		expect(asked).toEqual([]);
 
 		const policy = setup(true, false);
-		expect(await policy.host.handOverRefusal('a1', 'https://example.com/')).toBe('policy keeps agents to pages on this machine');
+		expect(await policy.host.handOverRefusal('a1', 'https://example.com/')).toBe('GeminiCode\'s settings keep agents to pages on this machine');
 		expect(await policy.host.handOverRefusal('a1', 'http://127.0.0.1:3000/')).toBeUndefined();
 		policy.turnOff();
 		expect(await policy.host.handOverRefusal('a1', 'http://127.0.0.1:3000/')).toBe('the GeminiCode browser is turned off');
@@ -420,15 +420,15 @@ describe('BrowserToolHost', () => {
 		expect(await host.call('a1', 'browser_dev_servers', {})).toEqual({ content: [{ type: 'text', text: 'Running on this machine:\nhttp://localhost:5173/ (HTTP 200, "My app")' }] });
 	});
 
-	it('keeps agents to the sites the admin lists, local ones included, before asking', async () => {
+	it('keeps agents to the sites gemini.browser.allowedOrigins lists, local ones included, before asking', async () => {
 		const { asked, host } = setup(true, true, undefined, ['https://*.qa.example', 'http://localhost:3000']);
-		expect(await host.call('a1', 'browser_navigate', { url: 'http://localhost:5173' })).toMatchObject({ isError: true, content: [{ text: expect.stringContaining('policy allows agents only on the sites it lists') }] });
+		expect(await host.call('a1', 'browser_navigate', { url: 'http://localhost:5173' })).toMatchObject({ isError: true, content: [{ text: expect.stringContaining('GeminiCode\'s settings allow agents only on the sites they list') }] });
 		expect(await host.call('a1', 'browser_navigate', { url: 'https://evil.example' })).toMatchObject({ isError: true });
 		expect(asked).toEqual([]);
 		expect((await host.call('a1', 'browser_navigate', { url: 'http://localhost:3000' })).isError).toBeUndefined();
 		expect((await host.call('a1', 'browser_navigate', { url: 'https://app.qa.example' })).isError).toBeUndefined();
 		expect(new Set(asked)).toEqual(new Set(['https://app.qa.example']));
-		expect(await host.handOverRefusal('a1', 'https://other.example/')).toBe('policy allows agents only on the sites it lists');
+		expect(await host.handOverRefusal('a1', 'https://other.example/')).toBe('GeminiCode\'s settings allow agents only on the sites they list');
 		expect(await host.handOverRefusal('a1', 'https://qa.example/')).toBeUndefined();
 	});
 

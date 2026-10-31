@@ -14,7 +14,7 @@ import { compareVersions, isVersion } from './cliResolution';
 export const appUpdateCheckInterval = 6 * 60 * 60 * 1000;
 
 export interface AppUpdateCheckState {
-	/** The `gemini.app.checkForUpdates` setting, which an admin can lock. */
+	/** The `gemini.app.checkForUpdates` setting. */
 	readonly enabled: boolean;
 	/** GeminiCode's own version, stamped into product.json by a release build; a dev build has none. */
 	readonly currentVersion: string | undefined;

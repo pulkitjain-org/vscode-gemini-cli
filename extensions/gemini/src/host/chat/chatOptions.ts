@@ -194,6 +194,8 @@ export interface ChatForker {
 	start(start: ForkStart): Promise<void>;
 	/** A fork card's button. */
 	action(agent: string, action: ForkAction): void;
+	/** What a fork card's second button does: the Try choice remembered for the repository, or Merge Back for a thread's forks. */
+	tryChoice(): TryChoice;
 }
 
 /** A fork to make, as the chat has prepared it. */

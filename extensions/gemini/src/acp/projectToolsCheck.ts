@@ -6,11 +6,10 @@
 // Why a project agent's session has no project tools. gemini-cli 0.63 loads a
 // session's MCP servers (`McpClientManager.maybeDiscoverMcpServer`) only when
 // the session's folder is trusted, the server isn't left out by `mcp.allowed`
-// (which GeminiCode's launch flag makes list its own servers) or `mcp.excluded`
-// or turned off by an admin, and `gemini mcp disable` hasn't
-// turned it off in mcp-server-enablement.json, which, when unreadable, turns
-// every server off. It says none of this over ACP, so GeminiCode reads the
-// same files to name the cause.
+// (which GeminiCode's launch flag makes list its own servers) or `mcp.excluded`,
+// and `gemini mcp disable` hasn't turned it off in mcp-server-enablement.json,
+// which, when unreadable, turns every server off. It says none of this over
+// ACP, so GeminiCode reads the same files to name the cause.
 
 import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
@@ -21,7 +20,6 @@ import { folderTrustApplies, isFolderTrusted, trustedFoldersPath } from './trust
 export type ProjectToolsBlock =
 	| { readonly kind: 'untrusted'; readonly folder: string }
 	| { readonly kind: 'excluded'; readonly file: string }
-	| { readonly kind: 'adminOff'; readonly file: string }
 	| { readonly kind: 'disabled'; readonly file: string }
 	| { readonly kind: 'enablementUnreadable'; readonly file: string };
 
@@ -89,17 +87,13 @@ export function settingsFiles(options: Omit<ProjectToolsCheckOptions, 'folder' |
 }
 
 /**
- * The first of `files` that turns MCP off or puts `server` in `mcp.excluded`.
+ * The first of `files` that puts `server` in `mcp.excluded`.
  * `mcp.allowed` can't leave out GeminiCode's own servers: `allowlistWith` adds them.
  */
-export async function allowlistBlock(server: string, files: readonly string[]): Promise<Extract<ProjectToolsBlock, { kind: 'excluded' | 'adminOff' }> | undefined> {
+export async function allowlistBlock(server: string, files: readonly string[]): Promise<Extract<ProjectToolsBlock, { kind: 'excluded' }> | undefined> {
 	for (const file of files) {
 		const settings = await readSettingsFile(file);
 		const mcp = settings.mcp as { excluded?: unknown } | undefined;
-		const admin = (settings.admin as { mcp?: { enabled?: unknown } } | undefined)?.mcp;
-		if (admin?.enabled === false) {
-			return { kind: 'adminOff', file };
-		}
 		if (Array.isArray(mcp?.excluded) && mcp.excluded.includes(server)) {
 			return { kind: 'excluded', file };
 		}

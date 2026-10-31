@@ -24,7 +24,7 @@ export interface ResolveAgentCommandOptions {
 	readonly interactive?: boolean;
 	/** V8 heap size for the agent, from {@link cliHeapSizeMb}; unset leaves Node's default. */
 	readonly heapSizeMb?: number;
-	/** More CLI arguments, such as `--admin-policy <dir>`. */
+	/** More CLI arguments, such as `--admin-policy <dir>` for GeminiCode's tool policy. */
 	readonly extraArgs?: readonly string[];
 }
 

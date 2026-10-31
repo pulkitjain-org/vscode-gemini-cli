@@ -150,7 +150,7 @@ export class FolderTrust implements vscode.Disposable {
 		const detail = [
 			vscode.l10n.t("Trusting it lets the Gemini CLI load this repository's own Gemini settings, hooks and MCP servers, which can run programs on this Mac. Agents on their own branch, projects and Auto Edit need it."),
 			...inWindow ? [vscode.l10n.t("You trusted this folder in VS Code.")] : [],
-			vscode.l10n.t("The Gemini CLI remembers your choice, in GeminiCode and in the terminal. You can change it later in Agent Setup."),
+			vscode.l10n.t("The Gemini CLI remembers your choice, in GeminiCode and in the terminal. You can change it later in Settings."),
 		].join('\n\n');
 		const items = await hasOtherRepositories(parent, repository) ? [one, all, notNow] : [one, notNow];
 		const choice = await vscode.window.showInformationMessage(vscode.l10n.t("Let agents work in {0}?", name), { modal: true, detail }, ...items);
