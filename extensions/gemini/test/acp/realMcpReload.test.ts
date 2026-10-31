@@ -9,11 +9,12 @@
 // team tools load only when a task needs them, and Debug mode's tools on
 // entry, both rest on it). A second check: whether the CLI refreshes a
 // server's tools on `notifications/tools/list_changed`, which would avoid
-// the reload. Runs against the bundled CLI or GEMINI_CLI_PATH (test/realCli.ts),
+// the reload. A third: a server that opens with no tools, as GeminiCode's own do, is kept and
+// declares the tools it lists later. Runs against the bundled CLI or GEMINI_CLI_PATH (test/realCli.ts),
 // with a fake Gemini API on loopback that records what each request declared.
 
 import { ChildProcessWithoutNullStreams } from 'node:child_process';
-import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import * as http from 'node:http';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
@@ -22,6 +23,7 @@ import { afterAll, expect, it } from 'vitest';
 import type * as acp from '@agentclientprotocol/sdk';
 import { AgentConnection } from '../../src/acp/agentConnection';
 import { resolveAgentCommand, spawnAgent } from '../../src/acp/agentProcess';
+import { parseMcpProblems } from '../../src/acp/mcpDiagnostics';
 import { contentBlockToText } from '../../src/acp/sessionUpdates';
 import { describeRealCli, realCliPath } from '../realCli';
 
@@ -91,7 +93,8 @@ describeRealCli('gemini --acp given an MCP server after the session opened', () 
 		}
 	});
 
-	it('lists the server\'s tools on session/load and keeps the conversation; tools/list_changed is as the CLI takes it', async () => {
+	/** A fake Gemini API that answers every request with one word and keeps the tool names each request declared, and an agent using it. */
+	async function startAgent() {
 		// The fake model: answers every request with one word, and keeps the tool names each request declared.
 		const declared: string[][] = [];
 		const api = http.createServer((req, res) => {
@@ -111,10 +114,6 @@ describeRealCli('gemini --acp given an MCP server after the session opened', () 
 		});
 		await new Promise<void>(resolve => api.listen(0, '127.0.0.1', resolve));
 		closers.push(() => api.close());
-		let tools: string[] = ['spike_first'];
-		const mcp = await mcpServer(() => tools);
-		closers.push(mcp.close);
-
 		const home = realpathSync(mkdtempSync(path.join(tmpdir(), 'gemini-home-')));
 		const work = path.join(home, 'work');
 		mkdirSync(work);
@@ -123,6 +122,7 @@ describeRealCli('gemini --acp given an MCP server after the session opened', () 
 		const env: NodeJS.ProcessEnv = {
 			...process.env, HOME: home, USERPROFILE: home, GEMINI_API_KEY: 'fake', GEMINI_CLI_TRUST_WORKSPACE: 'true',
 			GOOGLE_GEMINI_BASE_URL: `http://127.0.0.1:${(api.address() as AddressInfo).port}`, NO_PROXY: '127.0.0.1',
+			GEMINI_DEBUG_LOG_FILE: path.join(home, 'debug.log'),
 		};
 		for (const key of Object.keys(env).filter(k => k.startsWith('VITEST') || /^https?_proxy$/i.test(k))) {
 			delete env[key];
@@ -137,13 +137,21 @@ describeRealCli('gemini --acp given an MCP server after the session opened', () 
 		});
 		connections.push(connection);
 		await connection.initialize();
+		// The model sees an MCP tool as mcp_<server>_<tool>.
+		const declares = (tool: string) => declared.at(-1)?.some(name => name.endsWith(tool)) ?? false;
+		return { connection, updates, work, declares, debugLog: () => readFileSync(path.join(home, 'debug.log'), 'utf8') };
+	}
+
+	it('lists the server\'s tools on session/load and keeps the conversation; tools/list_changed is as the CLI takes it', async () => {
+		const { connection, updates, work, declares } = await startAgent();
+		let tools: string[] = ['spike_first'];
+		const mcp = await mcpServer(() => tools);
+		closers.push(mcp.close);
 
 		// A session with no servers, and one prompt in it.
 		const { sessionId } = await connection.newSession(work, []);
 		await connection.setModel(sessionId, 'gemini-2.5-flash');
 		await connection.prompt(sessionId, [{ type: 'text', text: 'First question' }]);
-		// The model sees an MCP tool as mcp_<server>_<tool>.
-		const declares = (tool: string) => declared.at(-1)?.some(name => name.endsWith(tool)) ?? false;
 		expect(declares('spike_first')).toBe(false);
 
 		// The same session, loaded with the server: its tools must be declared, and the first prompt replayed.
@@ -167,5 +175,26 @@ describeRealCli('gemini --acp given an MCP server after the session opened', () 
 		// gemini-cli 0.66.0 keeps one notification stream open per HTTP server and lists its tools again on the
 		// notice, so a running session gains tools without a reload (FINDINGS.md). A CLI that stops would change this.
 		expect({ listeners, refreshed }).toEqual({ listeners: 1, refreshed: true });
+	}, 120_000);
+
+	it('keeps a server that opens with no tools, and declares the tools it lists later', async () => {
+		const { connection, work, declares, debugLog } = await startAgent();
+		let tools: string[] = [];
+		const mcp = await mcpServer(() => tools);
+		closers.push(mcp.close);
+
+		// GeminiCode's own servers open a session with no tools for an agent whose task doesn't need them yet.
+		const { sessionId } = await connection.newSession(work, [{ type: 'http', name: 'spike', url: mcp.url, headers: [] }]);
+		await connection.setModel(sessionId, 'gemini-2.5-flash');
+		await connection.prompt(sessionId, [{ type: 'text', text: 'First question' }]);
+		expect(declares('spike_first')).toBe(false);
+
+		tools = ['spike_first'];
+		const listeners = mcp.notify('notifications/tools/list_changed');
+		await new Promise(resolve => setTimeout(resolve, 1000));
+		await connection.prompt(sessionId, [{ type: 'text', text: 'Second question' }]);
+		// The CLI logs the empty server as a failed discovery, which GeminiCode doesn't report (mcpDiagnostics.ts).
+		const logged = debugLog().includes('No prompts, tools, or resources found on the server');
+		expect({ listeners, declared: declares('spike_first'), logged, problems: parseMcpProblems(debugLog().split('\n')) }).toEqual({ listeners: 1, declared: true, logged: true, problems: [] });
 	}, 120_000);
 });

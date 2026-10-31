@@ -156,6 +156,8 @@ Read from the CLI and checked by `realAgentSessions.test.ts`.
 
 - `session/load` by id with an HTTP MCP server the session did not open with starts the server (`initialize`, `tools/list`), declares its tools to the model on the next prompt as `mcp_<server>_<tool>`, and replays the conversation as before. So a running chat can be given a server by reloading its session.
 - Cheaper still: the CLI keeps one notification stream (a `GET` on the server's URL) open per HTTP server, and on `notifications/tools/list_changed` it lists the server's tools again, so the next prompt declares a tool added since. GeminiCode's own servers use this: a session opens with every server listed, each offering only the tools the agent needs then, and a server whose tools change (team tools once a task needs them, Debug mode's on entry) sends the notice. No reload, no replay.
+- A server that lists no tools, prompts or resources when the session opens is logged as a failed discovery ("No prompts, tools, or resources found on the server"), yet kept: its stream stays open and the tools it lists later are declared. GeminiCode doesn't report that line (`mcpDiagnostics.ts`). Offering a resource instead would cost every session the CLI's `list_mcp_resources` and `read_mcp_resource` tools.
+- The CLI's fetch (undici) ends a response body that sends nothing for 5 minutes, and logs it as `MCP ERROR (<server>)`, "SSE stream disconnected: TypeError: terminated". GeminiCode's servers write a comment on each open stream every minute (`localMcpServer.ts`).
 
 ### Finding the session
 

@@ -26,6 +26,12 @@ export interface McpProblem {
 }
 
 const unreachable = /^fetch failed$|ECONNREFUSED|ENOTFOUND|EHOSTUNREACH|ETIMEDOUT/;
+/**
+ * gemini-cli 0.66 logs a server that lists nothing yet as a failed discovery, but keeps it and
+ * declares its tools once it lists some (`tools/list_changed`). GeminiCode's own servers start
+ * that way for an agent whose task doesn't need them yet, so it is not a problem.
+ */
+const empty = /^No prompts, tools, or resources found on the server\.?$/;
 
 /** The MCP problems in complete lines of the CLI's debug log. */
 export function parseMcpProblems(lines: readonly string[]): McpProblem[] {
@@ -42,6 +48,9 @@ export function parseMcpProblems(lines: readonly string[]): McpProblem[] {
 		const reason = server && text.includes(`'${server}': `) ? text.slice(text.indexOf(`'${server}': `) + server.length + 4) : text;
 		// gemini-cli 0.62 adds the error as "TypeError: fetch failed"; 0.64 inspects it, "[TypeError: fetch failed] {", with its cause on the lines after.
 		const message = reason.replace(/\s+\[?\w*Error: [\s\S]*$/, '').trim() || reason.trim();
+		if (empty.test(message)) {
+			continue;
+		}
 		problems.push({ severity: match[1] as McpProblem['severity'], server, message, ...unreachable.test(message) ? { unreachable: true } : {} });
 	}
 	return problems;
