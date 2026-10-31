@@ -2606,7 +2606,9 @@ body.vscode-high-contrast-light .composer:focus-within {
 	box-sizing: border-box;
 	resize: none;
 	border: none;
+	/* The composer's border shows focus; no ring of its own (tokens.css) inside it. */
 	outline: none;
+	box-shadow: none;
 	padding: 0;
 	background: transparent;
 	color: var(--vscode-input-foreground);

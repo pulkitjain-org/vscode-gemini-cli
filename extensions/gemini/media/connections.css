@@ -317,7 +317,9 @@ button.quiet:hover:not(:disabled) {
 	min-width: 0;
 	padding: 8px 0;
 	border: none;
+	/* The field's box shows focus; no ring of its own (tokens.css) inside it. */
 	outline: none;
+	box-shadow: none;
 	background: none;
 	color: var(--vscode-input-foreground);
 	font-family: inherit;

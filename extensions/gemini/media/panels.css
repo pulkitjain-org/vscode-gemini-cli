@@ -455,7 +455,9 @@ button.chip-remove .codicon {
 	resize: none;
 	field-sizing: content;
 	border: none;
+	/* The composer's border shows focus; no ring of its own (tokens.css) inside it. */
 	outline: none;
+	box-shadow: none;
 	background: none;
 	font-size: var(--gc-text-lg);
 	line-height: var(--gc-leading-body);
