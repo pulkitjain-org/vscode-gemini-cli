@@ -9,9 +9,9 @@ import { checkExpression, environmentGuard, isPlainCondition, isPlainPath, joinC
 describe('expressions', () => {
 	it('knows a plain path per language', () => {
 		expect({
-			js: ['cart.total', 'a?.b', 'a["k"]', "items[0].price", 'a?.[0]', '$el.value', 'this.state'].map(e => isPlainPath(e, 'javascript')),
+			js: ['cart.total', 'a?.b', 'a["k"]', 'items[0].price', 'a?.[0]', '$el.value', 'this.state'].map(e => isPlainPath(e, 'javascript')),
 			jsNot: ['items.map(i => i.price)', 'a + b', 'a = 1', '`${a}`', 'a[b]', 'deleteAll()', '', 'a.b.'].map(e => isPlainPath(e, 'javascript')),
-			python: ['order.total', 'items[0]', 'd["k"]', "d['k']", 'self.cart'].map(e => isPlainPath(e, 'python')),
+			python: ['order.total', 'items[0]', 'd["k"]', `d['k']`, 'self.cart'].map(e => isPlainPath(e, 'python')),
 			pythonNot: ['a?.b', 'len(items)', '$x', 'a.b()'].map(e => isPlainPath(e, 'python')),
 			go: ['req.URL.Path', 'items[0]', 'm["k"]'].map(e => isPlainPath(e, 'go')),
 			goNot: ['a?.b', '*p', 'f()'].map(e => isPlainPath(e, 'go')),
