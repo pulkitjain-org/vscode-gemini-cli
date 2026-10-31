@@ -1,4 +1,4 @@
-# Settings
+# The Settings page
 
 **Settings** is one page for everything you can set: every GeminiCode setting, grouped as in the side index (Account and CLI, Agents, Chat, Browser, Index and docs, Team tools, Administration, Developer), each with a switch, a picker or a field that writes it for you, a search box, and a lock on anything your administrator decided. Advanced settings show when you search for them. Below the settings, **Loads** shows what every agent loads when it starts: MCP servers, skills, hooks, extensions, memory and rules, each with a switch, and what each test prompt's model call carried. It shares them with the `gemini` command in your terminal. Before 1.8 this page was Agent Setup, and the settings lived only in VS Code's Settings under Extensions.
 
