@@ -11,7 +11,7 @@
 
 import type { ViewContext, ViewContextBreakdown, ViewQuota } from '../src/host/chatProtocol';
 import { chatUsage } from '../src/acp/turnUsage';
-import { contextParts, format, formatSentAt, formatTokens, resetsIn } from './chatLogic';
+import { format, formatSentAt, formatTokens, resetsIn } from './chatLogic';
 import { button, el, icon, setLabel, setTip } from './dom';
 import { closePicker } from './picker';
 import { state, strings, ui, vscode } from './view';
@@ -165,7 +165,7 @@ function renderContext(): HTMLElement {
 	row.append(used, el('span', 'usage-detail', `${percent}%`));
 	section.append(row, meter(percent, share >= 0.9 ? 'full' : share >= summariseAt ? 'high' : '', strings.usageContext), el('p', 'usage-note', format(strings.usageContextNote, Math.round(summariseAt * 100))));
 	if (breakdown) {
-		section.append(renderBreakdown(breakdown, context.used));
+		section.append(renderBreakdown(breakdown));
 	}
 	// Compact shows only when it can run now: enough prompts, and no turn or compact going.
 	if (context.canCompact && !state.busy && !state.items.some(item => item.kind === 'compact' && item.state === 'running')) {
@@ -179,19 +179,19 @@ function renderContext(): HTMLElement {
 	return section;
 }
 
-/** What each turn carries, from the folder's last measure, and the rule files the CLI loaded; `used` is the latest request's input. */
-function renderBreakdown(value: ViewContextBreakdown, used?: number): HTMLElement {
+/** What each turn carries, from the folder's last measure: one row per test prompt, as the CLI reported it, and the rule files the CLI loaded. */
+function renderBreakdown(value: ViewContextBreakdown): HTMLElement {
 	const part = strings.contextParts;
 	const node = el('div', 'context-parts');
 	const rules = value.rules ?? [];
-	const rows = value.parts ? contextParts(value.parts, rules.length, used) : [];
-	const whole = used ?? value.parts?.total ?? 0;
-	for (const row of rows) {
-		const name = row.part === 'servers' ? format(part.servers, row.count ?? 0) : row.part === 'rules' ? format(part.rules, row.count ?? 0) : part[row.part];
+	const whole = value.total ?? 0;
+	for (const reading of value.readings ?? []) {
+		const name = reading.kind === 'server' ? format(part.server, reading.server ?? '') : part[reading.kind];
 		const line = el('div', 'usage-row');
-		line.append(el('span', undefined, name), el('span', 'usage-detail', formatTokens(row.tokens)));
-		setTip(line, row.tokens.toLocaleString());
-		const percent = whole ? Math.round(Math.min(1, row.tokens / whole) * 100) : 0;
+		line.append(el('span', undefined, name), el('span', 'usage-detail', formatTokens(reading.tokens)));
+		setTip(line, reading.tokens.toLocaleString());
+		// The bar is the reading's share of the last one, what every call carries.
+		const percent = whole ? Math.round(Math.min(1, reading.tokens / whole) * 100) : 0;
 		node.append(line, meter(percent, '', name));
 	}
 	if (rules.length) {
@@ -204,7 +204,7 @@ function renderBreakdown(value: ViewContextBreakdown, used?: number): HTMLElemen
 				item.append(icon('warning'));
 			}
 			const size = format(part.kilobytes, Math.max(1, Math.round(rule.bytes / 1024)));
-			item.append(el('span', 'usage-model', rule.name), el('span', 'usage-detail', large ? `${size} \u00b7 ${format(part.aboutTokens, formatTokens(Math.round(rule.bytes / 4_000) * 1_000))}` : size));
+			item.append(el('span', 'usage-model', rule.name), el('span', 'usage-detail', size));
 			setTip(item, rule.path);
 			list.append(item);
 		}
@@ -222,9 +222,6 @@ function renderBreakdown(value: ViewContextBreakdown, used?: number): HTMLElemen
 		left.append(' \u00b7 ', button('usage-more', part.measureAgain, () => vscode.postMessage({ type: 'measureContext' })));
 	}
 	foot.append(left);
-	if (rows.some(row => row.part === 'conversation')) {
-		foot.append(el('span', 'usage-note', part.compactNote));
-	}
 	node.append(foot);
 	return node;
 }

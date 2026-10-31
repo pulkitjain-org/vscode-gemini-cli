@@ -106,10 +106,6 @@ export function projectStrings(): ProjectChatStrings {
 			planned: vscode.l10n.t("{0} with a plan to approve"),
 			done: vscode.l10n.t("{0} done, ready to merge"),
 			merged: vscode.l10n.t("{0} merged back"),
-			context: vscode.l10n.t("Context the coordinator reads"),
-			conductorTracks: vscode.l10n.t("Conductor: {0} open tracks"),
-			noConductor: vscode.l10n.t("No conductor/ folder"),
-			model: vscode.l10n.t("Coordinator model: {0}"),
 			repos: vscode.l10n.t("Repositories: {0}"),
 		},
 		states: {

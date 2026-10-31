@@ -13,6 +13,8 @@ export interface ContributedSetting {
 	readonly default?: unknown;
 	readonly enum?: readonly unknown[];
 	readonly enumDescriptions?: readonly string[];
+	/** The choices' names, when they are not the values themselves. */
+	readonly enumItemLabels?: readonly string[];
 	readonly description?: string;
 	readonly markdownDescription?: string;
 	readonly deprecationMessage?: string;
@@ -93,7 +95,7 @@ function row(key: string, setting: ContributedSetting): SettingRow {
 		help: setting.markdownDescription ?? setting.description ?? '',
 		control: settingControl(setting),
 		default: setting.default,
-		...setting.enum?.length ? { choices: setting.enum.map((value, i) => ({ value, label: String(value), ...setting.enumDescriptions?.[i] ? { help: setting.enumDescriptions[i] } : {} })) } : {},
+		...setting.enum?.length ? { choices: setting.enum.map((value, i) => ({ value, label: setting.enumItemLabels?.[i] ?? String(value), ...setting.enumDescriptions?.[i] ? { help: setting.enumDescriptions[i] } : {} })) } : {},
 		...setting.minimum !== undefined ? { minimum: setting.minimum } : {},
 		...setting.maximum !== undefined ? { maximum: setting.maximum } : {},
 		scope: setting.scope ?? 'window',
@@ -109,14 +111,17 @@ export function settingSections(configuration: readonly ContributedSection[]): S
 		.sort((a, b) => a.order - b.order);
 }
 
+/** What a search reads of a setting: the model's rows and the page's views both have it. */
+export type SearchableSetting = Pick<SettingRow, 'key' | 'label' | 'help' | 'choices' | 'advanced' | 'deprecated'>;
+
 /**
  * The sections with only the settings `query` matches, by key, label, help
  * or a choice; an empty query shows every section without its advanced and
  * deprecated settings. Sections left empty are left out.
  */
-export function filterSettings(sections: readonly SettingSection[], query: string): SettingSection[] {
+export function filterSettings<S extends { readonly settings: readonly SearchableSetting[] }>(sections: readonly S[], query: string): S[] {
 	const words = query.toLowerCase().split(/\s+/).filter(Boolean);
-	const matches = (setting: SettingRow) => {
+	const matches = (setting: SearchableSetting) => {
 		if (!words.length) {
 			return !setting.advanced && !setting.deprecated;
 		}
@@ -124,4 +129,114 @@ export function filterSettings(sections: readonly SettingSection[], query: strin
 		return words.every(word => text.includes(word));
 	};
 	return sections.map(section => ({ ...section, settings: section.settings.filter(matches) })).filter(section => section.settings.length);
+}
+
+/** `text` with each `%key%` replaced by the string package.nls.json gives it; an unknown key stays as written. */
+export function resolveNls(text: string, strings: Readonly<Record<string, string>>): string {
+	return text.replace(/%([\w.-]+)%/g, (match, key: string) => strings[key] ?? match);
+}
+
+/** A section's title for the page: resolved, without the "Gemini: " every contributed title starts with. */
+export function sectionTitle(title: string, strings: Readonly<Record<string, string>>): string {
+	return resolveNls(title, strings).replace(/^Gemini:\s*/, '');
+}
+
+/** A section's id for anchors: `%configuration.accountTitle%` -> `account`, "Team Tools" -> `team-tools`. */
+export function sectionId(title: string): string {
+	const key = /^%([\w.-]+)%$/.exec(title)?.[1];
+	const base = key ? key.replace(/^configuration\./, '').replace(/Title$/, '') : title;
+	return base.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'section';
+}
+
+/** A piece of a setting's help: plain text, or code to show as such. */
+export interface HelpSegment {
+	readonly text: string;
+	readonly code?: true;
+}
+
+/**
+ * A description's Markdown as the page shows it: `code` and `#gemini.key#`
+ * references as code, links as their text, emphasis as plain words.
+ */
+export function helpSegments(help: string): HelpSegment[] {
+	const segments: HelpSegment[] = [];
+	const plain = (text: string) => {
+		const words = text.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/\*\*([^*]+)\*\*/g, '$1').replace(/(^|\s)_([^_]+)_(?=\s|$|[.,;:])/g, '$1$2');
+		if (words) {
+			segments.push({ text: words });
+		}
+	};
+	const pattern = /`([^`]+)`|#(gemini\.[\w.]+)#/g;
+	let last = 0;
+	for (const match of help.matchAll(pattern)) {
+		plain(help.slice(last, match.index));
+		segments.push({ text: match[1] ?? match[2], code: true });
+		last = match.index + match[0].length;
+	}
+	plain(help.slice(last));
+	return segments;
+}
+
+/** What `WorkspaceConfiguration.inspect` reports for a key: the values the settings files hold. */
+export interface InspectedSetting {
+	readonly defaultValue?: unknown;
+	readonly globalValue?: unknown;
+	readonly workspaceValue?: unknown;
+	readonly workspaceFolderValue?: unknown;
+}
+
+/** Whether two setting values are the same, by their JSON. */
+export function sameValue(a: unknown, b: unknown): boolean {
+	return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+}
+
+/** The value the settings files give a key, as the editor merges them: the folder's, the workspace's, the user's, else the default. */
+export function inspectedValue(inspected: InspectedSetting | undefined): unknown {
+	return inspected?.workspaceFolderValue ?? inspected?.workspaceValue ?? inspected?.globalValue ?? inspected?.defaultValue;
+}
+
+/**
+ * Whether an administrator's policy decides the setting. The editor's `get`
+ * returns a policy's value ahead of every settings file, while `inspect`
+ * reports only the files, so a value that matches none of them is a policy's.
+ */
+export function isPolicyLocked(effective: unknown, inspected: InspectedSetting | undefined): boolean {
+	return !sameValue(effective, inspectedValue(inspected));
+}
+
+export type SettingTarget = 'global' | 'workspace';
+
+/**
+ * Where a change is written: the user's settings for most, the workspace's for
+ * a resource-scoped setting when a folder is open; a machine- or
+ * application-scoped one never goes into a workspace.
+ */
+export function settingTarget(scope: string, workspaceOpen: boolean): SettingTarget {
+	return scope === 'resource' && workspaceOpen ? 'workspace' : 'global';
+}
+
+/** `value` as the setting's control gives it, checked against the contribution; undefined when it does not fit. */
+export function parseSettingValue(setting: SettingRow, value: unknown): { readonly value: unknown } | undefined {
+	switch (setting.control) {
+		case 'toggle':
+			return typeof value === 'boolean' ? { value } : undefined;
+		case 'number': {
+			const number = typeof value === 'string' ? Number(value) : value;
+			if (typeof number !== 'number' || !Number.isFinite(number)) {
+				return undefined;
+			}
+			if ((setting.minimum !== undefined && number < setting.minimum) || (setting.maximum !== undefined && number > setting.maximum)) {
+				return undefined;
+			}
+			return { value: Number.isInteger(setting.default) && !Number.isInteger(number) ? Math.round(number) : number };
+		}
+		case 'picker':
+			return setting.choices?.some(choice => sameValue(choice.value, value)) ? { value } : undefined;
+		case 'text':
+			return typeof value === 'string' ? { value } : undefined;
+		case 'list':
+			return Array.isArray(value) && value.every(item => typeof item === 'string') ? { value: value.map(item => item.trim()).filter(Boolean) } : undefined;
+		case 'json':
+			return value !== null && typeof value === 'object' && !Array.isArray(value) ? { value } : undefined;
+	}
 }

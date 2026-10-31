@@ -68,15 +68,18 @@ describe('dashboard', () => {
 	});
 
 	it('keeps the user\'s card order, adding new cards at the end, and hides cards', () => {
-		expect(cardOrder(undefined)).toEqual(['unfinished', 'startup', 'agents', 'tickets', 'mergeRequests', 'quality', 'gemini']);
+		// Pending on you, Your tickets, Agents; Quality off until the user turns it on.
+		expect(cardOrder(undefined)).toEqual(['unfinished', 'startup', 'mergeRequests', 'tickets', 'agents', 'gemini']);
+		expect(cardOrder(toggleCard(undefined, 'quality', true))).toEqual(['unfinished', 'startup', 'mergeRequests', 'tickets', 'agents', 'quality', 'gemini']);
 		let layout = moveCard(undefined, 'quality', -2);
-		expect(cardOrder(layout)).toEqual(['unfinished', 'startup', 'agents', 'quality', 'tickets', 'mergeRequests', 'gemini']);
+		expect(cardOrder(toggleCard(layout, 'quality', true))).toEqual(['unfinished', 'startup', 'mergeRequests', 'quality', 'tickets', 'agents', 'gemini']);
+		// Turning another card off keeps Quality off.
 		layout = toggleCard(layout, 'gemini', false);
-		expect(cardOrder(layout)).not.toContain('gemini');
+		expect(cardOrder(layout)).toEqual(['unfinished', 'startup', 'mergeRequests', 'tickets', 'agents']);
 		expect(cardOrder(toggleCard(layout, 'gemini', true))).toContain('gemini');
 		expect(cardOrder({ order: ['nonsense', 'gemini'] })[0]).toBe('gemini');
-		// A layout saved by a version that had a Releases card still loads.
-		expect(cardOrder({ order: ['releases', 'gemini'], hidden: ['releases'] })).toEqual(['gemini', 'unfinished', 'startup', 'agents', 'tickets', 'mergeRequests', 'quality']);
+		// A layout saved by a version that had a Releases card still loads, with the cards it had on.
+		expect(cardOrder({ order: ['releases', 'gemini'], hidden: ['releases'] })).toEqual(['gemini', 'unfinished', 'startup', 'mergeRequests', 'tickets', 'agents', 'quality']);
 	});
 
 	it('greets by first name and part of day', () => {

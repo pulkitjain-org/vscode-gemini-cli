@@ -248,7 +248,9 @@ In Agents layout the title bar carries a search button, which opens Quick Open i
 
 ### Agent Home
 
-Agent Home (`agentHome.ts`, `webview-src/home.ts`) opens in Agents layout whenever the editor area is empty (except right after closing Agent Home itself), and from the house at the start of the title bar (`geminiModes.ts`, which runs `gemini.home`). The page loads only when first shown.
+Agent Home (`agentHome.ts`, `webview-src/home.ts`) opens in Agents layout whenever the editor area is empty (except right after closing Agent Home itself), and from the house at the start of the title bar (`geminiModes.ts`, which runs `gemini.home`). The page loads only when first shown, and keeps its page while an agent's tab is in front (`retainContextWhenHidden`), so coming back is a tab switch.
+
+Since 1.8 Home is the greeting, one composer and three cards, Pending on you, Your tickets and Agents (the quality card is off until the gear's menu turns it on): the tool logos, the refresh button, the index icon, the row of buttons under the composer and the second agent list below the cards went, since each repeated something the cards, the status bar, the Settings page or the composer's + menu already had. The gear's menu holds Refresh, Settings and the card switches; the + menu holds Files and an Actions section (Review, Run checks); a card's query is its title's tooltip, not text on the page.
 
 Its composer starts an agent in a chosen workspace and sends the prompt in one step: Here, or On a Branch (a branch named after the prompt), whose chevron, once Projects are on, offers a branch of its own or a project (the folder's repository's projects first, then the others', then a new one), which sends the prompt to that project's coordinator. The folder picker shows each folder's trust (`FolderTrust.label`), and Open Folder... adds a folder for agents without adding it to the window. Cards show the agents that are working, waiting, done or have changes, with Stop, Review, the Try button with its chevron, and Open. Earlier agents can be resumed. Projects are listed apart from agents.
 
@@ -267,11 +269,13 @@ Each agent row shows its status as a coloured dot, or a spinner while it works: 
 
 The `+N −M` count and the git branch (read from `.git/HEAD`) are in the tooltip. An agent takes its name from its first prompt unless the user renames it. Removing an agent deletes its saved conversation; removing a workspace only drops it from the list.
 
-The list has a Projects section (projects with their threads below) above the Agents section, each with its own + and a note when empty. Agents layout shows both, since its list has no header (`geminiModes.css`).
+Since 1.8 the pane is one list grouped by folder (`src/acp/agentList.ts`, pure, for the rows of a workspace): a project is an expandable row under its folder with its threads and its Archived row, forks sit under their parent, and the view's title bar holds New agent, New project and an overflow with Add workspace, Home, Review my changes, Settings and Connections. A row's right-click menu is short, Open, Rename, Fork, Stop, More and Remove, with the rest (Open changes, Merge back, Try or Take back, Open terminal, Open chat as Markdown, Keep in own tab, Move to its own branch, a project's New thread and Project settings) under the More submenu, and a workspace row's index commands under Index. `test/perf/surface.test.ts` caps each.
 
 ### Agent tabs
 
 Each agent opens as an editor tab that reuses the chat webview, and is the main editor. There is no sidebar chat.
+
+Since 1.8 a click on a row shows the agent in one shared tab (`agentTabs.ts`, with `src/acp/sharedTab.ts` keeping which agent it shows and which have tabs of their own): the controller of the agent shown before detaches from the webview and the next one attaches, so switching agents is a state swap in one view, not a new panel, and the chat's HTML with its 470 strings is built once per kind of chat (`chatHtml.ts`). A busy agent keeps running when the shared tab moves on. **Keep in own tab**, in the tab's title bar and the row's More menu, gives the agent a panel of its own, as every agent had before; sending a message in the shared tab does the same. A controller whose agent has had no tab for ten minutes and is not busy is released, keeping its record and session id, and restored from its snapshot on the next open.
 
 Files, proposed edits and diffs that the agent's chat or its Changes open go in the agent's own side group (above). Outside GeminiCode's workbench they go in the group after the agent's tab, added once if there is none (`editorPlacement.ts`). Either way the chat stays in view.
 
@@ -301,6 +305,8 @@ It also groups runs of tool calls of one kind and counts what the turn did. `wor
 The CLI's `invoke_agent` tool reaches ACP as one `think` tool call titled `Delegating to agent '<name>'` and its final report. The chat draws it as a Subagent row (`subagentName` in `webview-src/chatLogic.ts`); any other title falls back to a plain tool row. The subagent's own steps are not sent over ACP.
 
 #### Long chats
+
+The transcript is virtualized (`webview-src/virtualBlocks.ts`, since 1.8): on open the view draws the newest 60 items (whole turns when work folds) and stands each older block in as a slot of its measured height, drawn when it scrolls within 1200px and turned back into a slot once it is 3000px away, so a 300-turn chat opens with about 60 items' DOM and stays bounded as it grows (the oldest drawn turns are released past 120). A block holding focus or a selection is kept; a slotted item's updates change the model only; the outline's jumps and a reaction's "show reply" scroll to the slot, which then draws. Before 1.8 every older item was backfilled into the DOM at idle. `test/perf/budgets.test.ts` times the open of a 300-turn chat and counts the DOM.
 
 From two prompts on, the chat draws a tick per prompt down its left edge, centred on the view's height (`webview-src/promptNav.ts`), and jumps between prompts with ⌥⌘↑ and ⌥⌘↓. Hovering a tick shows the prompt and the start of its reply (`replyPreview` in `chatLogic.ts`) in a card in the top layer, not a native tooltip. Prompt positions are read only on a jump, or once a frame while scrolling, to light the current tick.
 
@@ -1078,9 +1084,9 @@ Team commands with `@{path}` or `!{command}` are expanded by `src/acp/teamComman
 
 `src/host/teamCommandHost.ts` reads a file only through `checkFileAccess` (workspace folders and the agent's folder, no secrets, nothing git ignores) and refuses folders and files over 256 KB. It runs commands only when `gemini.tools.allowShell` is on and the user confirms the full list in a modal. They run with `shell: true` in the agent's folder, stop after 60 s, and keep 100,000 characters of output.
 
-### Report an Issue
+### Report a Problem
 
-The status bar menu's **Report an Issue...** opens `reportIssueUrl` from `product.json` with the GeminiCode, VS Code, CLI and OS versions in the body (`src/acp/helpLinks.ts`), never an account, project or path.
+**Gemini: Report a Problem** (`src/host/reportProblem.ts`; in the palette, in Troubleshoot and in the status bar's menu) opens a report as an untitled document rather than sending anything: the GeminiCode, VS Code, CLI and OS versions, the last failed turn in the chat in front, and the Gemini log's last 300 lines, kept by `recentLog.ts` as they were written. `src/acp/redact.ts` takes out email addresses, the signed-in account and the project id, the home folder, and anything that looks like a key, token or password, by its name or its shape; the user reads the result over before pasting it anywhere. It replaced the status bar's **Report an Issue...**, which opened the tracker with a URL carrying the versions.
 
 ## Sign-in and errors
 
@@ -1102,7 +1108,12 @@ The window defaults set `chat.disableAIFeatures`. That hides upstream's chat vie
 5. Keep the wire-to-UI adapter thin (`sessionUpdates.ts`).
 6. `extensions/gemini/src/acp` never imports `vscode`. ESLint enforces this.
 7. Edit upstream files only at registration points, and mark each edit `GEMINI-FORK`.
-8. Never modify the Gemini CLI's source. The one change to GeminiCode's own copies is the output cap in `cliPatches.ts` (plus the app's ripgrep, added beside it); a CLI the user picks is never changed. Speed comes from GeminiCode's own code: process reuse, prewarming, batching and caching.
+8. Never modify the Gemini CLI's source. The one change to GeminiCode's own copies is the output cap in `cliPatches.ts` (plus the app's ripgrep, added beside it); a CLI the user picks is never changed
+9. One place per job. A thing the user acts on shows in one place: an agent is a row in the Agents list, a setting is on the Settings page, a tool's state is in the status bar. What is a click away stays a click away; `test/perf/surface.test.ts` caps the palette, the settings, each row's menu and Home's controls, and a budget goes up only on purpose.
+10. Only numbers the CLI reports. A figure in the app (tokens, time to the first output, a context cost) is one the Gemini CLI gave in `usage`, `usage_update`, `_meta.quota` or its own replies, never an estimate or a difference the app worked out.
+11. One scale, one frame. Every page's stylesheet draws its sizes, radii, shadows and motion from `media/tokens.css` (`test/webview/designTokens.test.ts`), and every menu, popover, dialog and tooltip shares the one frame.
+12. Nothing floats unheard. Work started without being awaited goes through `background()` (`src/host/background.ts`), which logs a failure with what was running, and every store writes with `writeFileAtomic`.
+13. Tools arrive, sessions don't restart. A session opens with every GeminiCode server listed and each offering only the tools the agent needs; a server whose tools change sends `notifications/tools/list_changed`, which the CLI honours (FINDINGS.md), rather than the session being reopened.. Speed comes from GeminiCode's own code: process reuse, prewarming, batching and caching.
 
 ## Testing
 
@@ -1117,6 +1128,7 @@ The window defaults set `chat.disableAIFeatures`. That hides upstream's chat vie
 - **Fork tests in upstream code** (`src/vs/**/test/`, such as the agents' browser file policy in `geminiAgentFiles.test.ts`) run with upstream's runner, `./scripts/test.sh --run <file>`, after `npm run compile`; Gemini CI's Compile & hygiene job runs them.
 - **Performance budgets** (`test/perf/budgets.test.ts`) time the work on the paths a user waits on (a keystroke, a streamed chunk, switching agents, Enter to the first chunk, a 500-thread project) and the bundle sizes, and fail CI when one grows past its budget. The scripts in `scripts/` measure what CI cannot ([FINDINGS.md](FINDINGS.md)):
   - `perf-real.mts`: an agent's start, sessions and first reply on a real account;
+  - `startup-log.mts`: the app's own "Startup:" and "Turn:" lines across launches, from the installed app's logs;
   - `perf-first-reply.mts`: the same against a stand-in API;
   - `probe-enhance.mts`: Enhance prompt's routes;
   - `coordinator-spike.mts`: a project's coordinator.

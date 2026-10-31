@@ -22,7 +22,7 @@ import type { AgentTree, AgentTreeNode } from './agentTree';
 /** What the commands act on: the Agents pane, and the modules behind some of them. */
 export interface AgentCommandsHost {
 	/** The pane's own surface. */
-	readonly view: Pick<AgentsView, 'chooseTry' | 'tryAction' | 'pickReview' | 'open' | 'activeAgentId' | 'openChanges' | 'summaries' | 'openAsMarkdown' | 'stopTurn'>;
+	readonly view: Pick<AgentsView, 'chooseTry' | 'tryAction' | 'pickReview' | 'open' | 'activeAgentId' | 'openChanges' | 'summaries' | 'openAsMarkdown' | 'stopTurn' | 'moveToBranch'>;
 	readonly starts: Pick<AgentStarts, 'newAgent' | 'reviewChanges' | 'addWorkspace'>;
 	readonly tree: Pick<AgentTree, 'view'>;
 	readonly changesView: Pick<ChangesView, 'openFile'>;
@@ -30,8 +30,8 @@ export interface AgentCommandsHost {
 	readonly projects: Pick<Projects, 'openNewThread' | 'openSettingsOf'>;
 	/** Try in Workspace and the rest, from dist/onDemand.js once first needed. */
 	readonly features: Pick<AgentFeatures, 'tries'>;
-	/** The agents' tabs: Fork, Rename and the chat in front. */
-	readonly tabs: Pick<AgentTabs, 'fork' | 'rename' | 'focusChat' | 'chatInFront'>;
+	/** The agents' tabs: Fork, Rename, Keep in Own Tab and the chat in front. */
+	readonly tabs: Pick<AgentTabs, 'fork' | 'rename' | 'focusChat' | 'chatInFront' | 'keepTab'>;
 	readonly sideLinks: Pick<AgentSideLinks, 'openTerminal'>;
 	readonly removal: Pick<AgentRemoval, 'removeAgent' | 'removeWorkspace'>;
 }
@@ -48,15 +48,19 @@ export function registerAgentCommands(view: AgentCommandsHost): vscode.Disposabl
 		// The status bar item of a try: Keep Changes, Take Back and the rest.
 		vscode.commands.registerCommand('gemini.tries.menu', (id?: unknown) => view.features.tries.showMenu(typeof id === 'string' ? id : undefined)),
 		vscode.commands.registerCommand('gemini.agents.fork', (node?: AgentTreeNode) => view.tabs.fork(node)),
+		// From a row's More menu with the agent, or from the agent tab's title bar: the agent in front.
+		vscode.commands.registerCommand('gemini.agents.moveToBranch', (node?: AgentTreeNode) => view.view.moveToBranch(node?.kind === 'agent' ? node.record.id : view.view.activeAgentId())),
 		vscode.commands.registerCommand('gemini.reviewChanges', (source?: { readonly rootUri?: vscode.Uri }) => view.starts.reviewChanges(source)),
 		vscode.commands.registerCommand('gemini.review', () => view.view.pickReview()),
 		vscode.commands.registerCommand('gemini.agents.addWorkspace', () => view.starts.addWorkspace()),
-		// From the keyboard (Cmd+Down on a Mac, where Return renames as in Finder) it opens the selected agent.
-		vscode.commands.registerCommand('gemini.agents.open', (id?: string) => {
+		// From a row's click or menu with the agent; from the keyboard (Cmd+Down on a Mac, where Return renames as in Finder) the selected agent.
+		vscode.commands.registerCommand('gemini.agents.open', (target?: string | AgentTreeNode) => {
 			const selected = view.tree.view.selection[0];
-			const target = typeof id === 'string' ? id : selected?.kind === 'agent' ? selected.record.id : undefined;
-			return target && view.view.open(target);
+			const id = typeof target === 'string' ? target : target?.kind === 'agent' ? target.record.id : selected?.kind === 'agent' ? selected.record.id : undefined;
+			return id && view.view.open(id);
 		}),
+		// From the shared tab's title bar (the agent in front) or a row's menu: the agent gets a tab of its own.
+		vscode.commands.registerCommand('gemini.agents.keepTab', (node?: AgentTreeNode) => view.tabs.keepTab(node?.kind === 'agent' ? node.record.id : view.view.activeAgentId())),
 		vscode.commands.registerCommand('gemini.agents.openTerminal', (node?: AgentTreeNode) => view.sideLinks.openTerminal(node?.kind === 'agent' ? node.record.id : view.view.activeAgentId())),
 		// From the pane's row, or from the Changes view's file rows with the file.
 		vscode.commands.registerCommand('gemini.agents.openChanges', (target?: AgentTreeNode | EditedFile) => {

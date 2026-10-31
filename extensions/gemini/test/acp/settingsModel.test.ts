@@ -6,7 +6,7 @@
 import { readFileSync } from 'node:fs';
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { filterSettings, settingControl, settingLabel, settingSections, type ContributedSection } from '../../src/acp/settingsModel';
+import { filterSettings, helpSegments, inspectedValue, isPolicyLocked, parseSettingValue, resolveNls, sectionId, sectionTitle, settingControl, settingLabel, settingSections, settingTarget, type ContributedSection, type SettingRow } from '../../src/acp/settingsModel';
 
 const sections: ContributedSection[] = [
 	{
@@ -45,6 +45,61 @@ describe('settings model', () => {
 		expect(filterSettings(model, 'merge back').flatMap(section => section.settings.map(setting => setting.key))).toEqual(['gemini.agents.mergeBack']);
 		expect(filterSettings(model, 'yolo').flatMap(section => section.settings.map(setting => setting.key))).toEqual(['gemini.agents.defaultMode']);
 		expect(filterSettings(model, 'nothing like this')).toEqual([]);
+	});
+
+	it('names a choice by its item label when the contribution gives one', () => {
+		const [section] = settingSections([{ title: 'T', properties: { 'gemini.a': { type: 'string', enum: ['x', 'y'], enumItemLabels: ['Ex', 'Why'], default: 'x', description: 'Picks.' } } }]);
+		expect(section.settings[0].choices).toEqual([{ value: 'x', label: 'Ex' }, { value: 'y', label: 'Why' }]);
+	});
+
+	it('resolves %key% strings, titles a section without its Gemini prefix, and gives it an anchor', () => {
+		const strings = { 'configuration.accountTitle': 'Gemini: Account and CLI', 'configuration.a': 'Where the `gemini` command is.' };
+		expect(resolveNls('%configuration.a%', strings)).toBe('Where the `gemini` command is.');
+		expect(resolveNls('%configuration.missing%', strings)).toBe('%configuration.missing%');
+		expect([sectionTitle('%configuration.accountTitle%', strings), sectionTitle('Gemini: Team Tools', {}), sectionTitle('Plain', {})]).toEqual(['Account and CLI', 'Team Tools', 'Plain']);
+		expect([sectionId('%configuration.accountTitle%'), sectionId('%configuration.indexTitle%'), sectionId('Gemini: Team Tools'), sectionId('%%')]).toEqual(['account', 'index', 'gemini-team-tools', 'section']);
+	});
+
+	it('splits help into text and code: backticks, #gemini.key# references, links as their text, emphasis as words', () => {
+		expect(helpSegments('Use `pnpm` here. See #gemini.cliPath# and [the guide](https://example.com), **always**.')).toEqual([
+			{ text: 'Use ' }, { text: 'pnpm', code: true }, { text: ' here. See ' }, { text: 'gemini.cliPath', code: true }, { text: ' and the guide, always.' },
+		]);
+		expect(helpSegments('')).toEqual([]);
+	});
+
+	it('tells a policy\'s value from the settings files\', which inspect reports and get does not', () => {
+		expect(inspectedValue({ defaultValue: true, globalValue: false })).toBe(false);
+		expect(inspectedValue({ defaultValue: true, globalValue: false, workspaceValue: true })).toBe(true);
+		expect(inspectedValue(undefined)).toBeUndefined();
+		// get returns the files' value: no policy.
+		expect(isPolicyLocked(false, { defaultValue: true, globalValue: false })).toBe(false);
+		expect(isPolicyLocked(['a'], { defaultValue: [], globalValue: ['a'] })).toBe(false);
+		// get returns something no file holds: a policy decides it.
+		expect(isPolicyLocked(false, { defaultValue: true })).toBe(true);
+		expect(isPolicyLocked([], { defaultValue: [], globalValue: ['github'] })).toBe(true);
+	});
+
+	it('writes to the user\'s settings, or the workspace\'s for a resource-scoped setting with a folder open, never a machine one', () => {
+		expect([settingTarget('resource', true), settingTarget('resource', false), settingTarget('window', true), settingTarget('machine', true), settingTarget('application', true)]).toEqual(['workspace', 'global', 'global', 'global', 'global']);
+	});
+
+	it('takes a control\'s value only when it fits the contribution', () => {
+		const row = (control: SettingRow['control'], more: Partial<SettingRow> = {}): SettingRow => ({ key: 'gemini.x', label: 'X', help: '', control, default: undefined, scope: 'window', advanced: false, ...more });
+		expect([
+			parseSettingValue(row('toggle'), true), parseSettingValue(row('toggle'), 'true'),
+			parseSettingValue(row('number', { minimum: 1, maximum: 8, default: 3 }), '4'), parseSettingValue(row('number', { minimum: 1, maximum: 8, default: 3 }), 9), parseSettingValue(row('number', { default: 3 }), 2.6), parseSettingValue(row('number', { default: 0.5 }), 2.6), parseSettingValue(row('number'), 'abc'),
+			parseSettingValue(row('picker', { choices: [{ value: 'a', label: 'a' }] }), 'a'), parseSettingValue(row('picker', { choices: [{ value: 'a', label: 'a' }] }), 'b'),
+			parseSettingValue(row('text'), 'hi'), parseSettingValue(row('text'), 1),
+			parseSettingValue(row('list'), [' a ', '', 'b']), parseSettingValue(row('list'), ['a', 1]), parseSettingValue(row('list'), 'a'),
+			parseSettingValue(row('json'), { a: 1 }), parseSettingValue(row('json'), [1]), parseSettingValue(row('json'), null),
+		]).toEqual([
+			{ value: true }, undefined,
+			{ value: 4 }, undefined, { value: 3 }, { value: 2.6 }, undefined,
+			{ value: 'a' }, undefined,
+			{ value: 'hi' }, undefined,
+			{ value: ['a', 'b'] }, undefined, undefined,
+			{ value: { a: 1 } }, undefined, undefined,
+		]);
 	});
 
 	it('models every setting GeminiCode contributes', () => {

@@ -142,7 +142,7 @@ export class AgentsView implements vscode.Disposable {
 	private readonly forks: AgentForks;
 	/** An agent's session and chat in this window. */
 	private readonly starter: AgentStarter;
-	/** The editor tab per agent, and which agent is in front. */
+	/** The shared agent tab, the agents' own tabs, and which agent is in front. */
 	private readonly tabs: AgentTabs;
 	/** Stop, Remove, Archive and removing a workspace. */
 	private readonly removal: AgentRemoval;
@@ -286,7 +286,9 @@ export class AgentsView implements vscode.Disposable {
 		this.forks = new AgentForks(this.model, this.service, this.worktrees, this.live, {
 			start: (record, folder) => this.starter.start(record, folder),
 			open: id => this.open(id),
+			ensureLive: id => this.tabs.ensureLive(id),
 			pickModel: (id, model) => this.starter.pickModel(id, model),
+			archive: id => this.removal.archiveAgent(id),
 			// A forked thread's card merges it as a thread, so it is resolved once merged.
 			mergeBack: async id => {
 				if (this.model.agent(id)?.project?.role !== 'thread') {
@@ -336,6 +338,8 @@ export class AgentsView implements vscode.Disposable {
 			focusChanged: source => this.onDidFocusEmitter.fire(source),
 			refresh: id => this.refresh(id),
 			disposing: () => this.disposing,
+			// Its conversation is saved and its record keeps its session id: opening it again restores it.
+			release: id => this.removal.stop(id, true),
 		});
 		this.removal = new AgentRemoval({
 			model: this.model, live: this.live, tree: this.tree, projects: this.projects, notifier: this.notifier,
@@ -350,6 +354,7 @@ export class AgentsView implements vscode.Disposable {
 		const store = this.persistence.store;
 		this.disposables.push(
 			this.tree,
+			this.tabs,
 			this.notifier,
 			this.terminals,
 			this.changesView,
@@ -416,6 +421,11 @@ export class AgentsView implements vscode.Disposable {
 	/** The agent whose tab is in front, if any. */
 	activeAgentId(): string | undefined {
 		return this.tabs.activeAgentId();
+	}
+
+	/** Move to its own branch, from an agent's row or the tab in front (`agents/agentForks.ts`). */
+	moveToBranch(id: string | undefined): Promise<void> {
+		return this.forks.moveToBranch(id);
 	}
 
 	/** The agent whose tab is in front, else the one last in front while it is still in the list. */
@@ -713,7 +723,7 @@ export class AgentsView implements vscode.Disposable {
 		return folder ?? vscode.workspace.workspaceFolders?.find(f => f.uri.scheme === 'file')?.uri.fsPath;
 	}
 
-	/** Opens the agent's tab, starting its session if it has none in this window. */
+	/** Shows the agent in its own tab, else the shared one, starting its session if it has none in this window. */
 	open(id: string): Promise<void> {
 		return this.tabs.open(id);
 	}

@@ -136,6 +136,11 @@
         "category": "%category%"
       },
       {
+        "command": "gemini.troubleshoot",
+        "title": "%command.troubleshoot%",
+        "category": "%category%"
+      },
+      {
         "command": "gemini.showStatusMenu",
         "title": "%command.showStatusMenu%",
         "category": "%category%"
@@ -301,6 +306,18 @@
         "command": "gemini.agents.rename",
         "title": "%command.agents.rename%",
         "category": "%category%"
+      },
+      {
+        "command": "gemini.agents.keepTab",
+        "title": "%command.agents.keepTab%",
+        "category": "%category%",
+        "icon": "$(pinned)"
+      },
+      {
+        "command": "gemini.agents.moveToBranch",
+        "title": "%command.agents.moveToBranch%",
+        "category": "%category%",
+        "icon": "$(git-branch)"
       },
       {
         "command": "gemini.agents.stop",
@@ -741,6 +758,16 @@
         }
       ]
     },
+    "submenus": [
+      {
+        "id": "gemini.agents.more",
+        "label": "%submenu.agents.more%"
+      },
+      {
+        "id": "gemini.agents.index",
+        "label": "%submenu.agents.index%"
+      }
+    ],
     "menus": {
       "explorer/context": [
         {
@@ -750,6 +777,16 @@
         }
       ],
       "editor/title": [
+        {
+          "command": "gemini.agents.keepTab",
+          "when": "activeWebviewPanelId == 'gemini.agent' && gemini.sharedAgentTab",
+          "group": "navigation@1"
+        },
+        {
+          "command": "gemini.agents.moveToBranch",
+          "when": "activeWebviewPanelId == 'gemini.agent' && gemini.agentMovable",
+          "group": "navigation@2"
+        },
         {
           "command": "gemini.home",
           "when": "activeWebviewPanelId =~ /^gemini\\./ && activeWebviewPanelId != 'gemini.agentHome'",
@@ -835,34 +872,34 @@
           "group": "navigation@1"
         },
         {
-          "command": "gemini.agents.addWorkspace",
-          "when": "view == gemini.agents",
+          "command": "gemini.projects.new",
+          "when": "view == gemini.agents && config.gemini.projects.enabled",
           "group": "navigation@2"
         },
         {
-          "command": "gemini.projects.new",
-          "when": "view == gemini.agents && config.gemini.projects.enabled",
-          "group": "navigation@3"
+          "command": "gemini.agents.addWorkspace",
+          "when": "view == gemini.agents",
+          "group": "1_more@1"
         },
         {
           "command": "gemini.home",
           "when": "view == gemini.agents",
-          "group": "navigation@3"
+          "group": "1_more@2"
         },
         {
           "command": "gemini.reviewChanges",
           "when": "view == gemini.agents",
-          "group": "helpers@1"
+          "group": "1_more@3"
         },
         {
           "command": "gemini.projectSettings",
           "when": "view == gemini.agents",
-          "group": "helpers@2"
+          "group": "1_more@4"
         },
         {
           "command": "gemini.connections",
           "when": "view == gemini.agents",
-          "group": "helpers@3"
+          "group": "1_more@5"
         },
         {
           "command": "gemini.changes.openAll",
@@ -879,16 +916,6 @@
         {
           "command": "gemini.agents.newAgent",
           "when": "view == gemini.agents && viewItem =~ /^workspace/",
-          "group": "inline"
-        },
-        {
-          "command": "gemini.projects.new",
-          "when": "view == gemini.agents && viewItem == section.projects",
-          "group": "inline"
-        },
-        {
-          "command": "gemini.agents.newAgent",
-          "when": "view == gemini.agents && viewItem == section.agents",
           "group": "inline"
         },
         {
@@ -937,15 +964,99 @@
           "group": "1_agent@3"
         },
         {
+          "submenu": "gemini.agents.index",
+          "when": "view == gemini.agents && viewItem =~ /^workspace(\\.git)?$/",
+          "group": "2_more@1"
+        },
+        {
+          "command": "gemini.agents.removeWorkspace",
+          "when": "view == gemini.agents && viewItem =~ /^workspace(\\.git)?$/",
+          "group": "3_remove@1"
+        },
+        {
+          "command": "gemini.agents.open",
+          "when": "view == gemini.agents && viewItem =~ /^agent/",
+          "group": "1_agent@1"
+        },
+        {
+          "command": "gemini.agents.rename",
+          "when": "view == gemini.agents && viewItem =~ /^agent/",
+          "group": "1_agent@2"
+        },
+        {
+          "command": "gemini.agents.fork",
+          "when": "view == gemini.agents && viewItem =~ /\\.forkable/",
+          "group": "1_agent@3"
+        },
+        {
+          "command": "gemini.agents.stop",
+          "when": "view == gemini.agents && viewItem =~ /^agent\\.busy/",
+          "group": "1_agent@4"
+        },
+        {
+          "submenu": "gemini.agents.more",
+          "when": "view == gemini.agents && viewItem =~ /^agent/",
+          "group": "2_more@1"
+        },
+        {
+          "command": "gemini.agents.remove",
+          "when": "view == gemini.agents && viewItem =~ /^agent/",
+          "group": "3_remove@1"
+        }
+      ],
+      "gemini.agents.more": [
+        {
+          "command": "gemini.agents.openChanges",
+          "when": "view == gemini.agents && viewItem =~ /\\.changes$/",
+          "group": "1_work@1"
+        },
+        {
+          "command": "gemini.agents.mergeBack",
+          "when": "view == gemini.agents && viewItem =~ /\\.worktree/",
+          "group": "1_work@2"
+        },
+        {
+          "command": "gemini.agents.tryInWorkspace",
+          "when": "view == gemini.agents && viewItem =~ /\\.worktree/",
+          "group": "1_work@3"
+        },
+        {
+          "command": "gemini.agents.takeBack",
+          "when": "view == gemini.agents && viewItem =~ /\\.trying/",
+          "group": "1_work@4"
+        },
+        {
+          "command": "gemini.agents.moveToBranch",
+          "when": "view == gemini.agents && viewItem =~ /\\.movable/",
+          "group": "1_work@5"
+        },
+        {
+          "command": "gemini.agents.openTerminal",
+          "when": "view == gemini.agents && viewItem =~ /^agent/",
+          "group": "2_open@1"
+        },
+        {
+          "command": "gemini.agents.openAsMarkdown",
+          "when": "view == gemini.agents && viewItem =~ /^agent/",
+          "group": "2_open@2"
+        },
+        {
+          "command": "gemini.agents.keepTab",
+          "when": "view == gemini.agents && viewItem =~ /^agent/",
+          "group": "2_open@3"
+        },
+        {
           "command": "gemini.projects.newThread",
           "when": "view == gemini.agents && viewItem =~ /\\.project$/ && config.gemini.projects.enabled",
-          "group": "1_agent@0"
+          "group": "3_project@1"
         },
         {
           "command": "gemini.projects.settings",
           "when": "view == gemini.agents && viewItem =~ /\\.project$/ && config.gemini.projects.enabled",
-          "group": "1_agent@1"
-        },
+          "group": "3_project@2"
+        }
+      ],
+      "gemini.agents.index": [
         {
           "command": "gemini.index.open",
           "when": "view == gemini.agents && viewItem =~ /^workspace(\\.git)?$/",
@@ -960,61 +1071,6 @@
           "command": "gemini.index.pause",
           "when": "view == gemini.agents && viewItem =~ /^workspace(\\.git)?$/ && config.gemini.index.enabled",
           "group": "1_index@3"
-        },
-        {
-          "command": "gemini.agents.removeWorkspace",
-          "when": "view == gemini.agents && viewItem =~ /^workspace(\\.git)?$/",
-          "group": "2_remove@1"
-        },
-        {
-          "command": "gemini.agents.rename",
-          "when": "view == gemini.agents && viewItem =~ /^agent/",
-          "group": "1_agent@1"
-        },
-        {
-          "command": "gemini.agents.openChanges",
-          "when": "view == gemini.agents && viewItem =~ /\\.changes$/",
-          "group": "1_agent@2"
-        },
-        {
-          "command": "gemini.agents.stop",
-          "when": "view == gemini.agents && viewItem =~ /^agent\\.busy/",
-          "group": "1_agent@3"
-        },
-        {
-          "command": "gemini.agents.mergeBack",
-          "when": "view == gemini.agents && viewItem =~ /\\.worktree/",
-          "group": "1_agent@4"
-        },
-        {
-          "command": "gemini.agents.tryInWorkspace",
-          "when": "view == gemini.agents && viewItem =~ /\\.worktree/",
-          "group": "1_agent@4"
-        },
-        {
-          "command": "gemini.agents.takeBack",
-          "when": "view == gemini.agents && viewItem =~ /\\.trying/",
-          "group": "1_agent@5"
-        },
-        {
-          "command": "gemini.agents.fork",
-          "when": "view == gemini.agents && viewItem =~ /\\.forkable/",
-          "group": "1_agent@4"
-        },
-        {
-          "command": "gemini.agents.openAsMarkdown",
-          "when": "view == gemini.agents && viewItem =~ /^agent/",
-          "group": "1_agent@5"
-        },
-        {
-          "command": "gemini.agents.openTerminal",
-          "when": "view == gemini.agents && viewItem =~ /^agent/",
-          "group": "1_agent@6"
-        },
-        {
-          "command": "gemini.agents.remove",
-          "when": "view == gemini.agents && viewItem =~ /^agent/",
-          "group": "2_remove@1"
         }
       ],
       "comments/commentThread/context": [
@@ -1110,6 +1166,26 @@
           "when": "false"
         },
         {
+          "command": "gemini.signIn",
+          "when": "false"
+        },
+        {
+          "command": "gemini.completeSetupInTerminal",
+          "when": "false"
+        },
+        {
+          "command": "gemini.setProjectId",
+          "when": "false"
+        },
+        {
+          "command": "gemini.showLog",
+          "when": "false"
+        },
+        {
+          "command": "gemini.restartAgent",
+          "when": "false"
+        },
+        {
           "command": "gemini.team.startNewReview",
           "when": "false"
         },
@@ -1195,6 +1271,14 @@
         },
         {
           "command": "gemini.agents.rename",
+          "when": "false"
+        },
+        {
+          "command": "gemini.agents.keepTab",
+          "when": "false"
+        },
+        {
+          "command": "gemini.agents.moveToBranch",
           "when": "false"
         },
         {
@@ -1310,6 +1394,7 @@
             "type": "string",
             "default": "",
             "scope": "machine",
+            "tags": ["advanced"],
             "markdownDescription": "%configuration.cliPath%"
           },
           "gemini.cli.version": {
@@ -1317,6 +1402,7 @@
             "default": "",
             "scope": "machine",
             "pattern": "^$|^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?$",
+            "tags": ["advanced"],
             "markdownDescription": "%configuration.cli.version%"
           },
           "gemini.cli.checkForUpdates": {
@@ -1341,12 +1427,14 @@
             "type": "boolean",
             "default": true,
             "scope": "machine",
+            "tags": ["advanced"],
             "markdownDescription": "%configuration.agents.startEarly%"
           },
           "gemini.cli.registry": {
             "type": "string",
             "default": "",
             "scope": "machine",
+            "tags": ["advanced"],
             "markdownDescription": "%configuration.cli.registry%"
           },
           "gemini.agent.startEarly": {
@@ -1414,6 +1502,7 @@
             "minimum": 1,
             "maximum": 20,
             "scope": "machine",
+            "tags": ["advanced"],
             "markdownDescription": "%configuration.projects.maxRunningThreads%"
           },
           "gemini.notifications": {
@@ -1448,6 +1537,12 @@
             "default": true,
             "markdownDescription": "%configuration.home.openOnStartup%",
             "scope": "machine"
+          },
+          "gemini.layout.showAgentsInNewWorkspaces": {
+            "type": "boolean",
+            "default": true,
+            "scope": "machine",
+            "markdownDescription": "%configuration.layout.showAgentsInNewWorkspaces%"
           },
           "gemini.agents.branchDefaults": {
             "type": "object",
@@ -1790,12 +1885,6 @@
             "default": false,
             "scope": "machine",
             "markdownDescription": "%configuration.developer.showTools%"
-          },
-          "gemini.layout.showAgentsInNewWorkspaces": {
-            "type": "boolean",
-            "default": true,
-            "scope": "machine",
-            "markdownDescription": "%configuration.layout.showAgentsInNewWorkspaces%"
           }
         }
       }

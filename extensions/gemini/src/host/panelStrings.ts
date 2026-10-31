@@ -100,30 +100,21 @@ export interface HomeStrings {
 	readonly needsTrustedFolder: string;
 	readonly workspace: string;
 	readonly addFolder: string;
-	readonly agentSetup: string;
-	readonly agentSetupHint: string;
+	/** The gear menu's Settings row (Agent Setup), with what it holds. */
+	readonly settings: string;
+	readonly settingsDetail: string;
 	readonly plusMenu: string;
 	readonly mode: string;
+	/** The + menu's sections: Review and Run checks..., then Files. */
+	readonly actions: string;
 	readonly files: string;
 	readonly filesDetail: string;
 	readonly remove: string;
-	readonly active: string;
-	readonly earlier: string;
-	readonly projects: string;
-	readonly noProjects: string;
 	readonly newProject: string;
-	/** Open, for a card's fallback focus; the cards' other buttons come with their labels (`HomeAgent.buttons`). */
-	readonly open: string;
-	/** The Try button's chevron and its menu. */
-	readonly tryMenu: string;
-	readonly tryChoices: TryChoiceStrings;
-	readonly noAgents: string;
 	readonly noWorkspace: string;
 	readonly customize: string;
 	readonly refresh: string;
-	readonly showCard: string;
 	readonly moveUp: string;
-	readonly moveDown: string;
 	readonly cards: string;
 	readonly qualityBranch: string;
 	readonly getStarted: string;
@@ -204,8 +195,8 @@ export interface SettingsPageStrings {
 	readonly contextNone: string;
 	/** `{0}` is the tokens. */
 	readonly contextTotal: string;
-	/** `{0}` is the tokens, beside a server or file. */
-	readonly tokensPerCall: string;
+	/** `{0}` is a context file's size in characters. */
+	readonly characters: string;
 	readonly title: string;
 	readonly subtitle: string;
 	readonly restart: string;
@@ -271,4 +262,27 @@ export interface SettingsPageStrings {
 	readonly neverTrust: string;
 	readonly removeTrust: string;
 	readonly noTrust: string;
+	/** The search box at the top right, which filters the `gemini.*` settings. */
+	readonly search: string;
+	/** Shown when no setting matches; `{0}` is what was typed. */
+	readonly noMatches: string;
+	/** The side index's name for screen readers. */
+	readonly sideIndex: string;
+	/** The side index's entry for the sections below the settings: rules, skills, MCP servers and Measure. */
+	readonly loads: string;
+	/** The other Agent Setup pages the side index opens, in order: Index, Connections, Storage & Audit. */
+	readonly otherPages: readonly { readonly id: string; readonly label: string }[];
+	/** A setting an administrator's policy decides. */
+	readonly lockedByAdmin: string;
+	/** A note under a resource-scoped setting while a folder is open. */
+	readonly savedInWorkspace: string;
+	readonly reset: string;
+	readonly advanced: string;
+	readonly deprecated: string;
+	/** A list setting's Add and Remove, and a new line's placeholder. */
+	readonly addEntry: string;
+	readonly removeEntry: string;
+	readonly entryPlaceholder: string;
+	/** Under a JSON setting whose text does not parse. */
+	readonly invalidJson: string;
 }

@@ -89,7 +89,9 @@ export class ContextMeasures implements ChatContextCost, vscode.Disposable {
 	}
 
 	private cached(folder: string): ContextCost | undefined {
-		return this.state.get<ContextCost>(`gemini.contextCost:${folder}`);
+		const cost = this.state.get<ContextCost>(`gemini.contextCost:${folder}`);
+		// A measure kept before the readings were (it held parts worked out by subtraction) is measured again.
+		return cost?.readings ? cost : undefined;
 	}
 
 	private async listRules(folder: string, cost: ContextCost): Promise<void> {

@@ -23,7 +23,7 @@ import type { TryChoice } from './panelProtocol';
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 52;
+export const chatProtocolVersion = 53;
 /** The hash of the messages below (sourceHash.ts); test/acp/chatProtocolHash.test.ts fails when they change without a bump, and names the new value. */
 export const chatProtocolHash = '51d1b0eaf99a';
 

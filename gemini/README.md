@@ -53,7 +53,7 @@ The repository's top-level README, SECURITY and AGENTS files point here. CONTRIB
 
 ## Issues and security
 
-Report bugs in [GitHub Issues](https://github.com/pulkitjain-org/vscode-gemini-cli/issues). Include the GeminiCode and Gemini CLI versions and the relevant lines from **Gemini: Show Log**, with account names and project IDs removed. Report vulnerabilities privately through [GitHub's vulnerability reporting](https://github.com/pulkitjain-org/vscode-gemini-cli/security/advisories/new), never in a public issue.
+To report a bug, run **Gemini: Report a Problem**: it opens a report with the GeminiCode and Gemini CLI versions, the last failed turn and the recent log lines, with account names, project IDs, your home folder and anything that looks like a key taken out, for you to read over and paste into a [GitHub issue](https://github.com/pulkitjain-org/vscode-gemini-cli/issues) or a message to the maintainers. Report vulnerabilities privately through [GitHub's vulnerability reporting](https://github.com/pulkitjain-org/vscode-gemini-cli/security/advisories/new), never in a public issue.
 
 ## Contributing
 

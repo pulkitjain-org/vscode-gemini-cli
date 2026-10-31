@@ -351,6 +351,14 @@ body.has-parent-project .side-links {
 	contain-intrinsic-size: auto 28px;
 }
 
+/*
+ * An older turn that is out of reach of the view stands as an empty slot of its height
+ * (virtualBlocks.ts sets it), and is drawn in the slot's place as it comes near.
+ */
+.transcript > .turn-slot {
+	contain: strict;
+}
+
 .empty {
 	display: flex;
 	flex-direction: column;

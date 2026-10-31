@@ -11,6 +11,8 @@
 // or the bundle growing by a library. The agent start, which runs the real CLI,
 // is timed by scripts/perf-first-reply.mts.
 
+// @vitest-environment happy-dom
+
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -25,6 +27,7 @@ import { TextDeltas } from '../../src/acp/textDeltas';
 import { matchCommands, mentionAt, slashQuery } from '../../webview-src/chatLogic';
 import { scanStreaming } from '../../webview-src/streaming';
 import { fakeAgentCommand, waitFor } from '../helpers';
+import { page, sendToPage, showChatPage, startScript } from '../webview/pages';
 
 /**
  * Bundle size budgets in bytes, minified: every script in media/ and dist/ has one. KaTeX and the
@@ -47,8 +50,8 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// The team flows, about 32 KB: Open Merge Request, Move Ticket and Log Time, Review and Checks, with the
 	// review's comments, threads and suggested changes. Loaded only with a flow's page.
 	'media/teamFlow.js': 36_000,
-	// Agent Setup, about 19.4 KB: the Storage section added about 1.4 KB, the CLI's default approval mode as a select about 1 KB.
-	'media/settings.js': 20_500,
+	// Settings, about 19.4 KB before 1.8; every contributed setting on the page, with its control, search and the side index, added about 7 KB.
+	'media/settings.js': 28_000,
 	// Connections, about 17.5 KB: the Jira sites after the first and Confluence's per-site Connect dialog added about 4 KB.
 	'media/connections.js': 20_000,
 	// The Review Page for Confluence drafts, about 27 KB: the in-place editor, its floating toolbar, the marked changes
@@ -267,6 +270,29 @@ describe('agent switch', () => {
 			JSON.stringify(transcript.items);
 		});
 		expect(ms).toBeLessThan(25);
+	});
+
+	it('opens a 300-turn chat in the view drawing only its latest items', async () => {
+		// The chat's real page under happy-dom: the view draws the latest 60 items and a slot per older turn
+		// (webview-src/virtualBlocks.ts), so opening costs the same however long the chat is. Before the slots,
+		// the view drew 30 items at once (about 12 ms here) and the other 1,170 in idle time, about 490 ms more.
+		await showChatPage();
+		await startScript('chat');
+		const items: TranscriptItem[] = [];
+		for (let turn = 0; turn < 300; turn++) {
+			items.push({ id: `u${turn}`, kind: 'user', text: `Question ${turn}` });
+			items.push({ id: `t${turn}`, kind: 'toolCall', title: 'Read file', toolKind: 'read', status: 'completed', locations: [], details: [] });
+			items.push({ id: `a${turn}`, kind: 'agent', text: 'An answer of moderate length, with `code` and **bold**. '.repeat(40) });
+			items.push({ id: `e${turn}`, kind: 'turnEnd', durationMs: 4000 });
+		}
+		const transcript = page.document.getElementById('transcript')!;
+		const reset = () => sendToPage({ type: 'reset', items, busy: false, status: { phase: 'ready', text: '' }, settings: {} });
+		// Drawing the latest 60 items: about 30 ms here, with happy-dom's DOM.
+		const ms = median(11, reset);
+		expect(ms).toBeLessThan(90);
+		const drawn = [...transcript.children].filter(child => !child.classList.contains('turn-slot'));
+		expect(drawn.length).toBeLessThanOrEqual(80);
+		expect(transcript.querySelectorAll('.turn-slot').length).toBe(285);
 	});
 });
 

@@ -14,8 +14,8 @@ What to do when something doesn't work. Most fixes are one command away in the *
 | Not sure the CLI starts at all | Turn on `gemini.developer.showTools` and run **Gemini: Check Agent Connection**. It starts the CLI on its own and reports its version and protocol, or the error. |
 | The agent stops or misbehaves | Click the **Gemini** status bar item and choose **Restart Agent**. Open agents resume their sessions. |
 | Auto Edit or YOLO is refused | The Gemini CLI won't use them in a folder it doesn't trust. Pick the mode again and trust the folder when asked. |
-| An MCP server doesn't load | Check the warning and the server's mark in **Agent Setup**, and **Gemini: Show Log**. A project's servers load only in a trusted folder. |
-| Agents are slow on a big project | Open **Agent Setup** and choose **Measure** under **Context per model call**. MCP servers with many tools and long rules files are sent with every step; turn off the servers agents don't need, or trim their `includeTools`. |
+| An MCP server doesn't load | Check the warning and the server's mark in **Settings**, and **Gemini: Show Log**. A project's servers load only in a trusted folder. |
+| Agents are slow on a big project | Open **Settings** and choose **Measure** under **Context per model call**. MCP servers with many tools and long rules files are sent with every step; turn off the servers agents don't need, or trim their `includeTools`. |
 | The workspace isn't indexed, or agents don't use the index | Open **Index** on Home. An untrusted folder gets no index tools: choose **Trust Folder**. Check that `gemini.index.enabled` is on. The `gemini` command in your terminal loads the index only if the project's `mcp.allowed` lists `geminicode-index`. |
 | A file is missing from the index | **Files Left Out** on the Index page says why; **Index Anyway** adds it, unless it is a secret file or binary. |
 | A docs source failed | The Index page names the reason. Pages behind a sign-in can't be indexed, and a site outside `gemini.docs.allowedDomains` can't be added. |
@@ -24,7 +24,7 @@ What to do when something doesn't work. Most fixes are one command away in the *
 | "Gemini's context for this chat filled up" | A turn sent more than the model can read, usually one very large tool output. The chat carries on in a new session that is given the conversation without the tool outputs: send your message again. Ask for big diffs or logs a few files at a time. |
 | "Where is your copy of …?" when reviewing or fixing a merge request | GeminiCode found no clone of the repository among your folders. Choose **Choose Folder...** for a clone you have, whose remote is on your GitLab server, or **Clone It...** to clone it. GeminiCode remembers the clone for that project. |
 | A thread's or agent's changes didn't update in your workspace | Updating pauses while a tried file has conflict markers: resolve them, or use **Open the Conflict** on the thread's card. A file with unsaved edits updates when you save it. |
-| Agents ignore a folder's MCP servers, hooks or settings | The folder isn't trusted. Choose **Trust...** on Home, or add it under **Trusted Folders** in **Agent Setup**. See [Folder trust](review.md#folder-trust). |
+| Agents ignore a folder's MCP servers, hooks or settings | The folder isn't trusted. Choose **Trust...** on Home, or add it under **Trusted Folders** in **Settings**. See [Folder trust](review.md#folder-trust). |
 | "Can't reach … Check that your VPN is on" | A team tool behind your VPN didn't answer. Connect the VPN; the other tools keep working. |
 | The macOS build won't open | See the note under [Install](getting-started.md#install). |
 
@@ -36,6 +36,6 @@ The file stays on your Mac. It holds timings, token counts, the CLI's own system
 
 ## Report a problem
 
-Click the **Gemini** status bar item and choose **Report an Issue...**, which opens a new issue with the GeminiCode, VS Code, Gemini CLI and OS versions filled in. Run **Gemini: Show Log** and include the relevant lines, with account names and project IDs removed. Every GeminiCode error message has a **Show Log** button too, and writes its text to the log first. **Gemini CLI Docs** in the same menu opens the CLI's own documentation.
+Run **Gemini: Report a Problem**, from the command palette, from **Gemini: Troubleshoot...** or from the **Gemini** status bar item's menu. It opens a report as a document: the GeminiCode, VS Code, Gemini CLI and OS versions, the last failed turn in the chat in front, and the last 300 lines of the Gemini log. Your email address, account and project names, your home folder and anything that looks like a key or token are replaced before you see it; read it over, then paste it into a GitHub issue or a message to the maintainers. Every GeminiCode error message has a **Show Log** button too, and writes its text to the log first. **Gemini CLI Docs** in the status bar's menu opens the CLI's own documentation.
 
 Report security problems privately through [GitHub's vulnerability reporting](https://github.com/pulkitjain-org/vscode-gemini-cli/security/advisories/new), never in a public issue.

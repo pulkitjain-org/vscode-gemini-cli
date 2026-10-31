@@ -3,11 +3,12 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// Home's Show All popup and Customize menu, a chunk of its own that Home
-// loads the first time either opens, so Home's startup script stays small.
-// Show All shows a card's whole list, which the extension keeps current while
-// it is open; Customize turns cards on and off, orders them and picks the
-// branch the Quality card reads.
+// Home's Show all popup and gear menu, a chunk of its own that Home loads
+// the first time either opens, so Home's startup script stays small. Show all
+// shows a card's whole list, which the extension keeps current while it is
+// open; the gear menu refreshes the tools' data, opens Settings (Agent
+// Setup), turns cards on and off, orders them and picks the branch the
+// Quality card reads.
 
 import type { FromHome, HomeCard, HomeCardId, HomeDashboard, HomeList, HomeRow } from '../src/host/panelProtocol';
 import type { HomeStrings } from '../src/host/panelStrings';
@@ -18,7 +19,7 @@ import { button, el, icon } from './panelDom';
 export interface HomePopupsHost {
 	readonly strings: HomeStrings;
 	post(message: FromHome): void;
-	/** Home's own menu class, so Customize closes as Home's other menus open. */
+	/** Home's own menu class, so the gear menu closes as Home's other menus open. */
 	readonly Menu: typeof Menu;
 	/** Home's themed tooltip. */
 	tip(node: HTMLElement, tip: string): void;
@@ -26,19 +27,19 @@ export interface HomePopupsHost {
 	readonly customizeElement: HTMLElement;
 	/** The dashboard Home shows now. */
 	dashboard(): HomeDashboard | undefined;
-	/** How Home draws a row (`inList` for this popup, which has room for the repository), a group's heading, a tool's logo and a query. */
+	/** How Home draws a row (`inList` for this popup, which has room for the repository), a group's heading and a tool's logo. */
 	dashRow(row: HomeRow, inList: boolean): HTMLElement;
 	groupHeading(row: HomeRow): HTMLElement;
 	logo(tool: HomeRow['tool'], size: number): Element;
-	queryText(text: string): HTMLElement;
 }
 
 export interface HomePopups {
 	/** Opens `card`'s whole list: its rows at once, then the rest when the extension sends them. */
 	showList(card: HomeCard): void;
-	/** Whether Show All's popup is open. */
+	/** Whether Show all's popup is open. */
 	readonly listOpen: boolean;
 	closeList(): void;
+	/** Opens the gear menu. */
 	openCustomize(): void;
 	/** Shows a new dashboard in whichever of the two is open. */
 	update(dash: HomeDashboard): void;
@@ -69,8 +70,13 @@ export function createHomePopups(host: HomePopupsHost): HomePopups {
 		shownList = list;
 		const close = button('icon-button dash-list-close', '', () => listDialog.close(), 'close', strings.close);
 		host.tip(close, strings.close);
-		listHead.replaceChildren(list.tool ? host.logo(list.tool, 16) : icon(list.icon ?? 'list-flat'), listTitle, el('span', 'dash-list-count'), ...list.query ? [host.queryText(list.query)] : [], close);
+		listHead.replaceChildren(list.tool ? host.logo(list.tool, 16) : icon(list.icon ?? 'list-flat'), listTitle, el('span', 'dash-list-count'), close);
 		listTitle.textContent = list.title;
+		// The query that fills the list, in the title's tooltip as on the card; none from an earlier list stays.
+		listTitle.removeAttribute('data-tip');
+		if (list.query) {
+			host.tip(listTitle, list.query);
+		}
 		listHead.dataset.total = String(total);
 		listFilter.hidden = total <= 8;
 		renderListRows();
@@ -118,6 +124,7 @@ export function createHomePopups(host: HomePopupsHost): HomePopups {
 		}
 	});
 
+	/** The gear menu: Refresh and Settings, then the cards' switches and order, then the Quality card's branch. */
 	const customizeMenu: Menu = new host.Menu({
 		element: host.customizeElement,
 		anchor: host.customizeButton,
@@ -128,6 +135,12 @@ export function createHomePopups(host: HomePopupsHost): HomePopups {
 				return [];
 			}
 			return [
+				{
+					rows: [
+						{ icon: 'refresh', name: strings.refresh, run: () => { customizeMenu.close(); host.post({ type: 'refresh' }); } },
+						{ icon: 'server-environment', name: strings.settings, detail: strings.settingsDetail, run: () => { customizeMenu.close(); host.post({ type: 'action', action: { kind: 'command', command: 'gemini.projectSettings' } }); } },
+					],
+				},
 				{
 					heading: strings.cards,
 					rows: dash.layout.flatMap((card, i) => [{
@@ -177,7 +190,7 @@ export function createHomePopups(host: HomePopupsHost): HomePopups {
 			customizeMenu.open();
 		},
 		update(dash) {
-			// An open Customize menu shows the switches and order just saved, so the next click reads the new state.
+			// An open gear menu shows the switches and order just saved, so the next click reads the new state.
 			customizeMenu.render();
 			if (listDialog.open && dash.list && dash.list.card === listCard) {
 				renderList(dash.list);

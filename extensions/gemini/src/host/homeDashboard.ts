@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as vscode from 'vscode';
-import { cardOrder, DashboardCardId, DashboardLayout, firstName, isReadyToMerge, partOfDay, rankReviews, sprintProgress, ticketGroups } from '../acp/dashboard';
+import { cardOrder, DashboardCardId, DashboardLayout, firstName, hiddenCards, isReadyToMerge, partOfDay, rankReviews, sprintProgress, ticketGroups } from '../acp/dashboard';
 import type { AuditEntry } from '../acp/auditLog';
 import type { ModelQuota } from '../acp/directRequest';
 import type { FlowRecord } from '../acp/flowRecords';
@@ -14,7 +14,7 @@ import { teamBanners } from '../acp/homeBanners';
 import { ServerHealth, TeamToolId, teamToolIds, teamToolNames } from '../acp/teamHttp';
 import type { AgentSummary } from './agentsView';
 import { relativeTime } from './displayText';
-import type { HomeAction, HomeBanner, HomeButton, HomeCard, HomeCardId, HomeDashboard, HomeList, HomeRow, HomeTool, HomeTone, HomeTypeColor } from './panelProtocol';
+import type { HomeAction, HomeBanner, HomeButton, HomeCard, HomeCardId, HomeDashboard, HomeList, HomeRow, HomeTone, HomeTypeColor } from './panelProtocol';
 import type { ConnectionState } from './teamConnections';
 import type { Fetched, TeamSnapshot } from './teamData';
 
@@ -91,8 +91,8 @@ function cardTitles(): Record<HomeCardId, string> {
 		unfinished: vscode.l10n.t("Unfinished when GeminiCode last quit"),
 		startup: vscode.l10n.t("What came back, and when"),
 		agents: vscode.l10n.t("Agents"),
-		tickets: vscode.l10n.t("My tickets"),
-		mergeRequests: vscode.l10n.t("Pending on me"),
+		tickets: vscode.l10n.t("Your tickets"),
+		mergeRequests: vscode.l10n.t("Pending on you"),
 		quality: vscode.l10n.t("Quality"),
 		gemini: vscode.l10n.t("Gemini"),
 	};
@@ -100,7 +100,6 @@ function cardTitles(): Record<HomeCardId, string> {
 
 export function buildDashboard(input: DashboardInput): HomeDashboard {
 	const { now, data } = input;
-	const tools = teamToolIds.map(id => toolView(id, input));
 	const tickets = data.tickets?.data;
 	const groups = ticketGroups(tickets?.issues ?? []);
 	// Closed tickets leave the list but still count towards the sprint's progress.
@@ -134,20 +133,19 @@ export function buildDashboard(input: DashboardInput): HomeDashboard {
 	} : undefined;
 	const order = cardOrder({ ...input.layout, hidden: [] });
 	const nothingConnected = !input.connected.size;
+	const hidden = hiddenCards(input.layout);
 	return {
 		greeting,
 		context,
-		tools,
 		quickActions: [
-			{ label: vscode.l10n.t("New Agent"), icon: 'sparkle', action: command('gemini.agents.newAgent') },
 			{ label: vscode.l10n.t("Review"), icon: 'diff', action: command('gemini.review') },
-			...input.connected.has('snyk') || input.connected.has('sonar') ? [{ label: vscode.l10n.t("Run Checks..."), tool: input.connected.has('snyk') ? 'snyk' as const : 'sonar' as const, action: command('gemini.team.runChecksOnBranch') }] : [],
+			...input.connected.has('snyk') || input.connected.has('sonar') ? [{ label: vscode.l10n.t("Run checks..."), tool: input.connected.has('snyk') ? 'snyk' as const : 'sonar' as const, action: command('gemini.team.runChecksOnBranch') }] : [],
 		],
 		cards,
 		...nothingConnected ? { setup: setupSteps(input) } : {},
 		...banners(input),
 		...input.refreshing && input.dataFrom ? { stale: vscode.l10n.t("Showing results from {0} · refreshing", clockTime(input.dataFrom)) } : {},
-		layout: order.map(id => ({ id, title: titles[id], visible: !input.layout?.hidden?.includes(id) })),
+		layout: order.map(id => ({ id, title: titles[id], visible: !hidden.includes(id) })),
 		releaseBranches: data.releases?.data?.branches ?? [],
 		...input.layout?.qualityBranch ? { qualityBranch: input.layout.qualityBranch } : {},
 		refreshing: input.refreshing,
@@ -179,25 +177,6 @@ function banners(input: DashboardInput): { banners?: HomeBanner[] } {
 			};
 	});
 	return list.length ? { banners: list } : {};
-}
-
-function toolView(id: TeamToolId, input: DashboardInput): HomeTool {
-	const name = teamToolNames[id];
-	if (!input.connected.has(id)) {
-		return { id, name, tone: 'off', label: vscode.l10n.t("{0}: not connected", name) };
-	}
-	const state = input.state(id);
-	switch (state.kind) {
-		case 'connected':
-			return { id, name, tone: 'ok', label: state.account ? vscode.l10n.t("{0}: connected as {1}", name, state.account) : vscode.l10n.t("{0}: connected", name) };
-		case 'unreachable':
-			return { id, name, tone: 'warn', label: id === 'figma' ? vscode.l10n.t("Figma isn't open") : vscode.l10n.t("{0}: VPN off or can't be reached", name) };
-		case 'checking':
-		case 'off':
-			return { id, name, tone: 'checking', label: vscode.l10n.t("{0}: checking...", name) };
-		default:
-			return { id, name, tone: 'error', label: state.detail ?? vscode.l10n.t("{0}: needs attention", name) };
-	}
 }
 
 function setupSteps(input: DashboardInput): HomeDashboard['setup'] {

@@ -773,12 +773,17 @@ button.option-button .codicon-chevron-down {
 	outline-offset: -1px;
 }
 
-/* MCP Servers and Rules */
+/* The Agent Setup pages' main column; the Settings page (.setup-page) is wider, for its side index. */
 
 .settings {
 	max-width: 760px;
 	margin: 0 auto;
 	padding: 32px 24px 48px;
+}
+
+.setup-page .settings,
+.setup-page .page-tabs {
+	max-width: 1000px;
 }
 
 .settings h1 {
@@ -971,6 +976,223 @@ button.option-button .codicon-chevron-down {
 @media (prefers-reduced-motion: reduce) {
 	.switch::after {
 		transition: none;
+	}
+}
+
+/* The Settings page's frame: the search box in the header, the side index beside the sections, and what the search hides. */
+.setup-page [hidden] {
+	display: none !important;
+}
+
+.settings-search {
+	box-sizing: border-box;
+	width: 220px;
+	height: var(--gc-control);
+	padding: 0 var(--gc-space-2);
+	border: 1px solid var(--gemini-border-strong);
+	border-radius: var(--gc-radius-md);
+	background: var(--gemini-composer);
+	color: var(--vscode-input-foreground, var(--vscode-foreground));
+	font: inherit;
+}
+
+.settings-search::placeholder {
+	color: var(--gemini-faint);
+}
+
+.settings-layout {
+	display: grid;
+	grid-template-columns: 180px minmax(0, 1fr);
+	gap: var(--gc-space-6);
+	align-items: start;
+	margin-top: var(--gc-space-5);
+}
+
+.settings-index {
+	position: sticky;
+	top: var(--gc-space-4);
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.settings-index .index-link {
+	justify-content: flex-start;
+	height: var(--gc-control);
+	padding: 0 var(--gc-space-2);
+	border-color: transparent;
+	background: none;
+	color: var(--gemini-muted);
+	font-size: var(--gc-text-md);
+	text-align: left;
+}
+
+.settings-index .index-link span {
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.settings-index .index-link:hover:not(:disabled),
+.settings-index .index-link.active {
+	color: var(--vscode-foreground);
+	background: var(--gemini-hover);
+}
+
+.settings-index .index-link.active {
+	font-weight: var(--gc-weight-medium);
+}
+
+.settings-index .index-link.other {
+	margin-top: var(--gc-space-1);
+}
+
+.settings-index .index-link .codicon {
+	order: 1;
+	margin-left: auto;
+	color: var(--gemini-faint);
+}
+
+.settings-content .settings-section:first-child {
+	margin-top: 0;
+}
+
+.settings-loads-header {
+	margin-top: var(--gc-space-6);
+	padding-top: var(--gc-space-5);
+	border-top: 1px solid var(--gemini-border);
+}
+
+/* A setting's row: its name and key, help that wraps, a note when it is locked or workspace-saved, the control, and Reset. */
+.settings .row.setting {
+	align-items: flex-start;
+}
+
+.settings .row.setting.toggle .switch {
+	margin-top: 2px;
+}
+
+.settings .setting .row-detail {
+	white-space: normal;
+	line-height: var(--gc-leading-row);
+}
+
+.settings .setting-help code {
+	padding: 0 var(--gc-space-1);
+	border-radius: var(--gc-radius-sm);
+	background: var(--gemini-hover);
+	font-family: var(--gc-font-mono);
+	font-size: var(--gc-text-sm);
+}
+
+.settings .row-note {
+	display: flex;
+	align-items: center;
+	gap: var(--gc-space-1);
+	margin-top: var(--gc-space-1);
+	color: var(--gemini-faint);
+	font-size: var(--gc-text-sm);
+}
+
+.settings .row.locked .row-note {
+	color: var(--gemini-muted);
+}
+
+.settings .setting-control {
+	flex: none;
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	max-width: 50%;
+}
+
+.settings .setting-field,
+.settings .setting-list input {
+	box-sizing: border-box;
+	height: var(--gc-control);
+	padding: 0 var(--gc-space-2);
+	border: 1px solid var(--gemini-border-strong);
+	border-radius: var(--gc-radius-md);
+	background: var(--gemini-composer);
+	color: var(--vscode-input-foreground, var(--vscode-foreground));
+	font: inherit;
+}
+
+.settings .setting-field {
+	width: 220px;
+}
+
+.settings .number .setting-field {
+	width: 90px;
+}
+
+.settings .setting-field:disabled,
+.settings .setting-list input:disabled,
+.settings .setting-json:disabled {
+	opacity: 0.5;
+}
+
+.settings .setting-list {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	gap: var(--gc-space-1);
+	width: 280px;
+}
+
+.settings .setting-entries {
+	display: flex;
+	flex-direction: column;
+	gap: var(--gc-space-1);
+	width: 100%;
+}
+
+.settings .setting-list .entry {
+	display: flex;
+	gap: var(--gc-space-1);
+}
+
+.settings .setting-list .entry input {
+	flex: 1;
+	min-width: 0;
+}
+
+.settings .setting-json {
+	box-sizing: border-box;
+	width: 100%;
+	min-height: 72px;
+	padding: var(--gc-space-1) var(--gc-space-2);
+	border: 1px solid var(--gemini-border-strong);
+	border-radius: var(--gc-radius-md);
+	background: var(--gemini-composer);
+	color: var(--vscode-input-foreground, var(--vscode-foreground));
+	resize: vertical;
+}
+
+.settings .json .setting-control {
+	width: 50%;
+}
+
+.settings .setting-json.invalid {
+	border-color: var(--gemini-error);
+}
+
+.settings .setting .reset {
+	margin-top: 2px;
+}
+
+@media (max-width: 720px) {
+	.settings-layout {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.settings-index {
+		position: static;
+		flex-direction: row;
+		flex-wrap: wrap;
+	}
+
+	.settings-index .index-link.other {
+		margin-top: 0;
 	}
 }
 

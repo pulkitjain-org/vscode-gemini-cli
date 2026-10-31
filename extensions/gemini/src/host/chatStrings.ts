@@ -117,10 +117,6 @@ export interface ProjectChatStrings {
 		readonly planned: string;
 		readonly done: string;
 		readonly merged: string;
-		readonly context: string;
-		readonly conductorTracks: string;
-		readonly noConductor: string;
-		readonly model: string;
 		readonly repos: string;
 	};
 	readonly states: { readonly starting: string; readonly working: string; readonly waiting: string; readonly planned: string; readonly done: string; readonly error: string };
@@ -642,11 +638,11 @@ export interface ChatStrings {
 	readonly usageHideDetails: string;
 	readonly usageAllModels: string;
 	readonly usageFewerModels: string;
-	/** The usage popover's context breakdown and rule files (`/context`); `{0}` is a count, a name, a time or a size. */
+	/** The usage popover's context readings and rule files (`/context`); `{0}` is a server, a name, a time or a size. */
 	readonly contextParts: {
-		readonly conversation: string; readonly servers: string; readonly rules: string; readonly geminicode: string; readonly cli: string;
-		readonly ruleFiles: string; readonly kilobytes: string; readonly aboutTokens: string; readonly large: string;
-		readonly measured: string; readonly measureAgain: string; readonly measuring: string; readonly notMeasured: string; readonly failed: string; readonly compactNote: string;
+		readonly empty: string; readonly folder: string; readonly server: string; readonly geminicode: string; readonly all: string;
+		readonly ruleFiles: string; readonly kilobytes: string; readonly large: string;
+		readonly measured: string; readonly measureAgain: string; readonly measuring: string; readonly notMeasured: string; readonly failed: string;
 	};
 	/** The @ picker's groups and its Workspace rows; `{0}` and `{1}` are counts or a command. */
 	readonly mentions: {

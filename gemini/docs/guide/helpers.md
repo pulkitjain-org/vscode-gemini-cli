@@ -1,10 +1,10 @@
-# Agent Setup
+# Settings
 
-**Agent Setup** shows what every agent loads when it starts: MCP servers, skills, hooks, extensions, memory and rules, each with a switch, and how many tokens they add to every model call. It shares them with the `gemini` command in your terminal.
+**Settings** is one page for everything you can set: every GeminiCode setting, grouped as in the side index (Account and CLI, Agents, Chat, Browser, Index and docs, Team tools, Administration, Developer), each with a switch, a picker or a field that writes it for you, a search box, and a lock on anything your administrator decided. Advanced settings show when you search for them. Below the settings, **Loads** shows what every agent loads when it starts: MCP servers, skills, hooks, extensions, memory and rules, each with a switch, and what each test prompt's model call carried. It shares them with the `gemini` command in your terminal. Before 1.8 this page was Agent Setup, and the settings lived only in VS Code's Settings under Extensions.
 
-![Agent Setup with the context per model call, MCP servers, skills each with a switch, hooks, extensions and memory](../../site/media/docs/project-helpers-dark.webp)
+![Settings with the context per model call, MCP servers, skills each with a switch, hooks, extensions and memory](../../site/media/docs/project-helpers-dark.webp)
 
-Open it with **Gemini: Agent Setup**, or **Agent Setup** on Home, the **Gemini** status bar item's menu, or the Agents pane's **...** menu. It has four tabs: **Loads**, this page; **Index & Docs** ([Workspace index and docs](agents.md#workspace-index-and-docs)); **Connections** ([Team tools](team-tools.md)); and **Storage & Audit** ([Storage](settings.md#storage), [Audit log](team-tools.md#audit-log)). Changes apply to agents started afterwards; **Restart Agent** applies them now. Opening the page never starts the Gemini CLI.
+Open it with **Gemini: Settings**, from Home's gear menu, the **Gemini** status bar item's menu, or the Agents pane's **...** menu. Its side index also reaches the other pages: **Loads**, this page; **Index & Docs** ([Workspace index and docs](agents.md#workspace-index-and-docs)); **Connections** ([Team tools](team-tools.md)); and **Storage & Audit** ([Storage](settings.md#storage), [Audit log](team-tools.md#audit-log)). Changes apply to agents started afterwards; **Restart Agent** applies them now. Opening the page never starts the Gemini CLI.
 
 ## Context per model call
 

@@ -21,7 +21,7 @@ import { CliManager } from './host/cliManager';
 import { DiffPreview } from './host/diffPreview';
 import { errorMessage } from './acp/errors';
 import { PromptEnhancer } from './acp/promptEnhancer';
-import { configSection, getAgentCommand, getWorkspaceCwd, loadProductInfo, productInfo, setAgentEnvOverride, setStorageDirs } from './host/configuration';
+import { configSection, getAgentCommand, getProjectSettings, getWorkspaceCwd, loadProductInfo, productInfo, setAgentEnvOverride, setStorageDirs } from './host/configuration';
 import { initModelList, initModelPreference, knownModelList } from './host/modelPreference';
 import { initReactionRecents } from './host/chatReactions';
 import { defaultConcurrency } from './acp/research';
@@ -54,6 +54,7 @@ import { beginStartup } from './host/startup';
 import { background, setBackgroundLog } from './host/background';
 import { withRecentLog } from './host/recentLog';
 import { registerReportProblem } from './host/reportProblem';
+import { registerTroubleshoot } from './host/troubleshoot';
 
 /** Finishes the writes that must outlive the window; set by activate. */
 let saveBeforeExit: (() => Promise<void>) | undefined;
@@ -309,6 +310,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 			return (await chatInFront(true))?.addAttachments(attachments);
 		}),
 		vscode.commands.registerCommand('gemini.showLog', () => log.show()),
+		registerTroubleshoot({
+			phase: () => agentPhase(service.status.phase),
+			account: () => statusBar.accountName,
+			project: () => getProjectSettings().resolved?.projectId,
+			cli: () => service.status.agentVersion,
+			stopped: () => service.status.phase === 'stopped',
+		}),
 		registerReportProblem({
 			recent: recentLog,
 			cli: () => service.status.agentVersion ? `${service.status.agentVersion}${describeCliSource(service.cli)}` : undefined,

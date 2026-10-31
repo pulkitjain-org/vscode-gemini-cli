@@ -9,7 +9,7 @@
 // on its own branch, or a project's coordinator), with a line on the one
 // picked; the project picker; what the folder's trust holds back; themed
 // tooltips in place of native ones; and the menus and popups, chunks loaded on
-// first use.
+// first use: the + menu's Actions, and the gear menu's Refresh and Settings.
 
 import * as path from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -21,24 +21,23 @@ const { document } = page;
 const byId = (id: string) => document.getElementById(id) as HTMLElement;
 
 const tickets: HomeCard = {
-	id: 'tickets', title: 'My tickets', tool: 'jira', query: 'assignee = currentUser()', total: 9,
+	id: 'tickets', title: 'Your tickets', tool: 'jira', query: 'assignee = currentUser()', total: 9,
 	rows: [{ type: { name: 'Bug', icon: 'bug', color: 'red' }, key: 'SHOP-1', title: 'Cart total is wrong', button: { label: 'Start', action: { kind: 'command', command: 'gemini.start' }, title: 'Start an agent on SHOP-1' }, menu: [{ label: 'Log Time', action: { kind: 'command', command: 'gemini.logTime' } }] }],
 };
 
 function view(options: { git?: boolean; projects?: boolean | HomeProject[]; ownBranch?: boolean; trust?: HomeWorkspace['trust'] } = {}): HomeView {
 	return {
 		workspaces: [
-			{ name: 'shop', description: '~/work', folder: '/work/shop', git: options.git ?? true, index: { state: 'ready', label: 'Indexed' }, ...options.trust ? { trust: options.trust } : {} },
+			{ name: 'shop', description: '~/work', folder: '/work/shop', git: options.git ?? true, ...options.trust ? { trust: options.trust } : {} },
 			{ name: 'cms', description: '~/work', folder: '/work/cms', git: true },
 		],
-		active: [],
-		earlier: [],
 		...options.projects ?? true ? { projects: Array.isArray(options.projects) ? options.projects : [] } : {},
 		ownBranch: !!options.ownBranch,
 		modes: [{ id: 'default', name: 'Default', description: 'Asks before edits' }, { id: 'autoEdit', name: 'Auto Edit', description: 'Edits without asking' }],
 		dashboard: {
-			greeting: 'Good morning', context: 'shop', tools: [{ id: 'jira', name: 'Jira', tone: 'ok', label: 'Jira: connected' }], quickActions: [],
-			cards: [tickets], layout: [{ id: 'tickets', title: 'My tickets', visible: true }, { id: 'gemini', title: 'Gemini', visible: false }], releaseBranches: [], refreshing: false,
+			greeting: 'Good morning', context: 'shop',
+			quickActions: [{ label: 'Review', icon: 'diff', action: { kind: 'command', command: 'gemini.review' } }, { label: 'Run checks...', tool: 'snyk', action: { kind: 'command', command: 'gemini.team.runChecksOnBranch' } }],
+			cards: [tickets], layout: [{ id: 'tickets', title: 'Your tickets', visible: true }, { id: 'gemini', title: 'Gemini', visible: false }], releaseBranches: [], refreshing: false,
 		},
 	};
 }
@@ -85,18 +84,18 @@ beforeAll(async () => {
 });
 
 describe('Home\'s new-agent chooser', () => {
-	it('offers Here and On a Branch in a Git folder, with a line on the one picked', () => {
+	it('offers Here and On a branch in a Git folder, with a line on the one picked', () => {
 		sendToPage({ type: 'view', view: view() });
 		const before = chooser();
-		choice('On a Branch').click();
+		choice('On a branch').click();
 		expect({ before, after: chooser() }).toEqual({
-			before: { shown: ['Here', 'On a Branch'], checked: ['Here'], hint: 'Works in this folder, on your current branch.' },
-			after: { shown: ['Here', 'On a Branch'], checked: ['On a Branch'], hint: 'A new branch and folder. Take the work with Try in Workspace, Merge Back or a merge request when it\'s done.' },
+			before: { shown: ['Here', 'On a branch'], checked: ['Here'], hint: 'Works in this folder, on your current branch.' },
+			after: { shown: ['Here', 'On a branch'], checked: ['On a branch'], hint: 'A new branch and folder. Take the work with Try in Workspace, Merge Back or a merge request when it\'s done.' },
 		});
 	});
 
 	it('starts the agent the way picked: on its own branch, in a project from the chevron, or here', async () => {
-		choice('On a Branch').click();
+		choice('On a branch').click();
 		const branch = startTask('Fix the cart');
 		await pickFromBranchMenu('New Project in shop');
 		const project = startTask('Split checkout');
@@ -115,7 +114,7 @@ describe('Home\'s new-agent chooser', () => {
 		const once = chooser().checked;
 		byId('start-as').dispatchEvent(new page.KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
 		byId('start-as').dispatchEvent(new page.KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
-		expect({ once, wrapped: chooser().checked, focused: document.activeElement?.textContent }).toEqual({ once: ['On a Branch'], wrapped: ['On a Branch'], focused: 'On a Branch' });
+		expect({ once, wrapped: chooser().checked, focused: document.activeElement?.textContent }).toEqual({ once: ['On a branch'], wrapped: ['On a branch'], focused: 'On a branch' });
 	});
 
 	it('leaves out what the folder can\'t do: a project picked falls back to a branch while Projects are off, and no choice at all outside Git', async () => {
@@ -126,7 +125,7 @@ describe('Home\'s new-agent chooser', () => {
 		const noGit = chooser();
 		const message = startTask('Rename a file');
 		expect({ noProjects, noGit, ownBranch: message?.ownBranch, project: message?.project }).toEqual({
-			noProjects: { shown: ['Here', 'On a Branch'], checked: ['On a Branch'], hint: 'A new branch and folder. Take the work with Try in Workspace, Merge Back or a merge request when it\'s done.' },
+			noProjects: { shown: ['Here', 'On a branch'], checked: ['On a branch'], hint: 'A new branch and folder. Take the work with Try in Workspace, Merge Back or a merge request when it\'s done.' },
 			noGit: { shown: [], checked: ['Here'], hint: '' },
 			ownBranch: false,
 			project: undefined,
@@ -209,7 +208,7 @@ describe('Home and folder trust', () => {
 		await pickShop();
 		choice('Here').click();
 		const here = { chip: !byId('needs-trust').hidden, start: !!startTask('Add a test') };
-		choice('On a Branch').click();
+		choice('On a branch').click();
 		const branch = { chip: byId('needs-trust').hidden ? undefined : byId('needs-trust').textContent, start: !!startTask('Fix the cart') };
 		posted.length = 0;
 		(byId('needs-trust').querySelector('button') as HTMLElement).click();
@@ -250,15 +249,56 @@ describe('Home\'s tooltips', () => {
 		const tip = (selector: string) => (document.querySelector(selector) as HTMLElement | null)?.dataset.tip;
 		expect({
 			titled: [...document.body.querySelectorAll('[title]')].map(node => node.outerHTML.slice(0, 60)),
-			tips: [tip('#refresh'), tip('#customize'), tip('#helpers'), tip('#workspace'), tip('#mode'), tip('#index-state'), tip('.dash-tool'), tip('.dash-row-title'), tip('.dash-type'), tip('.dash-query'), tip('.dash-row .secondary'), tip('.dash-row-more .icon-button')],
+			tips: [tip('#customize'), tip('#plus'), tip('#workspace'), tip('#mode'), tip('.dash-card-head h3'), tip('.dash-row-title'), tip('.dash-type'), tip('.dash-row .secondary'), tip('.dash-row-more .icon-button')],
 		}).toEqual({
 			titled: [],
-			tips: ['Refresh', 'Customize', 'MCP servers, skills, rules and hooks your agents load', 'Workspace: ~/work/shop', 'Mode: Default', 'Indexed', 'Jira: connected', 'Cart total is wrong', 'Bug', 'assignee = currentUser()', 'Start an agent on SHOP-1', 'More Actions'],
+			tips: ['Customize', 'Actions and files', 'Workspace: ~/work/shop', 'Mode: Default', 'assignee = currentUser()', 'Cart total is wrong', 'Bug', 'Start an agent on SHOP-1', 'More Actions'],
 		});
 	});
 
-	it('calls Project Helpers Agent Setup', () => {
-		expect(byId('helpers').textContent).toBe('Agent Setup');
+	it('keep a card\'s query out of its text: it is the title\'s tooltip, and the heading carries nothing else', () => {
+		const head = document.querySelector('.dash-card-head') as HTMLElement;
+		expect({ text: head.textContent, query: document.querySelectorAll('.dash-query').length }).toEqual({ text: 'Your tickets', query: 0 });
+	});
+});
+
+describe('Home\'s one place per job', () => {
+	it('has no second agent list, tool logos, refresh button, quick actions, Agent Setup button or index icon', () => {
+		expect(['#active', '#earlier', '#projects', '#tools', '#refresh', '#quick', '#helpers', '#index-state'].filter(id => document.querySelector(id))).toEqual([]);
+	});
+
+	it('offers Review and Run checks... under Actions in the + menu, with Files and no Mode section', async () => {
+		byId('plus').click();
+		const menu = byId('plus-menu');
+		await expect.poll(() => menu.hidden).toBe(false);
+		const headings = [...menu.querySelectorAll('.menu-heading')].map(node => node.textContent);
+		const rows = [...menu.querySelectorAll('.menu-row')] as HTMLElement[];
+		posted.length = 0;
+		rows[0].click();
+		expect({ headings, names: rows.map(row => row.querySelector('.menu-name')?.textContent), ran: posted, open: !menu.hidden }).toEqual({
+			headings: ['Actions'],
+			names: ['Review', 'Run checks...', 'Files'],
+			ran: [{ type: 'action', action: { kind: 'command', command: 'gemini.review' } }],
+			open: false,
+		});
+	});
+
+	it('offers Refresh and Settings in the gear menu, above the cards\' switches', async () => {
+		byId('customize').click();
+		const menu = byId('customize-menu');
+		await expect.poll(() => menu.hidden).toBe(false);
+		const rows = [...menu.querySelectorAll('.menu-row')] as HTMLElement[];
+		const names = rows.map(row => row.querySelector('.menu-name')?.textContent);
+		posted.length = 0;
+		rows[0].click();
+		byId('customize').click();
+		await expect.poll(() => menu.hidden).toBe(false);
+		([...menu.querySelectorAll('.menu-row')][1] as HTMLElement).click();
+		expect({ names: names.slice(0, 4), ran: posted, switches: rows.filter(row => row.getAttribute('role') === 'menuitemcheckbox').length }).toEqual({
+			names: ['Refresh', 'Settings', 'Your tickets', 'Gemini'],
+			ran: [{ type: 'refresh' }, { type: 'action', action: { kind: 'command', command: 'gemini.projectSettings' } }],
+			switches: 2,
+		});
 	});
 });
 
@@ -278,7 +318,7 @@ describe('Home\'s menus', () => {
 		});
 	});
 
-	it('give Show All\'s popup and Customize the themed tooltips too', async () => {
+	it('give Show all\'s popup and the gear menu the themed tooltips too', async () => {
 		(document.querySelector('.dash-show-all') as HTMLElement).click();
 		await expect.poll(() => !!document.querySelector('.dash-list-close')).toBe(true);
 		const close = document.querySelector('.dash-list-close') as HTMLElement;

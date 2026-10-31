@@ -12,21 +12,32 @@ import type { JiraIssueSummary, JiraMyTicket, JiraSprint } from './jira';
 
 export type DashboardCardId = 'unfinished' | 'startup' | 'agents' | 'tickets' | 'mergeRequests' | 'quality' | 'gemini';
 
-export const dashboardCards: readonly DashboardCardId[] = ['unfinished', 'startup', 'agents', 'tickets', 'mergeRequests', 'quality', 'gemini'];
+/** What needs the user first (Pending on you), then their tickets, then the agents. */
+export const dashboardCards: readonly DashboardCardId[] = ['unfinished', 'startup', 'mergeRequests', 'tickets', 'agents', 'quality', 'gemini'];
+
+/** Cards off until the user turns them on in the gear menu. */
+const defaultHidden: readonly DashboardCardId[] = ['quality'];
 
 /** The user's card layout: the order, and which are hidden. */
 export interface DashboardLayout {
 	readonly order?: readonly string[];
+	/** The cards turned off; the default set (`defaultHidden`) until the user turns one on or off. */
 	readonly hidden?: readonly string[];
 	/** The release branch Quality looks at; the newest release branch when unset. */
 	readonly qualityBranch?: string;
+}
+
+/** The cards turned off: the user's set once they have one, else the default. */
+export function hiddenCards(layout: DashboardLayout | undefined): readonly string[] {
+	return layout?.hidden ?? defaultHidden;
 }
 
 /** The cards to show, in the user's order; cards they never placed go at the end in the default order. */
 export function cardOrder(layout: DashboardLayout | undefined): DashboardCardId[] {
 	const known = (layout?.order ?? []).filter((id): id is DashboardCardId => dashboardCards.includes(id as DashboardCardId));
 	const order = [...new Set([...known, ...dashboardCards])];
-	return order.filter(id => !layout?.hidden?.includes(id));
+	const hidden = hiddenCards(layout);
+	return order.filter(id => !hidden.includes(id));
 }
 
 /** `layout` with `card` moved by `delta` places among all cards (hidden ones keep their place). */
@@ -41,7 +52,7 @@ export function moveCard(layout: DashboardLayout | undefined, card: DashboardCar
 }
 
 export function toggleCard(layout: DashboardLayout | undefined, card: DashboardCardId, visible: boolean): DashboardLayout {
-	const hidden = new Set(layout?.hidden ?? []);
+	const hidden = new Set(hiddenCards(layout));
 	if (visible) {
 		hidden.delete(card);
 	} else {

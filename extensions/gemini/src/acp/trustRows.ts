@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// Agent Setup's Trusted Folders section, apart from its words: the rows that
+// Settings' Trusted Folders section, apart from its words: the rows that
 // the Gemini CLI's trust file reads as, in the order of the file. A trusted
 // repository's worktrees rule is part of the repository's row, a TRUST_PARENT
 // rule is shown as the parent folder it trusts, and GeminiCode's own rules

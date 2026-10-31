@@ -136,13 +136,20 @@ describe('Commit', () => {
 });
 
 describe('the usage popover\'s context breakdown', () => {
-	it('shows each part, the rule files with a warning for a large one, and measures again on request; /context only opens it', () => {
+	it('shows each reading as the CLI reported it, the rule files with a warning for a large one, and measures again on request; /context only opens it', () => {
 		sendToPage({ type: 'context', context: { used: 398_000, limit: 1_048_576, cached: 0, canCompact: false } });
 		sendToPage({ type: 'toggleUsage', open: true });
 		sendToPage({
 			type: 'contextBreakdown', breakdown: {
 				state: 'ready', measuredAt: Date.now(),
-				parts: { cli: 9_000, rules: 18_000, geminicode: 11_000, servers: 3, serverTokens: 61_000, total: 99_000 },
+				readings: [
+					{ kind: 'empty', tokens: 9_000 },
+					{ kind: 'folder', tokens: 27_000 },
+					{ kind: 'server', server: 'gitlab', tokens: 61_000 },
+					{ kind: 'geminicode', tokens: 38_000 },
+					{ kind: 'all', tokens: 99_000 },
+				],
+				total: 99_000,
 				rules: [{ name: 'GEMINI.md', path: '/w/GEMINI.md', bytes: 70_656 }, { name: 'AGENTS.md', path: '/w/AGENTS.md', bytes: 4_096 }],
 			},
 		});
@@ -160,8 +167,8 @@ describe('the usage popover\'s context breakdown', () => {
 		expect({ ...shown, measure: posted.filter(message => message.type === 'measureContext').length }).toEqual({
 			open: true,
 			readQuota: 1,
-			parts: ['Conversation299K', 'MCP servers (3)61K', 'Rule files (2)18K', 'GeminiCode tools11K', 'CLI system prompt9K'],
-			rules: [['GEMINI.md69 KB · about 18K tokens', true], ['AGENTS.md4 KB', false]],
+			parts: ['Empty folder9K', 'This folder27K', 'This folder with gitlab61K', 'This folder with GeminiCode\'s tools38K', 'Everything agents get99K'],
+			rules: [['GEMINI.md69 KB', true], ['AGENTS.md4 KB', false]],
 			warning: 'GEMINI.md is large: every turn carries it. Trim it or split it with @imports.',
 			measure: 1,
 		});

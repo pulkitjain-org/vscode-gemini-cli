@@ -16,10 +16,6 @@ Confirm with the admin of the Google Cloud project:
 - Whether the tenant asks for account validation.
 - Whether a proxy or custom CA is needed.
 
-### Signed releases
-
-Add the six Apple secrets ([RELEASING.md](RELEASING.md#apple-setup)), then cut a release. The release workflow signs with the Developer ID and notarises whenever the secrets are present. Without them, each user has to approve the app in **Privacy & Security** on first launch, and managed Macs may block it.
-
 ### Browser sign-in in ACP mode
 
 Check on a desktop that the CLI's browser sign-in, which runs while the agent starts, writes nothing to standard output. Standard output is the protocol stream.
@@ -71,7 +67,11 @@ An agent's browser page can fetch from any site its policy allows; the platform'
 
 ### Sessions are never closed
 
-gemini-cli 0.66.0 offers no `session/close`, so a long-lived agent process keeps every session it opened, a few MB each. That includes Enhance prompt's fallback sessions and hidden command sessions. GeminiCode closes sessions as soon as a CLI advertises `sessionCapabilities.close`. Until a CLI does, restart idle processes to free them, and show in the pane when an agent's process was stopped.
+gemini-cli 0.66.0 offers no `session/close`, so a long-lived agent process keeps every session it opened, a few MB each. That includes Enhance prompt's fallback sessions and hidden command sessions. GeminiCode closes sessions as soon as a CLI advertises `sessionCapabilities.close`. Until a CLI does, a process holding eight or more sessions that has served no prompt for half an hour is restarted (`agentService.ts`, `recycleIfIdle`); its chats reopen their sessions by id on their next prompt, and the status bar's menu shows the count and the last such restart.
+
+### Stopping one shell command
+
+Upstream's agents can stop a background shell command without ending the turn. The Gemini CLI runs shell commands itself (GeminiCode reports `terminal: false` in `clientCapabilities`, `agentConnection.ts`), and offers no way to stop one of them over ACP; only `session/cancel`, which ends the whole turn. Build it when the CLI runs commands through the client's terminals or offers a stop.
 
 ### Build files changed through the shell
 
@@ -102,10 +102,6 @@ Check that the release's signing step signs the `rg` binaries added to the bundl
 ### More platforms
 
 Windows first: one more runner in the release workflow and a code-signing certificate. Then Intel Macs and Linux if users ask. Bring this forward when Windows users join.
-
-### Auto-update
-
-The update notice links to the download page. Upstream's updater needs a server that answers per build, which a static GitHub Pages site cannot be, so full auto-update needs a small update server.
 
 ### Compat CI
 

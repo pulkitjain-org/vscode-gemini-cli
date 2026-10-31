@@ -8,7 +8,7 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { googleAccountsPath, readActiveAccount } from '../acp/accounts';
 import { CliResolution } from '../acp/cliResolution';
-import { cliDocsUrl, defaultIssueUrl, issueUrl } from '../acp/helpLinks';
+import { cliDocsUrl } from '../acp/helpLinks';
 import type { ModelQuota } from '../acp/directRequest';
 import { AgentStatus } from '../acp/status';
 import { AgentService } from './agentService';
@@ -18,7 +18,8 @@ import { teamStatusSummary } from '../acp/teamStatus';
 import type { TeamConnections } from './teamConnections';
 import type { WorkspaceIndex } from './workspaceIndex';
 import { relativeTime } from './displayText';
-import { configSection, getProjectSettings, productInfo } from './configuration';
+import { reportProblemCommand } from './reportProblem';
+import { configSection, getProjectSettings } from './configuration';
 import { developerToolsOn } from './developerTools';
 import { escapeMarkdown } from './markdown';
 
@@ -44,6 +45,11 @@ export class GeminiStatusBar implements vscode.Disposable {
 	private readonly disposables: vscode.Disposable[] = [];
 	private readonly accountsFile = googleAccountsPath(process.env, os.homedir());
 	private account: string | undefined;
+
+	/** The signed-in account's name, as the CLI reports it; unset until known. */
+	get accountName(): string | undefined {
+		return this.account;
+	}
 	/** The last CLI seen, kept while the agent is down so the tooltip still says which CLI failed. */
 	private cli: string | undefined;
 	/** Today's quota use per model, from the usage meter. */
@@ -234,7 +240,7 @@ export class GeminiStatusBar implements vscode.Disposable {
 			] : [],
 			{ label: '', kind: vscode.QuickPickItemKind.Separator },
 			{ label: vscode.l10n.t("$(book) Gemini CLI Docs"), run: () => void vscode.env.openExternal(vscode.Uri.parse(cliDocsUrl)) },
-			{ label: vscode.l10n.t("$(report) Report an Issue..."), detail: vscode.l10n.t("Opens a new issue with the GeminiCode, VS Code, Gemini CLI and OS versions filled in"), run: () => void this.reportIssue() },
+			{ label: vscode.l10n.t("$(report) Report a Problem"), detail: vscode.l10n.t("A report with the versions, the last failed turn and the recent log, for you to read over and paste"), command: reportProblemCommand },
 		];
 		const picked = await vscode.window.showQuickPick(items, { title: vscode.l10n.t("Gemini: {0}", describePhase(status).label) });
 		if (picked?.run) {
@@ -277,15 +283,6 @@ export class GeminiStatusBar implements vscode.Disposable {
 		return summary.word === 'attention' ? vscode.l10n.t("{0}; one needs attention", names) : summary.word === 'vpnOff' ? vscode.l10n.t("{0}; VPN off", names) : names;
 	}
 
-	private async reportIssue(): Promise<void> {
-		const url = issueUrl(productInfo.reportIssueUrl ?? defaultIssueUrl, {
-			geminiCode: productInfo.version,
-			vscode: vscode.version,
-			os: `${process.platform} ${os.release()} (${process.arch})`,
-			...(this.cli ? { cli: `${this.cli}${describeCliSource(this.service.cli)}` } : {}),
-		});
-		await vscode.env.openExternal(vscode.Uri.parse(url));
-	}
 }
 
 /** From this share of a model's daily quota, the bar shows the percentage. */

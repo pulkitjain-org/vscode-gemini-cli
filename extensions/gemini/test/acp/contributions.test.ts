@@ -17,10 +17,18 @@ interface Keybinding {
 	readonly when?: string;
 }
 
+interface MenuEntry {
+	readonly command?: string;
+	readonly submenu?: string;
+	readonly when?: string;
+	readonly group?: string;
+}
+
 interface Contributions {
 	readonly commands: readonly { readonly command: string; readonly title: string }[];
 	readonly keybindings: readonly Keybinding[];
-	readonly menus: { readonly commandPalette: readonly { readonly command: string; readonly when?: string }[] };
+	readonly submenus: readonly { readonly id: string; readonly label: string }[];
+	readonly menus: { readonly commandPalette: readonly { readonly command: string; readonly when?: string }[] } & Record<string, readonly MenuEntry[]>;
 	readonly configuration: readonly { readonly title: string; readonly properties: Record<string, unknown> }[];
 }
 
@@ -72,17 +80,80 @@ describe('package.json', () => {
 		expect({ sections, deprecated, enums }).toEqual({
 			sections: [
 				{ title: 'Gemini: Account and CLI', order: 1, settings: 8 },
-				{ title: 'Gemini: Agents', order: 2, settings: 12 },
+				{ title: 'Gemini: Agents', order: 2, settings: 13 },
 				{ title: 'Gemini: Chat', order: 3, settings: 8 },
 				{ title: 'Gemini: Browser', order: 4, settings: 3 },
 				{ title: 'Gemini: Workspace Index and Docs', order: 5, settings: 5 },
 				{ title: 'Gemini: Team Tools', order: 6, settings: 3 },
 				{ title: 'Gemini: Administration', order: 7, settings: 10 },
-				{ title: 'Gemini: Developer', order: 8, settings: 2 },
+				{ title: 'Gemini: Developer', order: 8, settings: 1 },
 			],
 			deprecated: ['gemini.agent.startEarly', 'gemini.notifications.enabled', 'gemini.agents.mergeBack', 'gemini.storage.keepLogsDays'],
 			enums: [],
 		});
+	});
+
+	it('puts New agent and New project in the Agents pane\'s title bar, the rest under its ...', () => {
+		const title = contributes.menus['view/title'].filter(entry => entry.when?.startsWith('view == gemini.agents'));
+		expect(title.map(entry => `${entry.command} ${entry.group}`)).toEqual([
+			'gemini.agents.newAgent navigation@1',
+			'gemini.projects.new navigation@2',
+			'gemini.agents.addWorkspace 1_more@1',
+			'gemini.home 1_more@2',
+			'gemini.reviewChanges 1_more@3',
+			'gemini.projectSettings 1_more@4',
+			'gemini.connections 1_more@5',
+		]);
+		expect(title.find(entry => entry.command === 'gemini.projects.new')?.when).toBe('view == gemini.agents && config.gemini.projects.enabled');
+	});
+
+	it('gives an agent row Open, Rename, Fork, Stop, More and Remove, and a workspace row its starts, Index and Remove', () => {
+		const rows = contributes.menus['view/item/context'].filter(entry => !entry.group?.startsWith('inline'));
+		const on = (row: RegExp) => rows.filter(entry => row.test(entry.when ?? '')).map(entry => `${entry.command ?? `submenu ${entry.submenu}`} ${entry.group}`);
+		expect({ agent: on(/\^agent|\\\.(forkable|busy)/), workspace: on(/\^workspace/) }).toEqual({
+			agent: ['gemini.agents.open 1_agent@1', 'gemini.agents.rename 1_agent@2', 'gemini.agents.fork 1_agent@3', 'gemini.agents.stop 1_agent@4', 'submenu gemini.agents.more 2_more@1', 'gemini.agents.remove 3_remove@1'],
+			workspace: ['gemini.agents.newAgent 1_agent@1', 'gemini.agents.newAgentOnBranch 1_agent@2', 'gemini.projects.new 1_agent@3', 'submenu gemini.agents.index 2_more@1', 'gemini.agents.removeWorkspace 3_remove@1'],
+		});
+		// Nothing is left on a section row: the list has none.
+		expect(contributes.menus['view/item/context'].filter(entry => entry.when?.includes('section'))).toEqual([]);
+	});
+
+	it('keeps the rest of an agent row\'s menu under More, and a workspace\'s index commands under Index, each with the when clause of its row', () => {
+		expect(contributes.submenus.map(submenu => [submenu.id, strings[submenu.label.slice(1, -1)]])).toEqual([['gemini.agents.more', 'More'], ['gemini.agents.index', 'Index']]);
+		const more = contributes.menus['gemini.agents.more'].map(entry => [entry.command, entry.when?.replace('view == gemini.agents && ', '')]);
+		expect(more).toEqual([
+			['gemini.agents.openChanges', 'viewItem =~ /\\.changes$/'],
+			['gemini.agents.mergeBack', 'viewItem =~ /\\.worktree/'],
+			['gemini.agents.tryInWorkspace', 'viewItem =~ /\\.worktree/'],
+			['gemini.agents.takeBack', 'viewItem =~ /\\.trying/'],
+			['gemini.agents.moveToBranch', 'viewItem =~ /\\.movable/'],
+			['gemini.agents.openTerminal', 'viewItem =~ /^agent/'],
+			['gemini.agents.openAsMarkdown', 'viewItem =~ /^agent/'],
+			['gemini.agents.keepTab', 'viewItem =~ /^agent/'],
+			['gemini.projects.newThread', 'viewItem =~ /\\.project$/ && config.gemini.projects.enabled'],
+			['gemini.projects.settings', 'viewItem =~ /\\.project$/ && config.gemini.projects.enabled'],
+		]);
+		const index = contributes.menus['gemini.agents.index'].map(entry => [entry.command, entry.when?.replace('view == gemini.agents && ', '')]);
+		expect(index).toEqual([
+			['gemini.index.open', 'viewItem =~ /^workspace(\\.git)?$/'],
+			['gemini.index.rebuild', 'viewItem =~ /^workspace(\\.git)?$/ && config.gemini.index.enabled'],
+			['gemini.index.pause', 'viewItem =~ /^workspace(\\.git)?$/ && config.gemini.index.enabled'],
+		]);
+		// Every submenu entry's when clause names the view, as its row's does.
+		expect([...contributes.menus['gemini.agents.more'], ...contributes.menus['gemini.agents.index']].filter(entry => !entry.when?.startsWith('view == gemini.agents && '))).toEqual([]);
+	});
+
+	it('offers Keep in own tab in the shared agent tab\'s title bar, and from nowhere in the palette', () => {
+		expect(contributes.menus['editor/title'].find(entry => entry.command === 'gemini.agents.keepTab')?.when).toBe('activeWebviewPanelId == \'gemini.agent\' && gemini.sharedAgentTab');
+		expect(contributes.menus.commandPalette.find(entry => entry.command === 'gemini.agents.keepTab')?.when).toBe('false');
+		expect(strings['command.agents.keepTab']).toBe('Keep in own tab');
+	});
+
+	it('offers Move to its own branch in the title bar of an agent in the user\'s checkout, in its row\'s More menu, and from nowhere in the palette', () => {
+		expect(contributes.menus['editor/title'].find(entry => entry.command === 'gemini.agents.moveToBranch')?.when).toBe('activeWebviewPanelId == \'gemini.agent\' && gemini.agentMovable');
+		expect(contributes.menus['gemini.agents.more'].find(entry => entry.command === 'gemini.agents.moveToBranch')?.when).toBe('view == gemini.agents && viewItem =~ /\\.movable/');
+		expect(contributes.menus.commandPalette.find(entry => entry.command === 'gemini.agents.moveToBranch')?.when).toBe('false');
+		expect(strings['command.agents.moveToBranch']).toBe('Move to its own branch');
 	});
 
 	it('has a string for every command title and setting description', () => {

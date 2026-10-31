@@ -26,18 +26,19 @@ const contributes = (JSON.parse(readFileSync(path.join(root, 'package.json'), 'u
 
 /** The budgets, with the count as of the latest change to each. */
 export const surfaceBudgets = {
-	// Commands in the palette with developer tools off: 49 as of 1.7, plus Report a Problem.
-	paletteCommands: 50,
+	// Commands in the palette with developer tools off: 49 as of 1.7; 46 in 1.8, when Troubleshoot took in sign-in, setup, the
+	// project id, the log and the restart, and Report a Problem came in.
+	paletteCommands: 46,
 	// Commands the palette adds with gemini.developer.showTools on: 8.
 	developerCommands: 8,
 	// Settings that are not deprecated: 47 as of 1.7.
 	settings: 47,
-	// Right-click entries an agent row can show at most (its own, a project's, a forkable one's, one on a worktree, one being tried): 12 as of 1.7.
-	agentRowMenu: 12,
-	// Right-click entries on a workspace row: 7 as of 1.7.
-	workspaceRowMenu: 7,
-	// Buttons in Home's own markup, its cards' and menus' aside: 13 as of 1.7.
-	homeControls: 13,
+	// Right-click entries an agent row shows at the top level: 12 as of 1.7; 6 in 1.8, the rest under More.
+	agentRowMenu: 6,
+	// Right-click entries on a workspace row: 7 as of 1.7; 5 in 1.8, the index's under Index.
+	workspaceRowMenu: 5,
+	// Buttons in Home's own markup, its cards' and menus' aside: 13 as of 1.7; 10 in 1.8, when the tool logos, refresh, the index icon and the button row went.
+	homeControls: 10,
 } as const;
 
 function paletteWhen(command: string): string | undefined {

@@ -4,12 +4,12 @@
  *--------------------------------------------------------------------------------------------*/
 
 // Home (src/host/agentHome.ts): the dashboard GeminiCode opens with. A
-// composer that starts a new agent, the team tools' state, cards for
-// agents, tickets, merge requests, quality, releases and Gemini, and earlier
-// agents to resume.
+// composer that starts a new agent, banners for the team servers in trouble,
+// and the cards: what is pending on the user, their tickets, the agents, and
+// the ones the gear menu turns on.
 
 import { type Attachment, attachmentLabel } from '../src/acp/attachments';
-import type { FromHome, HomeAction, HomeAgent, HomeButton, HomeCard, HomeDashboard, HomeRow, HomeView, ToHome } from '../src/host/panelProtocol';
+import type { FromHome, HomeAction, HomeButton, HomeCard, HomeDashboard, HomeRow, HomeView, ToHome } from '../src/host/panelProtocol';
 import type { HomeStrings } from '../src/host/panelStrings';
 import { attachmentIcon, sameAttachment } from './chatLogic';
 import { modeIcon } from './modeIcon';
@@ -52,9 +52,6 @@ const coordinatorNote = document.getElementById('coordinator')!;
 const needsTrust = document.getElementById('needs-trust')!;
 const trustButton = needsTrust.querySelector('button')!;
 const attachmentList = document.getElementById('attachments')!;
-const active = document.getElementById('active')!;
-const earlier = document.getElementById('earlier')!;
-const projects = document.getElementById('projects')!;
 
 const title = document.getElementById('title')!;
 const subtitle = document.getElementById('subtitle')!;
@@ -67,14 +64,6 @@ setTip(start, strings.start);
 start.querySelector('span')!.textContent = strings.start;
 fromToolsButton.querySelector('span')!.textContent = strings.fromTools;
 setTip(fromToolsButton, strings.fromTools);
-const helpers = document.getElementById('helpers') as HTMLButtonElement;
-helpers.querySelector('span')!.textContent = strings.agentSetup;
-setTip(helpers, strings.agentSetupHint);
-helpers.addEventListener('click', () => vscode.postMessage({ type: 'agentSetup' }));
-const indexState = document.getElementById('index-state') as HTMLButtonElement;
-// A database drum: its outline, and a fill the state's class shows full, half or not at all. Static markup, never page data.
-indexState.innerHTML = '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path class="fill-full" d="M3 4v8.5c0 1.1 2.2 2 5 2s5-.9 5-2V4c0 1.1-2.2 2-5 2S3 5.1 3 4z"/><path class="fill-half" d="M3 8.5v4c0 1.1 2.2 2 5 2s5-.9 5-2v-4c0 1.1-2.2 2-5 2s-5-.9-5-2z"/><ellipse cx="8" cy="4" rx="5" ry="2"/><path d="M3 4v8.5c0 1.1 2.2 2 5 2s5-.9 5-2V4"/></svg>';
-indexState.addEventListener('click', () => vscode.postMessage({ type: 'openIndex' }));
 setTip(plusButton, strings.plusMenu);
 plusButton.setAttribute('aria-label', strings.plusMenu);
 coordinatorNote.textContent = strings.coordinatorSettings;
@@ -189,7 +178,7 @@ function loadMenus(): Promise<HomeMenus> {
 			reportTyping();
 		},
 		run,
-		logo: (tool, size) => toolLogo(tool, size),
+		logo,
 		tip: setTip,
 		fallbackFocus: () => prompt,
 	}));
@@ -225,13 +214,6 @@ function pickFolder(next: string): void {
 function updateControls(): void {
 	const current = view?.workspaces.find(w => w.folder === folder);
 	workspaceLabel.textContent = current?.name ?? strings.addFolder;
-	const index = current?.index;
-	indexState.hidden = !index;
-	if (index) {
-		indexState.className = `index-state ${index.state}`;
-		setTip(indexState, index.label);
-		indexState.setAttribute('aria-label', index.label);
-	}
 	const label = current ? `${strings.workspace}: ${current.description}/${current.name}` : strings.workspace;
 	setTip(workspaceButton, label);
 	workspaceButton.setAttribute('aria-label', label);
@@ -331,8 +313,6 @@ function drawKeyed<T extends { readonly id: string }>(parent: HTMLElement, cache
 	kept.forEach((entry, id) => cache.set(id, entry));
 }
 
-const activeCards = el('div', 'cards');
-const agentCards: Drawn = new Map();
 const dashCards: Drawn = new Map();
 
 function render(next: HomeView): void {
@@ -341,118 +321,7 @@ function render(next: HomeView): void {
 		folder = next.workspaces[0]?.folder ?? '';
 	}
 	updateControls();
-
-	const note = !next.workspaces.length ? strings.noWorkspace : !next.active.length ? strings.noAgents : '';
-	if (changed(active, note)) {
-		active.replaceChildren(el('h2', undefined, strings.active), ...note ? [el('p', 'muted', note)] : [], activeCards);
-	}
-	drawKeyed(activeCards, agentCards, next.active, card);
-
-	if (changed(projects, next.projects ?? null)) {
-		renderProjects(next);
-	}
 	renderDashboard(next.dashboard);
-	// The Agents card lists them; the big cards show only while it's hidden.
-	active.hidden = next.dashboard.cards.some(c => c.id === 'agents');
-
-	if (!changed(earlier, next.earlier)) {
-		return;
-	}
-	earlier.replaceChildren();
-	earlier.hidden = !next.earlier.length;
-	if (next.earlier.length) {
-		earlier.append(el('h2', undefined, strings.earlier));
-		const rows = el('div', 'earlier');
-		for (const agent of next.earlier) {
-			const row = el('button', 'earlier-row');
-			row.type = 'button';
-			row.append(icon('comment-discussion'), el('span', 'title', agent.title), el('span', 'muted', [agent.workspace, agent.branch, agent.updated].filter(Boolean).join(' · ')));
-			row.addEventListener('click', () => vscode.postMessage({ type: 'open', id: agent.id }));
-			rows.append(row);
-		}
-		earlier.append(rows);
-	}
-}
-
-/** Projects, apart from the agents: each opens its project chat. */
-function renderProjects(next: HomeView): void {
-	projects.replaceChildren();
-	projects.hidden = !next.projects;
-	if (!next.projects) {
-		return;
-	}
-	const heading = el('div', 'section-heading');
-	const add = tipButton('icon-button', '', () => vscode.postMessage({ type: 'newProject' }), 'add', strings.newProject);
-	heading.append(el('h2', undefined, strings.projects), add);
-	projects.append(heading);
-	if (!next.projects.length) {
-		projects.append(el('p', 'muted', strings.noProjects));
-		return;
-	}
-	const rows = el('div', 'earlier');
-	for (const project of next.projects) {
-		const row = el('button', `earlier-row project-row ${project.state}`);
-		row.type = 'button';
-		row.append(icon('project'), el('span', 'title', project.title), el('span', 'muted', [project.workspace, project.threads, project.updated].join(' · ')));
-		row.addEventListener('click', () => vscode.postMessage({ type: 'open', id: project.id }));
-		rows.append(row);
-	}
-	projects.append(rows);
-}
-
-/** What an agent's card's buttons do, and how they are drawn: the message, its label and icon. */
-type AgentButton = readonly [HomeAgent['buttons'][number]['do'], string, string?];
-
-/**
- * An agent's card, or `old` brought up to date in place. A click anywhere on
- * it opens the agent; from the keyboard, its Open button does, so the card
- * is not itself a control holding others.
- */
-function card(agent: HomeAgent, old?: HTMLElement): HTMLElement {
-	const node = old ?? el('article');
-	if (!old) {
-		node.addEventListener('click', () => vscode.postMessage({ type: 'open', id: agent.id }));
-		const head = el('div', 'card-head');
-		head.append(el('span', 'dot'), el('span', 'title'), el('span', 'muted'));
-		node.append(head, el('div', 'card-status'), el('div', 'card-meta muted'), el('div', 'card-actions'));
-	}
-	node.className = `card ${agent.state}`;
-	node.setAttribute('aria-label', `${agent.title}, ${agent.status}`);
-	const [head, status, meta, actions] = [...node.children] as HTMLElement[];
-	head.children[1].textContent = agent.title;
-	head.children[2].textContent = agent.updated;
-	status.textContent = agent.status;
-	meta.replaceChildren(el('span', undefined, agent.workspace));
-	if (agent.branch) {
-		const branch = el('span', 'branch');
-		branch.append(icon('git-branch'), el('span', undefined, agent.branch));
-		meta.append(branch);
-	}
-	if (agent.changes) {
-		meta.append(el('span', undefined, agent.changes));
-	}
-	// The buttons come from the host's one action set; drawn again only when they change.
-	const shown: AgentButton[] = agent.buttons.map(b => [b.do, b.label, b.icon] as const);
-	if (changed(actions, shown)) {
-		actions.replaceChildren(...agent.buttons.map(b => {
-			const node: HTMLButtonElement = button(b.primary ? 'primary' : b.do === 'tryMenu' ? 'secondary try-menu' : 'secondary', b.label, () => b.do === 'tryMenu' ? openTryMenu(node, agent.id) : vscode.postMessage({ type: b.do, id: agent.id }), b.icon);
-			if (b.do === 'tryMenu') {
-				node.setAttribute('aria-label', strings.tryMenu);
-			}
-			return node;
-		}));
-	}
-	return node;
-}
-
-/** The Try chevron's menu, for the card as the view shows it now: its buttons are drawn again only when they change. */
-function openTryMenu(anchor: HTMLElement, id: string): void {
-	void loadMenus().then(loaded => {
-		const agent = view?.active.find(a => a.id === id) ?? view?.earlier.find(a => a.id === id);
-		if (agent) {
-			loaded.toggleTry(anchor, agent, choice => vscode.postMessage({ type: 'tryChoice', id, choice }));
-		}
-	});
 }
 
 function workspaceTrust(): string | undefined {
@@ -550,28 +419,22 @@ prompt.addEventListener('input', () => {
 
 // --- The dashboard
 
-const tools = document.getElementById('tools')!;
 const stale = document.getElementById('stale')!;
-const refreshButton = document.getElementById('refresh') as HTMLButtonElement;
 const customizeButton = document.getElementById('customize') as HTMLButtonElement;
 const banners = document.getElementById('banners')!;
-const quick = document.getElementById('quick')!;
 const setup = document.getElementById('setup')!;
 const cardsSection = document.getElementById('cards')!;
 
 setTip(customizeButton, strings.customize);
 customizeButton.setAttribute('aria-label', strings.customize);
-setTip(refreshButton, strings.refresh);
-refreshButton.setAttribute('aria-label', strings.refresh);
-refreshButton.addEventListener('click', () => vscode.postMessage({ type: 'refresh' }));
 
 type HomePopupsModule = typeof import('./homePopups');
 const homePopupsUrl = document.querySelector<HTMLScriptElement>('script[data-home-popups]')?.dataset.homePopups;
 let homePopups: Promise<HomePopups> | undefined;
-/** Show All's popup and Customize, once loaded. */
+/** Show all's popup and the gear menu, once loaded. */
 let popups: HomePopups | undefined;
 
-/** Show All's popup and the Customize menu, a chunk of their own loaded the first time either opens. */
+/** Show all's popup and the gear menu, a chunk of their own loaded the first time either opens. */
 function loadPopups(): Promise<HomePopups> {
 	// eslint-disable-next-line no-restricted-syntax
 	homePopups ??= Promise.all([homePopupsUrl ? import(/* webpackIgnore: true */ homePopupsUrl) as Promise<HomePopupsModule> : Promise.reject(new Error('no popups')), loadMenus()]).then(([module, loaded]) => popups = module.createHomePopups({
@@ -585,12 +448,11 @@ function loadPopups(): Promise<HomePopups> {
 		dashRow,
 		groupHeading,
 		logo,
-		queryText,
 	}));
 	return homePopups;
 }
 
-// Until the chunk is loaded; then the Customize menu opens and closes itself.
+// Until the chunk is loaded; then the gear menu opens and closes itself.
 customizeButton.addEventListener('click', () => void (popups ? undefined : loadPopups().then(loaded => loaded.openCustomize())));
 
 function run(action: HomeAction): void {
@@ -622,18 +484,12 @@ function loadCommentBox(): Promise<CommentBox> {
 	return commentBox;
 }
 
-function queryText(text: string): HTMLElement {
-	const query = el('span', 'dash-query', text);
-	setTip(query, text);
-	return query;
-}
-
-/** A heading inside a list, such as Mine or the sprint's name, from the row that starts its group. */
+/** A heading inside a list, such as Mine or the sprint's name, from the row that starts its group; what is behind it is its tooltip. */
 function groupHeading(row: HomeRow): HTMLElement {
-	const heading = el('div', 'dash-group');
+	const heading = el('div', `dash-group${row.groupTone ? ` ${row.groupTone}` : ''}`);
 	heading.append(el('span', undefined, row.group ?? ''));
 	if (row.groupQuery) {
-		heading.append(el('span', `dash-query${row.groupTone ? ` ${row.groupTone}` : ''}`, row.groupQuery));
+		setTip(heading, row.groupQuery);
 	}
 	return heading;
 }
@@ -655,33 +511,13 @@ function renderDashboard(dash: HomeDashboard): void {
 	stale.hidden = !dash.stale;
 	stale.textContent = dash.stale ?? '';
 	// Each part is drawn again only when what it shows changed: Home gets a new view every moment while agents work.
-	if (changed(tools, dash.tools)) {
-		tools.replaceChildren(...dash.tools.map(tool => {
-			const node = el('span', `dash-tool ${tool.tone}`);
-			setTip(node, tool.label);
-			node.setAttribute('role', 'img');
-			node.setAttribute('aria-label', tool.label);
-			node.append(toolLogo(tool.id, 18));
-			node.addEventListener('click', () => run({ kind: 'command', command: 'gemini.connections' }));
-			return node;
-		}));
-	}
-	refreshButton.classList.toggle('spinning', dash.refreshing);
-	// One per server down or refusing its token; the extension drops each once its server answers.
+	// One banner per server down or refusing its token; the extension drops each once its server answers.
 	banners.hidden = !dash.banners?.length;
 	if (changed(banners, dash.banners ?? [])) {
 		banners.replaceChildren(...(dash.banners ?? []).map(banner => {
 			const node = el('div', `dash-banner ${banner.tone}`);
 			node.setAttribute('role', 'status');
 			node.append(icon(banner.tone === 'error' ? 'error' : 'warning'), el('span', undefined, banner.text), actionButton(banner.button));
-			return node;
-		}));
-	}
-
-	if (changed(quick, dash.quickActions)) {
-		quick.replaceChildren(...dash.quickActions.map(action => {
-			const node = button('dash-quick-action', '', () => run(action.action));
-			node.append(action.tool ? toolLogo(action.tool, 14) : icon(action.icon ?? 'play'), el('span', undefined, action.label));
 			return node;
 		}));
 	}
@@ -715,12 +551,14 @@ function dashCard(card: HomeCard): HTMLElement {
 	const node = el('article', `dash-card${card.stale ? ' stale' : ''}`);
 	node.dataset.card = card.id;
 	const head = el('div', 'dash-card-head');
-	head.append(card.tool ? logo(card.tool, 16) : icon(card.icon ?? 'circle'), el('h3', undefined, card.title));
+	const heading = el('h3', undefined, card.title);
+	// The query that fills the card, to check its numbers against the tool, one hover away.
+	if (card.query) {
+		setTip(heading, card.query);
+	}
+	head.append(card.tool ? logo(card.tool, 16) : icon(card.icon ?? 'circle'), heading);
 	if (card.link) {
 		head.append(button('link-button', card.link.label, () => run(card.link!.action)));
-	}
-	if (card.query) {
-		head.append(queryText(card.query));
 	}
 	if (card.stale && card.asOf) {
 		head.append(el('span', 'dash-pill dash-as-of', card.asOf));
@@ -748,7 +586,7 @@ function dashCard(card: HomeCard): HTMLElement {
 	return node;
 }
 
-/** A card's row; `inList` for Show All's popup, which has room for the repository. */
+/** A card's row; `inList` for Show all's popup, which has room for the repository. */
 function dashRow(row: HomeRow, inList = false): HTMLElement {
 	const node = el('div', row.dim ? 'dash-row dim' : 'dash-row');
 	if (row.tool) {

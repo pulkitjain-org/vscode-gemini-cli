@@ -37,7 +37,7 @@ When the agent edits a build file, such as `package.json`, a `Makefile` or `buil
 
 In Auto Edit, an edit to a file that decides what runs next still shows a card first: a git hook or a hook manager's settings, a build file such as `package.json`, the worktree setup script (`.gemini/*.sh`), the CLI's project settings (`.gemini/settings.json`), the folder's `.vscode/settings.json` and `.vscode/tasks.json`, and the ignore files (`.gitignore`, `.geminiignore`), which decide what the agent may read. The commits GeminiCode makes for an agent (Try in Workspace, Open Merge Request) run none of the checkout's hooks.
 
-**Gemini: Commands Allowed for This Session...** lists the command prefixes the chat in front allowed, and lets you forget any of them. Turn on **Allow for all future sessions** in [Agent Setup](helpers.md#gemini-cli-settings) to also be offered the CLI's permanent allow. The Gemini CLI saves that rule for the whole program (`npx`, not `npx vitest`) and for every folder, in `~/.gemini/policies/auto-saved.toml`, so the card shows it with the CLI's own wording, **Allow this command for all future sessions**.
+**Gemini: Commands Allowed for This Session...** lists the command prefixes the chat in front allowed, and lets you forget any of them. Turn on **Allow for all future sessions** in [Settings](helpers.md#gemini-cli-settings) to also be offered the CLI's permanent allow. The Gemini CLI saves that rule for the whole program (`npx`, not `npx vitest`) and for every folder, in `~/.gemini/policies/auto-saved.toml`, so the card shows it with the CLI's own wording, **Allow this command for all future sessions**.
 
 ## Folder trust
 
@@ -49,9 +49,9 @@ GeminiCode asks once per repository, the first time you choose a folder for agen
 - **Trust Everything in** its parent folder, offered when that folder holds other repositories too.
 - **Not Now**, which is remembered, so later starts don't ask again. Agents still work there **Here**, in Default and Plan mode; Auto Edit falls back to Default. Home says in place what needs trust, with **Trust...** to be asked again.
 
-A trusted repository's agent branches, in `~/.geminicode/worktrees/<repository>`, are trusted with it. Merge request reviews check out in `~/.geminicode/reviews`, which is never trusted, so a merge request's own settings, hooks and MCP servers never run. The choice is saved in `~/.gemini/trustedFolders.json`, and the terminal's `gemini` sees it too. [Agent Setup](helpers.md#trusted-folders) lists every rule and changes them.
+A trusted repository's agent branches, in `~/.geminicode/worktrees/<repository>`, are trusted with it. Merge request reviews check out in `~/.geminicode/reviews`, which is never trusted, so a merge request's own settings, hooks and MCP servers never run. The choice is saved in `~/.gemini/trustedFolders.json`, and the terminal's `gemini` sees it too. [Settings](helpers.md#trusted-folders) lists every rule and changes them.
 
-When trust changes elsewhere, in the terminal, Agent Setup or another window, agents pick it up once they finish their current work. While some are working, a notice says so and offers **Restart Agents Now**.
+When trust changes elsewhere, in the terminal, Settings or another window, agents pick it up once they finish their current work. While some are working, a notice says so and offers **Restart Agents Now**.
 
 ## Review changes in place
 

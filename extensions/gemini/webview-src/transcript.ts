@@ -5,6 +5,8 @@
 
 // The transcript: which items it shows, their elements, and keeping it
 // scrolled to the latest. Layout is read at most once per batch of updates.
+// The latest items are always drawn; the older ones are drawn only near the
+// view (virtualBlocks.ts), and stand as slots of their height otherwise.
 
 import type { TranscriptItem } from '../src/acp/chatTranscript';
 import type { TextAppend } from '../src/acp/textDeltas';
@@ -14,13 +16,23 @@ import { updateActivity } from './activity';
 import { format, indexOfItem, isNearBottom as nearBottom, withAppended, type ItemOf } from './chatLogic';
 import { el } from './dom';
 import { render, renderEmpty, renderNotice, renderStall, setToolCallOpen, updateThought } from './items';
-import { updateOutline } from './promptNav';
 import { renderStreamingReply, streamingReplies, updateStreamingReply } from './streamingReply';
 import { autoOpened, elements, expanded, foldOpen, runOpen, state, strings, thoughtTimes, ui } from './view';
+import { isSlot, VirtualBlocks } from './virtualBlocks';
 import { renderFoldHead, renderPinned, renderRunRow, type FoldState } from './work';
 import { foldGroups, runId, turnLayout, turnOf, turnStarts, workSummary, type FoldGroup } from './workFold';
 
 const { transcript, scrollButton, dock } = ui;
+
+/**
+ * The element drawn for item `id`, if it is drawn. `elements` (view.ts) maps
+ * an item of a block that stands as a slot to the slot, so the outline and
+ * a reaction's line scroll to where the item is; here that is not drawn.
+ */
+function rendered(id: string): HTMLElement | undefined {
+	const node = elements.get(id);
+	return node && !isSlot(node) ? node : undefined;
+}
 
 export function isNearBottom(): boolean {
 	return nearBottom(transcript.scrollHeight, transcript.scrollTop, transcript.clientHeight);
@@ -106,7 +118,7 @@ function toggleToolCall(item: ItemOf<'toolCall'>): void {
 	if (opening) {
 		expanded.add(item.id);
 	}
-	const card = elements.get(item.id);
+	const card = rendered(item.id);
 	if (card) {
 		const stick = isNearBottom();
 		const current = state.items[indexOfItem(state.items, item.id)];
@@ -182,12 +194,15 @@ function addOrUpdate(item: TranscriptItem, live: boolean): boolean {
 		}
 	} else {
 		items[index] = item;
+		if (isSlot(elements.get(item.id))) {
+			// In a block that stands as a slot: it is drawn, as it is now, when the block is.
+			return false;
+		}
 	}
-	const existing = elements.get(item.id);
-	if (!existing && index !== -1 && backfill.includes(item.id)) {
-		// Not shown yet: it is added, as it is now, with the other older items.
-		return false;
+	if (index === -1 && !resetting) {
+		releaseOlder();
 	}
+	const existing = rendered(item.id);
 	if (live && item.kind === 'toolCall' && item.status === 'failed' && !autoOpened.has(item.id)) {
 		// A step that fails while the agent works shows its output without a click, once.
 		autoOpened.add(item.id);
@@ -267,7 +282,7 @@ function foldingTurn(index: number): number {
 
 /** The element for `item`, rendered if it has none yet. */
 function elementFor(item: TranscriptItem, live: boolean): HTMLElement {
-	let node = elements.get(item.id);
+	let node = rendered(item.id);
 	if (!node) {
 		node = draw(item, live);
 		if (live) {
@@ -280,7 +295,7 @@ function elementFor(item: TranscriptItem, live: boolean): HTMLElement {
 
 /** Forgets the element of an item that is no longer shown, so it is rendered afresh when it is. */
 function forget(id: string): void {
-	elements.get(id)?.remove();
+	rendered(id)?.remove();
 	elements.delete(id);
 	streamingReplies.delete(id);
 }
@@ -317,9 +332,9 @@ function layoutTurn(start: number, live: boolean): void {
 function layoutTurnNow(start: number, live: boolean): void {
 	const { items } = state;
 	const prompt = items[start];
-	const promptNode = prompt && elements.get(prompt.id);
+	const promptNode = prompt && rendered(prompt.id);
 	if (!promptNode) {
-		// Not shown yet: the older items add it, laid out, when they come.
+		// Its block stands as a slot: it is laid out when the block is drawn.
 		return;
 	}
 	const following = starts.find(index => index > start);
@@ -477,7 +492,7 @@ function showOutput(key: string, call: ItemOf<'toolCall'>): void {
 	foldOpen.set(key, true);
 	expanded.add(call.id);
 	relayout(key);
-	elements.get(call.id)?.scrollIntoView({ block: 'nearest' });
+	rendered(call.id)?.scrollIntoView({ block: 'nearest' });
 }
 
 /** Turns folding on or off, and shows the transcript again that way. */
@@ -500,7 +515,7 @@ export function appended(update: TextAppend): TranscriptItem | undefined {
 }
 
 function rerender(item: TranscriptItem): void {
-	const existing = elements.get(item.id);
+	const existing = rendered(item.id);
 	if (existing) {
 		keepFocus(() => refresh(existing, item, false));
 	}
@@ -524,6 +539,7 @@ function refresh(existing: HTMLElement, item: TranscriptItem, live: boolean): vo
 	}
 	existing.replaceWith(node);
 	elements.set(item.id, node);
+	blocks.replaced(existing, node);
 }
 
 /** Renders finished replies as a whole, which also mends anything split across blocks (a loose list). */
@@ -537,18 +553,129 @@ function finishStreamingReplies(): void {
 	}
 }
 
-/** How many of the newest items a reset shows at once; older ones follow in idle time. */
-const firstItems = 30;
-/** How many older items each idle slice adds. */
-const backfillChunk = 20;
-/** Older items a reset has not shown yet, oldest first; their elements are added above the rest. */
-let backfill: string[] = [];
-let backfillHandle: number | undefined;
+/**
+ * How many of the latest items are always drawn. The older ones are blocks
+ * (`blocks`): a turn with work folding, else one item, drawn only within
+ * reach of the view. As items arrive, the drawn part grows to twice this
+ * before the oldest of it is released to the blocks.
+ */
+const liveItems = 60;
+/** The index of the first of the latest items; everything before it is in a block. */
+let liveFrom = 0;
+
+const blocks = new VirtualBlocks({
+	root: transcript,
+	render: renderBlock,
+	unrender: unrenderBlock,
+	nodes: blockNodes,
+});
+
+/** The first item of the block after the one starting at `from`, or the first live item. */
+function blockEnd(from: number): number {
+	if (!state.foldWork) {
+		return from + 1;
+	}
+	const next = starts.find(start => start > from);
+	return next === undefined ? liveFrom : Math.min(next, liveFrom);
+}
+
+/** The first item of each block in `[from, to)`: each turn's prompt (and anything before the first), or each item. */
+function blockStarts(from: number, to: number): number[] {
+	if (from >= to) {
+		return [];
+	}
+	if (!state.foldWork) {
+		return Array.from({ length: to - from }, (_, i) => from + i);
+	}
+	return [from, ...starts.filter(start => start > from && start < to)];
+}
+
+/** `cut`, moved back to the start of its turn when work folds, so a fold is laid out with all its steps. */
+function wholeTurns(cut: number, turns: readonly number[]): number {
+	const turn = state.foldWork ? turnOf(turns, cut) : -1;
+	return turn === -1 ? cut : turn;
+}
+
+/** Draws the block starting at `from` in place of `slot`: a prompt with its turn laid out, or plain items. */
+function renderBlock(from: number, slot: HTMLElement): void {
+	const { items } = state;
+	const to = blockEnd(from);
+	const first = items[from];
+	if (state.foldWork && first.kind === 'user') {
+		const node = renderItem(first);
+		elements.set(first.id, node);
+		slot.replaceWith(node);
+		layoutTurn(from, false);
+	} else {
+		const nodes = items.slice(from, to).map(item => {
+			const node = renderItem(item);
+			elements.set(item.id, node);
+			return node;
+		});
+		slot.replaceWith(...nodes);
+	}
+	for (const node of blockNodes(from)) {
+		node.classList.add('settled');
+	}
+	if (items.slice(from, to).some(item => item.kind === 'permission' && !item.answer)) {
+		markNewestCard();
+	}
+}
+
+/** Forgets the block's elements; `slot` stands for its items from now on. */
+function unrenderBlock(from: number, slot: HTMLElement): void {
+	const { items } = state;
+	const to = blockEnd(from);
+	const fold = folds.get(items[from].id);
+	if (fold) {
+		fold.remove();
+		folds.delete(items[from].id);
+		for (const [id, node] of runElements) {
+			if (!node.isConnected) {
+				runElements.delete(id);
+			}
+		}
+	}
+	for (let i = from; i < to; i++) {
+		forget(items[i].id);
+		elements.set(items[i].id, slot);
+	}
+}
+
+/** The drawn block's elements in the transcript: from its first item's to the next block's, or the first live item's. */
+function blockNodes(from: number): HTMLElement[] {
+	const { items } = state;
+	const first = rendered(items[from].id);
+	const stop = elements.get(items[blockEnd(from)]?.id ?? '');
+	if (!first || first.parentElement !== transcript || !stop) {
+		return [];
+	}
+	const nodes: HTMLElement[] = [];
+	for (let node: HTMLElement | null = first; node && node !== stop; node = node.nextElementSibling as HTMLElement | null) {
+		nodes.push(node);
+	}
+	return nodes;
+}
+
+/** Once the drawn part has grown to twice `liveItems`, its oldest turns become blocks, taken out when far from the view. */
+function releaseOlder(): void {
+	const { items } = state;
+	if (items.length - liveFrom < liveItems * 2) {
+		return;
+	}
+	const next = wholeTurns(items.length - liveItems, starts);
+	if (next <= liveFrom) {
+		return;
+	}
+	const froms = blockStarts(liveFrom, next);
+	liveFrom = next;
+	blocks.release(froms);
+}
 
 /**
- * Shows `newItems` in place of the transcript. A long chat shows its newest
- * items at once and adds the older ones above them in idle time, newest
- * first, so it opens as fast as a short one; Markdown is the slow part.
+ * Shows `newItems` in place of the transcript: the latest at once, the
+ * older ones as slots of their estimated height, drawn as they come within
+ * reach of the view, so a long chat opens as fast as a short one.
  */
 export function reset(newItems: readonly TranscriptItem[]): void {
 	streamingReplies.clear();
@@ -556,16 +683,19 @@ export function reset(newItems: readonly TranscriptItem[]): void {
 	elements.clear();
 	folds.clear();
 	runElements.clear();
-	cancelBackfill();
-	let split = Math.max(0, newItems.length - firstItems);
-	const turn = state.foldWork ? turnOf(turnStarts(newItems), split) : -1;
-	if (turn !== -1) {
-		// Whole turns, so each fold is laid out with all its steps.
-		split = turn;
-	}
+	blocks.clear();
+	const split = wholeTurns(Math.max(0, newItems.length - liveItems), turnStarts(newItems));
 	state.items = newItems.slice(0, split);
 	starts = turnStarts(state.items);
-	backfill = state.items.map(item => item.id);
+	liveFrom = split;
+	const froms = blockStarts(0, split);
+	const slots = blocks.slotsFor(froms.map(from => ({ from, elements: state.foldWork && state.items[from].kind === 'user' ? 3 : blockEnd(from) - from })));
+	froms.forEach((from, i) => {
+		for (let index = from; index < blockEnd(from); index++) {
+			elements.set(state.items[index].id, slots[i]);
+		}
+	});
+	transcript.append(...slots);
 	// No layout reads while adding, so the shown part is laid out once.
 	resetting = true;
 	try {
@@ -590,62 +720,6 @@ export function reset(newItems: readonly TranscriptItem[]): void {
 		runOpen.clear();
 		autoOpened.clear();
 	}
-	if (backfill.length) {
-		backfillHandle = requestIdleCallback(addOlder, { timeout: 500 });
-	}
-}
-
-function cancelBackfill(): void {
-	if (backfillHandle !== undefined) {
-		cancelIdleCallback(backfillHandle);
-		backfillHandle = undefined;
-	}
-	backfill = [];
-}
-
-/** Adds the next slice of older items above the ones shown, keeping a view at the bottom there. */
-function addOlder(deadline: IdleDeadline): void {
-	backfillHandle = undefined;
-	const stick = isNearBottom();
-	while (backfill.length && (deadline.timeRemaining() > 4 || deadline.didTimeout)) {
-		// The backfill is the first items, in order, so an id's place in it is its index.
-		let cut = Math.max(0, backfill.length - backfillChunk);
-		const turn = state.foldWork ? turnOf(starts, cut) : -1;
-		if (turn !== -1) {
-			// Whole turns: a fold is laid out with all its steps.
-			cut = turn;
-		}
-		const from = cut;
-		const ids = backfill.splice(cut);
-		const nodes = ids.flatMap((id, i) => {
-			const item = state.items[from + i];
-			if (!item || foldingTurn(from + i) !== -1) {
-				// A turn's steps and answer go where its layout puts them, below.
-				return [];
-			}
-			const node = renderItem(item);
-			elements.set(id, node);
-			return [node];
-		});
-		transcript.prepend(...nodes);
-		for (const start of starts) {
-			if (start >= from && start < from + ids.length) {
-				layoutTurn(start, false);
-			}
-		}
-		markSettled(true);
-		if (deadline.didTimeout) {
-			break;
-		}
-	}
-	if (stick) {
-		scrollToBottom();
-	}
-	if (backfill.length) {
-		backfillHandle = requestIdleCallback(addOlder, { timeout: 500 });
-	} else {
-		updateOutline();
-	}
 }
 
 /** How many of the latest elements are always laid out (chat.css, `.settled`). */
@@ -662,6 +736,9 @@ function markSettled(all: boolean): void {
 	const children = transcript.children;
 	for (let i = children.length - liveElements - 1; i >= 0; i--) {
 		const child = children[i];
+		if (isSlot(child)) {
+			continue;
+		}
 		if (child.classList.contains('settled')) {
 			if (!all) {
 				return;
