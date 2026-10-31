@@ -106,9 +106,24 @@ function row(key: string, setting: ContributedSetting): SettingRow {
 
 /** The sections in their contributed order, each setting in its contributed order. */
 export function settingSections(configuration: readonly ContributedSection[]): SettingSection[] {
-	return configuration
+	const sections = configuration
 		.map((section, index) => ({ title: section.title, order: section.order ?? index, settings: Object.entries(section.properties).map(([key, setting]) => row(key, setting)) }))
 		.sort((a, b) => a.order - b.order);
+	// Two settings with the same label (gemini.cli.checkForUpdates, gemini.app.checkForUpdates) are named by their group too.
+	const counts = new Map<string, number>();
+	for (const setting of sections.flatMap(section => section.settings)) {
+		counts.set(setting.label, (counts.get(setting.label) ?? 0) + 1);
+	}
+	return sections.map(section => ({ ...section, settings: section.settings.map(setting => (counts.get(setting.label) ?? 0) > 1 ? { ...setting, label: groupedLabel(setting.key) } : setting) }));
+}
+
+/** Words in a key that are written in capitals. */
+const acronyms: Readonly<Record<string, string>> = { cli: 'CLI', mcp: 'MCP', app: 'GeminiCode' };
+
+/** A setting's label with its group in front: `gemini.cli.checkForUpdates` -> "CLI: Check for updates". */
+function groupedLabel(key: string): string {
+	const [group] = key.replace(/^gemini\./, '').split('.');
+	return `${acronyms[group] ?? group.charAt(0).toUpperCase() + group.slice(1)}: ${settingLabel(key)}`;
 }
 
 /** What a search reads of a setting: the model's rows and the page's views both have it. */
@@ -170,7 +185,8 @@ export function helpSegments(help: string): HelpSegment[] {
 	let last = 0;
 	for (const match of help.matchAll(pattern)) {
 		plain(help.slice(last, match.index));
-		segments.push({ text: match[1] ?? match[2], code: true });
+		// A setting named in backticks too (`#gemini.x#`) shows as the setting's key, without the link marks.
+		segments.push({ text: (match[1] ?? match[2]).replace(/^#(gemini\.[\w.]+)#$/, '$1'), code: true });
 		last = match.index + match[0].length;
 	}
 	plain(help.slice(last));

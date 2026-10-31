@@ -111,3 +111,11 @@ describe('settings model', () => {
 		expect(model.map(section => section.title)).toHaveLength(8);
 	});
 });
+
+describe('settings model, names', () => {
+	it('names two settings with the same label by their group, and shows a backticked setting reference as its key', () => {
+		const model = settingSections([{ title: 'A', properties: { 'gemini.cli.checkForUpdates': { type: 'boolean', description: 'x' }, 'gemini.app.checkForUpdates': { type: 'boolean', description: 'y' }, 'gemini.mcp.allowedServers': { type: 'array', description: 'z' } } }]);
+		expect(model[0].settings.map(setting => setting.label)).toEqual(['CLI: Check for updates', 'GeminiCode: Check for updates', 'Allowed servers']);
+		expect(helpSegments('Off when `#gemini.approval.allowYolo#` turns it off.')).toEqual([{ text: 'Off when ' }, { text: 'gemini.approval.allowYolo', code: true }, { text: ' turns it off.' }]);
+	});
+});
