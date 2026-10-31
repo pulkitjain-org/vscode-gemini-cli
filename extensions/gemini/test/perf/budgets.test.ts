@@ -125,7 +125,9 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// Sync Design System on Figma's row in Connections added about 0.4 KB. The Index page with its docs suggestions
 	// (indexPage.ts, docs/suggest.ts), about 21 KB, moved here from dist/extension.js.
 	// The Storage section's host (storageSection.ts) moved to dist/onDemand.js with the audit page, about 10 KB.
-	'dist/pages.js': 160_000,
+	// 1.8's Settings page, every contributed setting with its control and the model that reads them (settingsModel.ts),
+	// took it to about 160.3 KB.
+	'dist/pages.js': 162_000,
 	// Confluence, about 27 KB, loaded the first time an agent or a page uses it (src/confluence.ts): its client, the
 	// agents' calls, the drafts and the Review Page's host, with publishing only the changes kept (draftReview.ts,
 	// blockMerge.ts) and the page's localized strings.
@@ -296,9 +298,10 @@ describe('agent switch', () => {
 		}
 		const transcript = page.document.getElementById('transcript')!;
 		const reset = () => sendToPage({ type: 'reset', items, busy: false, status: { phase: 'ready', text: '' }, settings: {} });
-		// Drawing the latest 60 items: about 30 ms here, with happy-dom's DOM.
+		// Drawing the latest 60 items: about 30 ms on a laptop and about 112 ms on CI's runner, with happy-dom's DOM. The count
+		// below is what holds the view to its latest items on any machine; the time catches only a return to drawing all 1,200.
 		const ms = median(11, reset);
-		expect(ms).toBeLessThan(90);
+		expect(ms).toBeLessThan(300);
 		const drawn = [...transcript.children].filter(child => !child.classList.contains('turn-slot'));
 		expect(drawn.length).toBeLessThanOrEqual(80);
 		expect(transcript.querySelectorAll('.turn-slot').length).toBe(285);
