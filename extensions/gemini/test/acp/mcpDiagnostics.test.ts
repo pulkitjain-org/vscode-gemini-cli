@@ -27,10 +27,13 @@ const log = [
 	`  [cause]: Error: connect ECONNREFUSED 127.0.0.1:8931`,
 	`}`,
 	`[2026-10-04T10:36:53.000Z] [LOG] [MCP warning] MCP server 'jira' requires authentication using: /mcp auth jira`,
+	// gemini-cli 0.66, for a server that lists nothing yet, which it keeps.
+	`[2026-10-31T14:31:10.093Z] [LOG] [MCP error] Error during discovery for MCP server 'geminicode-tools': No prompts, tools, or resources found on the server. Error: No prompts, tools, or resources found on the server.`,
+	`    at McpClient.discoverInto (file:///cli/0.66.0/bundle/chunk-RZ3ZVTZB.js:371937:13)`,
 ].join('\n') + '\n';
 
 describe('parseMcpProblems', () => {
-	it('finds each MCP problem, its server and the reason without the stack', () => {
+	it('finds each MCP problem, its server and the reason without the stack, and skips a server that lists nothing yet', () => {
 		expect(parseMcpProblems(log.split('\n'))).toEqual([
 			{ severity: 'error', server: 'broken', message: 'spawn /nonexistent/server ENOENT' },
 			{ severity: 'error', server: 'badhttp', message: 'fetch failed', unreachable: true },

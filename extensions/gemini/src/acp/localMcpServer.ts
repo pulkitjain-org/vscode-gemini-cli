@@ -36,10 +36,18 @@ export interface LocalMcpServerOptions<C> {
 	call(caller: C, name: string, args: Record<string, unknown>): Promise<McpToolResult>;
 	/** Sees each authorised request's messages before they are answered. */
 	onMessages?(route: string, messages: readonly JsonRpcRequest[]): void;
+	/** How often an open notification stream gets a comment; `streamKeepAliveMs` by default. */
+	readonly streamKeepAliveMs?: number;
 }
 
 /** The largest request body read; tool calls are small. */
 const maxBodyBytes = 1024 * 1024;
+/**
+ * The CLI's fetch (undici) ends a response that sends nothing for 5 minutes ("SSE stream
+ * disconnected: TypeError: terminated", which it reports as an MCP error), so a stream with
+ * no notices for that long gets a comment well before.
+ */
+export const streamKeepAliveMs = 60_000;
 /** A route: one to three parts of letters, digits, `-` and `_`, such as `agent-1` or `project/thread/t1`. */
 const routePattern = /^[\w-]{1,80}(?:\/[\w-]{1,80}){0,2}$/;
 
@@ -167,10 +175,12 @@ export class LocalMcpServer<C> {
 			// The session's notification stream, kept open until it or the server ends.
 			res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
 			res.write(': open\n\n');
+			const keepAlive = setInterval(() => res.write(': ping\n\n'), this.options.streamKeepAliveMs ?? streamKeepAliveMs);
 			const streams = this.streams.get(route) ?? new Set();
 			this.streams.set(route, streams);
 			streams.add(res);
 			req.on('close', () => {
+				clearInterval(keepAlive);
 				streams.delete(res);
 				if (!streams.size) {
 					this.streams.delete(route);

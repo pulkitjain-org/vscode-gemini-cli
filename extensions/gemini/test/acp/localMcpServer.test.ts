@@ -71,6 +71,20 @@ describe('local MCP server', () => {
 		await reader.cancel();
 	});
 
+	it('keeps an open stream alive with comments, so the CLI\'s fetch never ends it as idle', async () => {
+		const server = new LocalMcpServer<string>({ name: 'test-server', version: '1', callerOf: route => route, instructions: () => '', tools: () => [], call: async () => ({ content: [] }), streamKeepAliveMs: 20 });
+		servers.push(server);
+		await server.start();
+		const config = server.configFor('agent-1')!;
+		const stream = await fetch(config.url, { headers: { Authorization: config.headers[0].value, Accept: 'text/event-stream' } });
+		const reader = stream.body!.getReader();
+		const decoder = new TextDecoder();
+		const opened = decoder.decode((await reader.read()).value);
+		const pinged = decoder.decode((await reader.read()).value);
+		expect({ opened, pinged }).toEqual({ opened: ': open\n\n', pinged: ': ping\n\n' });
+		await reader.cancel();
+	});
+
 	it('refuses requests from a browser page or another host before looking at the token', async () => {
 		const server = new LocalMcpServer<string>({ name: 'test-server', version: '1', callerOf: route => route, instructions: () => '', tools: () => [], call: async () => ({ content: [] }) });
 		servers.push(server);
