@@ -9,7 +9,7 @@ import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
 	annotateTokens, cssVariableName, designSystemChanges, designSystemConfig, designSystemFiles, designSystemNoteFor, documentPages, keepRules,
-	pageComponents, parseVariableDefs, readSyncRecord, tokenIndex,
+	pageComponents, parseVariableDefs, readSyncRecord, syncPages, tokenIndex,
 } from '../../src/acp/designSystem';
 import { figmaDesignSystem } from '../../src/acp/designTokens';
 import { readTeamDefaults } from '../../src/acp/teamDefaults';
@@ -59,6 +59,26 @@ describe('design system', () => {
 				{ name: 'Button', page: 'Components', properties: [{ name: 'Size', values: ['Small', 'Large'] }, { name: 'State', values: ['Default', 'Hover'] }] },
 				{ name: 'Avatar & Badge', page: 'Components', properties: [] },
 			],
+		});
+	});
+
+	it('picks the pages the team file names, whatever their spacing in Figma, and says which it could not find', () => {
+		// As a client's file names them: a tree prefix with two spaces, and one page that ends in a space.
+		const pages = [
+			{ id: '2:144', name: '\u2514\u2500  colors', hidden: false },
+			{ id: '2:148', name: '\u2514\u2500  ratios ', hidden: false },
+			{ id: '2:149', name: '\u2514\u2500  icons', hidden: false },
+			{ id: '0:3', name: 'Archive', hidden: true },
+		];
+		const ids = (result: { readonly wanted: readonly { readonly id: string }[]; readonly missing: readonly string[] }) =>({ wanted: result.wanted.map(page => page.id), missing: result.missing });
+		expect({
+			named: ids(syncPages(pages, ['\u2514\u2500  colors', '\u2514\u2500  ratios'])),
+			spacing: ids(syncPages(pages, ['\u2514\u2500 Colors', '\u2514\u2500  RATIOS', '\u2514\u2500  grid'])),
+			unnamed: ids(syncPages(pages, undefined)),
+		}).toEqual({
+			named: { wanted: ['2:144', '2:148'], missing: [] },
+			spacing: { wanted: ['2:144', '2:148'], missing: ['\u2514\u2500  grid'] },
+			unnamed: { wanted: ['2:144', '2:148', '2:149'], missing: [] },
 		});
 	});
 

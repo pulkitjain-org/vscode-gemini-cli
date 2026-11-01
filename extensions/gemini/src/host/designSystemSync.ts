@@ -8,7 +8,7 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import {
 	designSystemChanges, designSystemConfig, type DesignSystemChanges, type DesignSystemConfig, designSystemFiles, type DesignComponent, documentPages,
-	isUnchanged, keepRules, pageComponents, readSyncRecord,
+	isUnchanged, keepRules, pageComponents, readSyncRecord, syncPages,
 } from '../acp/designSystem';
 import { errorMessage } from '../acp/errors';
 import type { FigmaClient } from '../acp/figma';
@@ -96,7 +96,7 @@ export class DesignSystemSync implements vscode.Disposable {
 	/** Reads the configured pages; undefined when the user cancelled or the open file isn't the design system (both said already). */
 	private async read(figma: FigmaClient, config: DesignSystemConfig, progress: vscode.Progress<{ message?: string; increment?: number }>, token: vscode.CancellationToken) {
 		const { fileName, pages } = documentPages(await figma.outline!('0:0'));
-		const wanted = config.pages?.length ? pages.filter(page => config.pages!.some(name => name.toLowerCase() === page.name.toLowerCase())) : pages.filter(page => !page.hidden);
+		const { wanted, missing } = syncPages(pages, config.pages);
 		if (wanted.length > maxPages) {
 			void vscode.window.showWarningMessage(config.pages?.length
 				? vscode.l10n.t("figma.designSystem.pages names {0} pages; a sync reads at most {1}, since Figma limits how many reads it answers a day. Name only the pages that show the tokens and components.", wanted.length, maxPages)
@@ -104,11 +104,15 @@ export class DesignSystemSync implements vscode.Disposable {
 			return undefined;
 		}
 		if (!wanted.length) {
-			const missing = config.pages?.join(', ') ?? '';
 			void vscode.window.showWarningMessage(config.pages?.length
-				? vscode.l10n.t("The file open in Figma, \"{0}\", has no page named {1}. Open {2} in the Figma desktop app, then sync again.", fileName, missing, config.name ?? vscode.l10n.t("the design system"))
+				? vscode.l10n.t("The file open in Figma, \"{0}\", has no page named {1}. Open {2} in the Figma desktop app, then sync again.", fileName, config.pages.join(', '), config.name ?? vscode.l10n.t("the design system"))
 				: vscode.l10n.t("The file open in Figma has no pages to read. Open the design system in the Figma desktop app, then sync again."));
 			return undefined;
+		}
+		if (missing.length) {
+			// The rest of the file is the design system, so the pages found still sync; a page left out quietly would leave its tokens out too.
+			this.log.warn(`Sync Design System: "${fileName}" has no page named ${missing.join(', ')}`);
+			void vscode.window.showWarningMessage(vscode.l10n.t("\"{0}\" has no page named {1}, so the sync reads the other {2}. Check the names in figma.designSystem.pages.", fileName, missing.map(name => `"${name}"`).join(', '), wanted.length));
 		}
 		const tokens = new Map<string, string>();
 		const components: DesignComponent[] = [];
