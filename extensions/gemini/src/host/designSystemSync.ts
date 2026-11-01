@@ -8,7 +8,7 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import {
 	designSystemChanges, designSystemConfig, type DesignSystemChanges, type DesignSystemConfig, designSystemFiles, type DesignComponent, documentPages,
-	isUnchanged, keepRules, pageComponents, readSyncRecord, syncPages,
+	isUnchanged, keepRules, pageComponents, pageParts, readSyncRecord, syncPages,
 } from '../acp/designSystem';
 import { errorMessage } from '../acp/errors';
 import type { FigmaClient } from '../acp/figma';
@@ -29,6 +29,9 @@ export interface DesignSystemSyncHost {
  * that hold the design system.
  */
 const maxPages = 8;
+
+/** The most top-level frames a sync reads the variables of, one read each. */
+const maxFrames = 40;
 
 /** The scheme of the read-only documents Review Changes shows the new files in. */
 const scheme = 'geminicode-design-system';
@@ -114,22 +117,45 @@ export class DesignSystemSync implements vscode.Disposable {
 			this.log.warn(`Sync Design System: "${fileName}" has no page named ${missing.join(', ')}`);
 			void vscode.window.showWarningMessage(vscode.l10n.t("\"{0}\" has no page named {1}, so the sync reads the other {2}. Check the names in figma.designSystem.pages.", fileName, missing.map(name => `"${name}"`).join(', '), wanted.length));
 		}
-		const tokens = new Map<string, string>();
-		const components: DesignComponent[] = [];
+		const outlines: { readonly page: typeof wanted[number]; readonly outline: string }[] = [];
 		for (const [i, page] of wanted.entries()) {
 			if (token.isCancellationRequested) {
 				return undefined;
 			}
-			progress.report({ message: vscode.l10n.t("Page {0} of {1}: {2}", i + 1, wanted.length, page.name), increment: 100 / wanted.length });
-			const [outline, variables] = [await figma.outline!(page.id), await figma.variables!(page.id).catch(() => ({}))];
-			components.push(...pageComponents(outline, page.name));
+			progress.report({ message: vscode.l10n.t("Page {0} of {1}: {2}", i + 1, wanted.length, page.name), increment: 50 / wanted.length });
+			outlines.push({ page, outline: await figma.outline!(page.id) });
+		}
+		// The desktop app gives a page it hasn't loaded as an empty canvas; syncing it would drop its tokens and components as if removed.
+		const unloaded = outlines.filter(({ outline }) => pageParts(outline).empty).map(({ page }) => page.name.trim());
+		if (unloaded.length) {
+			this.log.warn(`Sync Design System: Figma gave ${unloaded.join(', ')} with nothing on them`);
+			void vscode.window.showWarningMessage(vscode.l10n.t("Figma gave {0} with nothing on them: the Figma desktop app reads a page only once it has been opened. Open each of them once in Figma, then sync again.", unloaded.map(name => `"${name}"`).join(', ')));
+			return undefined;
+		}
+		const frames = outlines.flatMap(({ outline }) => pageParts(outline).frames);
+		if (frames.length > maxFrames) {
+			void vscode.window.showWarningMessage(vscode.l10n.t("The pages in figma.designSystem.pages have {0} frames to read, and a sync reads at most {1}, since Figma limits how many reads it answers a day. Name only the pages that show the tokens.", frames.length, maxFrames));
+			return undefined;
+		}
+		const tokens = new Map<string, string>();
+		let failed = 0;
+		for (const [i, frame] of frames.entries()) {
+			if (token.isCancellationRequested) {
+				return undefined;
+			}
+			progress.report({ message: vscode.l10n.t("Variables, frame {0} of {1}", i + 1, frames.length), increment: 50 / frames.length });
+			const variables = await figma.variables!(frame).catch(() => {
+				failed++;
+				return {};
+			});
 			for (const [name, value] of Object.entries(variables)) {
 				if (!tokens.has(name)) {
 					tokens.set(name, value);
 				}
 			}
 		}
-		this.log.info(`Sync Design System: read ${tokens.size} variables and ${components.length} components from ${wanted.length} pages of "${fileName}"`);
+		const components = outlines.flatMap(({ page, outline }) => pageComponents(outline, page.name));
+		this.log.info(`Sync Design System: read ${tokens.size} variables from ${frames.length} frames${failed ? ` (${failed} failed)` : ''} and ${components.length} components from ${wanted.length} pages of "${fileName}"`);
 		if (!tokens.size && !components.length) {
 			void vscode.window.showWarningMessage(vscode.l10n.t("Figma found no variables or components on {0}. Check that \"{1}\" is the design system, and that its pages use variables.", wanted.map(page => page.name).join(', '), fileName));
 			return undefined;

@@ -1157,6 +1157,12 @@ What was learnt the hard way, kept with the design it belongs to. [AGENTS.md](..
 - A page writes through `teamWrite` (`src/acp/teamTools.ts`), as an agent's tool call does, so every write has the same checks and an audit log record. Page-only writes go in `pageTools` there.
 - Rich Jira comments (Markdown, @mentions, attachments, visibility) always use Jira's REST API (`jira_rich_comment`), never the `mcp-atlassian` container: the container has no mentions and no uploads. The webview turns the Markdown into Jira's document format (`webview-src/commentAdf.ts`), so the extension host carries no Markdown parser. The audit log records file paths, never file contents.
 
+### Figma's desktop server
+
+- It gives a page the app hasn't loaded since the file opened as an empty `<canvas ... />`, with no error. Sync Design System stops on one (`pageParts` in `designSystem.ts`) rather than writing its tokens and components as removed; nothing over MCP loads a page, so the user opens it.
+- `get_variable_defs` on a page leaves out the styles used inside instances, which in a client's design system were nearly all of them; on a frame it includes them. The sync reads each visible top-level frame (`pageParts`, at most `maxFrames`).
+- Its reads count against a daily limit per seat that the user's own agents share. Test against recorded answers, and make no more than a handful of live reads.
+
 ### The workspace index
 
 - Everything that reads, parses or writes an index runs in the indexer process (`src/indexer.ts`, `dist/indexer.js`), never in the extension host, whose bundle is near its budget. The host only forwards requests (`IndexClient`). Keep it that way.
