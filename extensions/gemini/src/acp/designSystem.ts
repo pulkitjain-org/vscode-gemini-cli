@@ -206,6 +206,29 @@ function variantProperties(name: string): [string, string][] {
 }
 
 /**
+ * What a sync reads of a page from its outline: whether Figma gave the page
+ * with nothing on it, which is how the desktop app answers for a page it has
+ * not loaded since the file opened, and the visible top-level nodes to read
+ * the variables of. A page's own `get_variable_defs` leaves out the styles
+ * used inside instances, which in most design systems are nearly all of them;
+ * a frame's includes them. Only containers are read: a component's variables
+ * are its own and the outline lists it already, and a loose shape or text is
+ * one read for one style.
+ */
+export function pageParts(outline: string): { readonly empty: boolean; readonly frames: readonly string[] } {
+	const nodes = parseOutline(outline);
+	const top = nodes[0]?.depth ?? 0;
+	return {
+		empty: !nodes.some(node => node.depth > top),
+		frames: nodes.filter(node => node.depth === top + 1 && !node.hidden && isContainer(node)).map(node => node.id),
+	};
+}
+
+function isContainer(node: OutlineNode): boolean {
+	return node.type === 'frame' || node.type === 'section' || node.type === 'group' || node.type === 'instance';
+}
+
+/**
  * The components on a page's outline. Figma's outline gives a component as a
  * `symbol`, and a component set as a node (a `frame`) whose children are its
  * variants, symbols named by their properties (`Size=Small, State=Hover`): a

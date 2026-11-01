@@ -9,7 +9,7 @@ import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
 	annotateTokens, cssVariableName, designSystemChanges, designSystemConfig, designSystemFiles, designSystemNoteFor, documentPages, keepRules,
-	pageComponents, parseVariableDefs, readSyncRecord, syncPages, tokenIndex,
+	pageComponents, pageParts, parseVariableDefs, readSyncRecord, syncPages, tokenIndex,
 } from '../../src/acp/designSystem';
 import { figmaDesignSystem } from '../../src/acp/designTokens';
 import { readTeamDefaults } from '../../src/acp/teamDefaults';
@@ -79,6 +79,30 @@ describe('design system', () => {
 			named: { wanted: ['2:144', '2:148'], missing: [] },
 			spacing: { wanted: ['2:144', '2:148'], missing: ['\u2514\u2500  grid'] },
 			unnamed: { wanted: ['2:144', '2:148', '2:149'], missing: [] },
+		});
+	});
+
+	it('reads a page\'s variables frame by frame, and knows a page Figma has not loaded', () => {
+		// As the desktop app gives a page it has not loaded since the file opened, and a loaded one.
+		const unloaded = '<canvas id="2:144" name="colors" x="0" y="0" width="0" height="0" />';
+		const loaded = [
+			'<canvas id="2:146" name="space" x="0" y="0" width="0" height="0">',
+			'  <frame id="43:2882" name="spacing" x="0" y="0" width="960" height="1878">',
+			'    <instance id="43:2895" name="header" x="0" y="0" width="960" height="160" />',
+			'  </frame>',
+			'  <frame id="5685:2982" name="notes" x="0" y="0" width="856" height="4055" hidden="true">',
+			'    <text id="5712:2729" name="Enter" x="0" y="0" width="45" height="20" />',
+			'  </frame>',
+			'  <section id="7:1" name="Spacing scale" x="0" y="0" width="800" height="400" />',
+			'  <instance id="7:2" name="cover" x="0" y="0" width="620" height="344" />',
+			'  <symbol id="43:3262" name="space_5" x="0" y="0" width="5" height="5" />',
+			'  <text id="7:3" name="Note" x="0" y="0" width="100" height="20" />',
+			'</canvas>',
+		].join('\n');
+		expect({ unloaded: pageParts(unloaded), loaded: pageParts(loaded), components: pageComponents(loaded, 'space').map(c => c.name) }).toEqual({
+			unloaded: { empty: true, frames: [] },
+			loaded: { empty: false, frames: ['43:2882', '7:1', '7:2'] },
+			components: ['space_5'],
 		});
 	});
 
