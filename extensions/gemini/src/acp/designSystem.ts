@@ -179,6 +179,22 @@ export function documentPages(outline: string): { readonly fileName: string; rea
 	};
 }
 
+/**
+ * The pages a sync reads: those `names` gives, else every visible page, with
+ * the names no page has. A name matches without case or the spacing around
+ * and between its words, since a page's name in Figma can end in a space and
+ * the team file's names are trimmed.
+ */
+export function syncPages<P extends { readonly name: string; readonly hidden: boolean }>(pages: readonly P[], names: readonly string[] | undefined): { readonly wanted: P[]; readonly missing: string[] } {
+	if (!names?.length) {
+		return { wanted: pages.filter(page => !page.hidden), missing: [] };
+	}
+	const key = (name: string) => name.trim().replace(/\s+/g, ' ').toLowerCase();
+	const wanted = new Set(names.map(key));
+	const found = new Set(pages.map(page => key(page.name)));
+	return { wanted: pages.filter(page => wanted.has(key(page.name))), missing: names.filter(name => !found.has(key(name))) };
+}
+
 /** Whether Figma's outline gives `node` as a component; a component set is a frame of them. */
 function isComponent(node: OutlineNode): boolean {
 	return node.type === 'symbol' || node.type === 'component';
