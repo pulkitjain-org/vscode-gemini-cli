@@ -110,9 +110,10 @@ export class DesignSystemSync implements vscode.Disposable {
 	/**
 	 * The repository to sync when the command names none. With several in the
 	 * window that name a design system, such as two projects of the same
-	 * client, the user picks, the one of the file in front first: the
-	 * Connections page, where Sync starts, has no file of its own. Undefined
-	 * leaves it to the workspace's defaults; null is a pick cancelled.
+	 * client, the user picks, the one of the file in front first. The
+	 * Connections page asks in its own menu and names the folder, so this
+	 * quick pick follows only the Command Palette. Undefined leaves it to the
+	 * workspace's defaults; null is a pick cancelled.
 	 */
 	private async chooseRepository(): Promise<string | undefined | null> {
 		const { folders, editor } = this.host.folders();

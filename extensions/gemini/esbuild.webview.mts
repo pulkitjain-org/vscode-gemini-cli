@@ -32,6 +32,7 @@ run({
 		'homePopups': path.join(srcDir, 'homePopups.ts'),
 		'homeMenus': path.join(srcDir, 'homeMenus.ts'),
 		'changesMenu': path.join(srcDir, 'changesMenu.ts'),
+		'connectionsMenu': path.join(srcDir, 'connectionsMenu.ts'),
 		'emojiPicker': path.join(srcDir, 'emojiPicker.ts'),
 		'figmaDesign': path.join(srcDir, 'figmaDesign.ts'),
 		'threadCard': path.join(srcDir, 'threadCard.ts'),
