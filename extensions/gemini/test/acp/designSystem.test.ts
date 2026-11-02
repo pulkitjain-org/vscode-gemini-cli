@@ -8,7 +8,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
-	annotateTokens, cssVariableName, designSystemChanges, designSystemConfig, designSystemFiles, designSystemNoteFor, documentPages, keepRules,
+	annotateTokens, cssVariableName, designSystemChanges, designSystemConfig, designSystemRoots, designSystemFiles, designSystemNoteFor, documentPages, keepRules,
 	pageComponents, pageParts, parseVariableDefs, readSyncRecord, syncPages, tokenIndex,
 } from '../../src/acp/designSystem';
 import { figmaDesignSystem } from '../../src/acp/designTokens';
@@ -104,6 +104,20 @@ describe('design system', () => {
 			loaded: { empty: false, frames: ['43:2882', '7:1', '7:2'] },
 			components: ['space_5'],
 		});
+	});
+
+	it('offers each repository in the window that names a design system, the one in front first', () => {
+		const ds = { figma: { designSystem: { name: 'VCA', file: 'https://www.figma.com/design/AbC/VCA' } } };
+		const at = (repo: string, defaults: object) => ({ ...defaults, file: path.join(repo, '.gemini', 'geminicode-tools.json') });
+		const cms = path.join(os.tmpdir(), 'cms'), fea = path.join(os.tmpdir(), 'fea'), other = path.join(os.tmpdir(), 'other');
+		// Two folders of the same repository, one repository without a design system, and a folder with no defaults.
+		const folders = [at(cms, ds), at(cms, ds), at(fea, ds), at(other, { jira: { site: 'https://acme.atlassian.net' } }), {}];
+		expect({
+			window: designSystemRoots(folders, undefined),
+			inFront: designSystemRoots(folders, fea),
+			elsewhere: designSystemRoots(folders, other),
+			one: designSystemRoots([at(fea, ds), {}], undefined),
+		}).toEqual({ window: [cms, fea], inFront: [fea, cms], elsewhere: [cms, fea], one: [fea] });
 	});
 
 	it('writes the skill, its references and the tokens file, and says what changed since the last sync', () => {

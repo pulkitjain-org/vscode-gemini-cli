@@ -33,7 +33,7 @@ import { forgetSkills, initTeamCommands } from './host/teamCommands';
 import { KeepAwake } from './acp/keepAwake';
 import { debugLogName } from './acp/mcpDiagnostics';
 import { BrowserTools } from './host/browserTools';
-import { TeamConnections } from './host/teamConnections';
+import { editorFolder, TeamConnections } from './host/teamConnections';
 import { TeamFlows } from './host/teamFlows';
 import { setTraceFile, setTraceFolder } from './host/traceCommand';
 import { scheduleStorageMaintenance } from './host/storageMaintenance';
@@ -338,6 +338,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		new LazyFeature(['gemini.designSystem.sync'], () => new (onDemand().DesignSystemSync)({
 			figma: () => teamTools.connectors.figma,
 			defaults: folder => folder ? teamTools.defaults(folder) : teamTools.workspaceDefaults(),
+			folders: () => ({ folders: (vscode.workspace.workspaceFolders ?? []).filter(f => f.uri.scheme === 'file').map(f => f.uri.fsPath), editor: editorFolder() }),
 		}, log)),
 		new LazyFeature(['gemini.openAuditLog'], () => new (onDemand().AuditPage)(context.extensionUri, teamTools.audit, id => agentsView.summaries().find(agent => agent.id === id)?.title, {
 			globalStorage: context.globalStorageUri.fsPath,
