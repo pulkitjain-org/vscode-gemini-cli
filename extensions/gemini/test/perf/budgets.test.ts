@@ -98,6 +98,7 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	'media/homeMenus.js': 11_000,
 	// The Changes panel's Try chevron menu with the menu class, about 6 KB, loaded on the first click on the chevron.
 	'media/changesMenu.js': 7_500,
+	'media/connectionsMenu.js': 7_000,
 	// The emoji picker, about 97 KB, loaded the first time a reaction button is hovered or focused: about 88 KB
 	// of emoji data (1,923 emoji with their names and three search words each) and its own code.
 	'media/emojiPicker.js': 105_000,

@@ -7,12 +7,13 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { isRecord, readSettingsFile } from '../acp/projectSettings';
 import { allowlistBlock, allowServer, settingsFiles } from '../acp/projectToolsCheck';
+import { designSystemConfig, designSystemRoots } from '../acp/designSystem';
 import type { TeamDefaults } from '../acp/teamDefaults';
 import { TeamToolId, teamToolIds, teamToolNames } from '../acp/teamHttp';
 import { teamToolsServerName } from '../acp/teamTools';
 import type { ConnectionRowView, ConnectionsStrings, JiraSiteRowView, ConnectionsView, FromConnections, TeamServerView, ToConnections } from './connectionsProtocol';
 import { tildify } from './displayText';
-import { ConnectionState, createTokenUrl, TeamConnections } from './teamConnections';
+import { ConnectionState, createTokenUrl, editorFolder, TeamConnections } from './teamConnections';
 import { connectConfluence, connectJiraSite, disconnectConfluence, disconnectJira, removeJiraSite } from './siteConnections';
 import { takeOverTeamServers } from './teamTakeover';
 import { PagePanel, PageShell, SinglePage } from './pagePanel';
@@ -33,6 +34,8 @@ export class ConnectionsPage implements vscode.Disposable {
 
 	private readonly page = new SinglePage<ToConnections, FromConnections>(() => this.create());
 	private defaults: TeamDefaults = {};
+	/** The window's repositories whose defaults name a design system, the one of the file in front first. */
+	private designSystemRoots: readonly string[] = [];
 	private allowlist: ConnectionsView['allowlist'] & { readonly path: string } | undefined;
 	private teamServers: ConnectionsView['teamServers'] & { readonly path: string } | undefined;
 	private updating = false;
@@ -149,7 +152,7 @@ export class ConnectionsPage implements vscode.Disposable {
 				return;
 			}
 			case 'syncDesignSystem':
-				void vscode.commands.executeCommand('gemini.designSystem.sync');
+				void vscode.commands.executeCommand('gemini.designSystem.sync', message.folder && this.designSystemRoots.includes(message.folder) ? message.folder : undefined);
 				return;
 			case 'openFigma':
 				await vscode.env.openExternal(vscode.Uri.parse('figma://'));
@@ -204,6 +207,11 @@ export class ConnectionsPage implements vscode.Disposable {
 	/** The team's defaults file and any allowlist that leaves the tools out, from the open folders. */
 	private async readFiles(): Promise<void> {
 		this.defaults = await this.connections.workspaceDefaults();
+		const folders = (vscode.workspace.workspaceFolders ?? []).filter(f => f.uri.scheme === 'file').map(f => f.uri.fsPath);
+		const read = (folder: string) => this.connections.defaults(folder).catch((): TeamDefaults => ({}));
+		const editor = editorFolder();
+		const [all, inFront] = await Promise.all([Promise.all(folders.map(read)), editor ? read(editor) : undefined]);
+		this.designSystemRoots = designSystemRoots(all, inFront && designSystemConfig(inFront)?.root);
 		this.allowlist = undefined;
 		this.teamServers = undefined;
 		for (const folder of vscode.workspace.workspaceFolders ?? []) {
@@ -263,8 +271,15 @@ export class ConnectionsPage implements vscode.Disposable {
 			...tool === 'jira' && saved ? { siteName: this.connections.jiraName(), sites: this.connections.jiraSiteList().map(site => this.siteRow(site.id, site.name, site.url, site.email)) } : {},
 			...tool === 'confluence' ? this.confluenceSites() : {},
 			// Sync Design System is a developer's button.
-			...tool === 'figma' && this.defaults.figma?.designSystem && developerToolsOn() ? { designSystem: designSystemTip(this.defaults.figma.designSystem.name) } : {},
+			...tool === 'figma' && this.defaults.figma?.designSystem && developerToolsOn() ? { designSystem: designSystemTip(this.defaults.figma.designSystem.name), ...this.designSystemRepos() } : {},
 		};
+	}
+
+	/** With several repositories that name a design system, Sync asks which in the page's own menu rather than a quick pick. */
+	private designSystemRepos(): Pick<ConnectionRowView, 'designSystemRepos'> {
+		return this.designSystemRoots.length > 1
+			? { designSystemRepos: this.designSystemRoots.map(root => ({ root, name: path.basename(root), path: tildify(path.dirname(root)) })) }
+			: {};
 	}
 
 	/** Confluence's sites: the Jira sites it is on for, and the others it can be turned on for. */
@@ -316,6 +331,7 @@ export class ConnectionsPage implements vscode.Disposable {
 			tryAgain: vscode.l10n.t("Try Again"),
 			openFigma: vscode.l10n.t("Open Figma"),
 			syncDesignSystem: vscode.l10n.t("Sync Design System"),
+			syncWhich: vscode.l10n.t("Which repository's design system to sync?"),
 			cancel: vscode.l10n.t("Cancel"),
 			connectTitle: vscode.l10n.t("Connect {0}"),
 			server: vscode.l10n.t("Server"),
@@ -359,7 +375,7 @@ export class ConnectionsPage implements vscode.Disposable {
 			openFile: vscode.l10n.t("Open File"),
 			close: vscode.l10n.t("Close"),
 		};
-		return { script: 'connections.js', styles: ['connections.css'], title: strings.title, bodyClass: 'settings-page connections-page', mainClass: 'settings connections', strings, tabs: agentSetupTabs('connections'), tabsLabel: agentSetupTabsLabel() };
+		return { script: 'connections.js', styles: ['connections.css'], title: strings.title, bodyClass: 'settings-page connections-page', mainClass: 'settings connections', strings, media: { 'connections-menu': 'connectionsMenu.js' }, loadsMedia: true, tabs: agentSetupTabs('connections'), tabsLabel: agentSetupTabsLabel() };
 	}
 }
 

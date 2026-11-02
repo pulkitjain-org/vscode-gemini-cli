@@ -13,6 +13,8 @@ import { bootPage } from './panelBoot';
 import { toolLogo } from './toolLogos';
 
 const { strings, post, main: page, start } = bootPage<ToConnections, FromConnections, ConnectionsStrings>();
+const repoMenuUrl = document.querySelector<HTMLScriptElement>('script[data-strings]')?.dataset.connectionsMenu;
+let repoMenu: Promise<import('./connectionsMenu').RepoMenu> | undefined;
 
 let view: ConnectionsView | undefined;
 /** The open Connect dialog, if any. */
@@ -81,7 +83,21 @@ function toolRow(row: ConnectionRowView): HTMLElement {
 			actions.append(button('', strings.tryAgain, () => post({ type: 'refresh', tool: row.tool })));
 		}
 		if (row.designSystem && row.kind === 'connected') {
-			actions.append(button('', strings.syncDesignSystem, () => post({ type: 'syncDesignSystem' }), undefined, row.designSystem));
+			const repos = row.designSystemRepos;
+			const sync = button('', strings.syncDesignSystem, () => {
+				if (!repos?.length) {
+					post({ type: 'syncDesignSystem' });
+					return;
+				}
+				// Several repositories name a design system: ask which in the page's own menu.
+				// eslint-disable-next-line no-restricted-syntax
+				repoMenu ??= (repoMenuUrl ? import(/* webpackIgnore: true */ repoMenuUrl) as Promise<typeof import('./connectionsMenu')> : Promise.reject(new Error('no menu'))).then(module => module.createRepoMenu(strings.syncWhich));
+				void repoMenu.then(menu => menu.toggle(sync, repos, folder => post({ type: 'syncDesignSystem', folder })), () => {
+					repoMenu = undefined;
+					post({ type: 'syncDesignSystem' });
+				});
+			}, undefined, row.designSystem);
+			actions.append(sync);
 		}
 		if (row.needsToken) {
 			actions.append(button('quiet', strings.replaceToken, () => openDialog(row)));

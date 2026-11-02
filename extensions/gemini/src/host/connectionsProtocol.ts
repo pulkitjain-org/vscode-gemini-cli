@@ -37,6 +37,8 @@ export interface ConnectionRowView {
 	readonly sites?: readonly JiraSiteRowView[];
 	/** For Figma: the tooltip of Sync Design System, naming the design system the team's defaults configure; unset without one. */
 	readonly designSystem?: string;
+	/** For Figma: the repositories Sync Design System asks between, the one of the file in front first; unset unless the window has more than one. */
+	readonly designSystemRepos?: readonly { readonly root: string; readonly name: string; readonly path: string }[];
 	/** For Confluence: the connected Jira sites it can be turned on for, with why not when it can't now. */
 	readonly choices?: readonly { readonly id: string; readonly name: string; readonly host: string; readonly problem?: string }[];
 }
@@ -95,6 +97,7 @@ export interface ConnectionsStrings {
 	readonly tryAgain: string;
 	readonly openFigma: string;
 	readonly syncDesignSystem: string;
+	readonly syncWhich: string;
 	readonly cancel: string;
 	readonly connectTitle: string;
 	readonly server: string;
@@ -155,4 +158,6 @@ export type FromConnections =
 	| { readonly type: 'connectConfluence' | 'removeConfluence'; readonly id: string }
 	| { readonly type: 'disconnect' | 'refresh'; readonly tool: TeamToolId }
 	| { readonly type: 'createToken'; readonly tool: TeamToolId; readonly url?: string }
-	| { readonly type: 'openFigma' | 'syncDesignSystem' | 'allowlist' | 'openAllowlistFile' | 'openDefaults' | 'checkAll' | 'openTeamServers' | 'takeOverTeamServers' };
+	/** Syncs the design system of `folder`, one of the row's `designSystemRepos`; without one, of the window's only repository that names a design system. */
+	| { readonly type: 'syncDesignSystem'; readonly folder?: string }
+	| { readonly type: 'openFigma' | 'allowlist' | 'openAllowlistFile' | 'openDefaults' | 'checkAll' | 'openTeamServers' | 'takeOverTeamServers' };

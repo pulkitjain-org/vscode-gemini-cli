@@ -700,7 +700,7 @@ Selections, menu highlights and quick-input focus are graphite greys rather than
 
 The **Make It Yours** page (`appearance.ts`) marks the theme the window shows. With `window.autoDetectColorScheme` on it reads the preferred light or dark theme, and picking a theme turns auto-detect off so the pick holds.
 
-The model, branch and folder menus replace the system select menu and quick picks. The branch menu asks the extension for the folder's local branches (`listBranches`) and switches or creates one through the git extension's API (`switchBranch`).
+The model, branch and folder menus replace the system select menu and quick picks, and so does every choice a page asks for: Connections' Sync Design System, in a window with several repositories that name a design system, opens a menu of them from the `connectionsMenu.js` chunk and names the one picked to the command, whose quick pick is left for the Command Palette. The branch menu asks the extension for the folder's local branches (`listBranches`) and switches or creates one through the git extension's API (`switchBranch`).
 
 ### Team tools
 
