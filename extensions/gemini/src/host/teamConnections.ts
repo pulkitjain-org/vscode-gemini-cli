@@ -884,7 +884,8 @@ export function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Pr
 }
 
 /** The workspace folder of the active editor, when it has one on disk. */
-function editorFolder(): string | undefined {
+/** The workspace folder of the file in the editor, when it is on disk. */
+export function editorFolder(): string | undefined {
 	const uri = vscode.window.activeTextEditor?.document.uri;
 	const folder = uri && vscode.workspace.getWorkspaceFolder(uri);
 	return folder?.uri.scheme === 'file' ? folder.uri.fsPath : undefined;

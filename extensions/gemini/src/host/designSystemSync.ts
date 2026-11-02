@@ -8,11 +8,12 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import {
 	designSystemChanges, designSystemConfig, type DesignSystemChanges, type DesignSystemConfig, designSystemFiles, type DesignComponent, documentPages,
-	isUnchanged, keepRules, pageComponents, pageParts, readSyncRecord, syncPages,
+	designSystemRoots, isUnchanged, keepRules, pageComponents, pageParts, readSyncRecord, syncPages,
 } from '../acp/designSystem';
 import { errorMessage } from '../acp/errors';
 import type { FigmaClient } from '../acp/figma';
 import { teamDefaultsFile, type TeamDefaults } from '../acp/teamDefaults';
+import { tildify } from './displayText';
 import { showError } from './errorNotice';
 
 /** What Sync Design System takes from the extension's own bundle: it runs from dist/onDemand.js. */
@@ -21,10 +22,13 @@ export interface DesignSystemSyncHost {
 	figma(): FigmaClient | undefined;
 	/** The team's defaults of the repository around `folder`, or of the workspace when unset. */
 	defaults(folder?: string): Promise<TeamDefaults>;
+	/** The window's folders on disk, and the folder of the file in the editor. */
+	folders(): { readonly folders: readonly string[]; readonly editor?: string };
 }
 
 /**
- * The most pages a sync reads. Each page costs two of Figma's Dev Mode reads,
+ * The most pages a sync reads. Each page costs one of Figma's Dev Mode reads
+ * for its outline, and each of its top-level frames one more (`maxFrames`),
  * which Figma limits per day, so a file with more pages has to name the ones
  * that hold the design system.
  */
@@ -70,6 +74,13 @@ export class DesignSystemSync implements vscode.Disposable {
 
 	private async sync(folder: string | undefined): Promise<void> {
 		try {
+			if (folder === undefined) {
+				const chosen = await this.chooseRepository();
+				if (chosen === null) {
+					return;
+				}
+				folder = chosen;
+			}
 			const defaults = await this.host.defaults(folder);
 			const config = designSystemConfig(defaults);
 			if (!config) {
@@ -94,6 +105,26 @@ export class DesignSystemSync implements vscode.Disposable {
 			this.log.warn(`Sync Design System failed: ${errorMessage(err)}`);
 			void showError(vscode.l10n.t("Couldn't sync the design system: {0}", errorMessage(err)));
 		}
+	}
+
+	/**
+	 * The repository to sync when the command names none. With several in the
+	 * window that name a design system, such as two projects of the same
+	 * client, the user picks, the one of the file in front first: the
+	 * Connections page, where Sync starts, has no file of its own. Undefined
+	 * leaves it to the workspace's defaults; null is a pick cancelled.
+	 */
+	private async chooseRepository(): Promise<string | undefined | null> {
+		const { folders, editor } = this.host.folders();
+		const read = (folder: string) => this.host.defaults(folder).catch((): TeamDefaults => ({}));
+		const [all, inFront] = await Promise.all([Promise.all(folders.map(read)), editor ? read(editor) : undefined]);
+		const roots = designSystemRoots(all, inFront && designSystemConfig(inFront)?.root);
+		if (roots.length <= 1) {
+			return roots[0];
+		}
+		const pick = await vscode.window.showQuickPick(roots.map(root => ({ label: path.basename(root), description: tildify(path.dirname(root)), root })),
+			{ title: vscode.l10n.t("Sync Design System"), placeHolder: vscode.l10n.t("Which repository's design system to sync?") });
+		return pick ? pick.root : null;
 	}
 
 	/** Reads the configured pages; undefined when the user cancelled or the open file isn't the design system (both said already). */

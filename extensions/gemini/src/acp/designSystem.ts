@@ -63,6 +63,16 @@ export function designSystemConfig(defaults: TeamDefaults): (DesignSystemConfig 
 	};
 }
 
+/**
+ * The repositories a sync can write to, out of the defaults of the window's
+ * folders: those that name a design system, once each however many folders
+ * share a repository, with `editor`'s (the file in front) first.
+ */
+export function designSystemRoots(folders: readonly TeamDefaults[], editor: string | undefined): string[] {
+	const roots = [...new Set(folders.flatMap(defaults => designSystemConfig(defaults)?.root ?? []))];
+	return editor && roots.includes(editor) ? [editor, ...roots.filter(root => root !== editor)] : roots;
+}
+
 /** The note for a prompt with a Figma design in the repository whose defaults are `defaults`; undefined without a design-system skill. */
 export async function designSystemNoteFor(defaults: TeamDefaults): Promise<string | undefined> {
 	const config = designSystemConfig(defaults);
