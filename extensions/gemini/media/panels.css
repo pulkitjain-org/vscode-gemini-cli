@@ -179,6 +179,11 @@ button.icon-button:hover:not(:disabled) {
 	display: none;
 }
 
+.changes-bar .counts {
+	font-family: var(--gc-font);
+	font-size: var(--gc-text-md);
+}
+
 .changes-bar .actions {
 	display: flex;
 	align-items: center;
@@ -208,7 +213,7 @@ button.icon-button:hover:not(:disabled) {
 	align-items: center;
 	gap: 7px;
 	padding: 8px 8px 8px 12px;
-	font-size: var(--gc-text-sm);
+	font-size: var(--gc-text-md);
 	cursor: pointer;
 }
 
@@ -279,10 +284,11 @@ button.icon-button:hover:not(:disabled) {
 	border-top: 1px dashed var(--gemini-border);
 }
 
+/* The diff reads like the editor beside it: its font, at its size. */
 .hunk-lines {
 	padding: 0 0 8px;
 	font-family: var(--vscode-editor-font-family);
-	font-size: var(--gc-text-xs);
+	font-size: var(--vscode-editor-font-size, var(--gc-text-sm));
 	line-height: 1.6;
 	tab-size: 2;
 }

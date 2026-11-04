@@ -337,6 +337,8 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 		};
 		const script = webview.asWebviewUri(vscode.Uri.joinPath(media, 'changes.js'));
 		const changesMenu = webview.asWebviewUri(vscode.Uri.joinPath(media, 'changesMenu.js'));
+		// The type scale and the other design tokens panels.css sizes everything with.
+		const tokens = webview.asWebviewUri(vscode.Uri.joinPath(media, 'tokens.css'));
 		const style = webview.asWebviewUri(vscode.Uri.joinPath(media, 'panels.css'));
 		const teamStyle = webview.asWebviewUri(vscode.Uri.joinPath(media, 'teamFlow.css'));
 		const codicons = webview.asWebviewUri(vscode.Uri.joinPath(media, 'codicon.css'));
@@ -349,6 +351,7 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 	<meta charset="UTF-8">
 	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; font-src data: ${webview.cspSource}; img-src data: ${webview.cspSource}; style-src ${webview.cspSource}; script-src 'nonce-${nonce}' ${webview.cspSource};">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<link href="${tokens}" rel="stylesheet">
 	<link href="${codicons}" rel="stylesheet">
 	<link href="${menuStyle}" rel="stylesheet">
 	<link href="${style}" rel="stylesheet">
