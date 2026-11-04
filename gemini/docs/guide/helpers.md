@@ -1,12 +1,16 @@
 # The Settings page
 
-**Settings** is one page for everything you can set. It lists every GeminiCode setting, each with a switch, a picker or a field, in the sections of its side index: Account and CLI, Agents, Chat, Browser, Workspace Index and Docs, Team Tools, Safety and Limits, and Developer. Search the page to find a setting; advanced settings show only in search results. The full list is in [Settings](settings.md).
+**Settings** is one page for everything you can set. It lists every GeminiCode setting, each with a switch, a picker or a field, and below them what every agent loads when it starts. Open it with **Gemini: Settings**, from Home's gear menu (**Customize**), the **Gemini** status bar item's menu, or the Agents pane's **...** menu. Opening the page never starts the Gemini CLI.
 
-Below the settings, **Loads** shows what every agent loads when it starts: MCP servers, skills, hooks and extensions, each with a switch, and memory and rules. It also holds your trusted folders and a few of the Gemini CLI's own settings. All of these are shared with the `gemini` command in your terminal.
+Settings is the first of four pages that share a row of tabs at the top: **Loads** (this page), **Index & Docs** ([Workspace index and docs](agents.md#workspace-index-and-docs)), **Connections** ([Team tools](team-tools.md)) and **Storage & Audit**, which shows how much space GeminiCode's data takes, cleans up what is no longer needed, and holds the [audit log](team-tools.md#audit-log). Clicking a tab opens that page in place of the one you were on, so the editor keeps one tab for them, titled such as "Settings: Connections".
+
+On the Settings page, a side index jumps to each section: Account and CLI, Agents, Chat, Browser, Workspace Index and Docs, Team Tools, Safety and Limits, Developer, then Loads. Below those, it links to the other three pages too. Search the page to find a setting; advanced and deprecated settings show only in search results. The full list, with defaults, is in [Settings](settings.md).
+
+**Loads** shows what every agent loads when it starts: MCP servers, skills, hooks and extensions, each with a switch, and memory and rules. It also holds your trusted folders and a few of the Gemini CLI's own settings. All of these are shared with the `gemini` command in your terminal.
 
 ![Settings with the context per model call, MCP servers, skills each with a switch, hooks, extensions and memory](../../site/media/docs/project-helpers-dark.webp)
 
-Open it with **Gemini: Settings**, from Home's gear menu, the **Gemini** status bar item's menu, or the Agents pane's **...** menu. Its side index also opens the other pages: **Index & Docs** ([Workspace index and docs](agents.md#workspace-index-and-docs)), **Connections** ([Team tools](team-tools.md)) and **Storage & Audit**, which shows how much space GeminiCode's data takes, cleans up what is no longer needed, and holds the [audit log](team-tools.md#audit-log). Changes under Loads apply to agents started afterwards; **Restart Agent** at the top of the page applies them now. Opening the page never starts the Gemini CLI.
+Changes under Loads apply to agents started afterwards; **Restart Agent** at the top of the page applies them to running agents.
 
 ## Context per model call
 
@@ -25,7 +29,9 @@ The page lists the MCP servers in your personal `~/.gemini/settings.json` and in
 
 - **Add Server** asks for a name and the command that starts the server, or its URL, and adds it to your personal settings.
 - **Sign In**, on a server reached by URL, runs the CLI's `/mcp auth` in a terminal, which opens your browser. Type `/quit` when it's done and restart the agent.
-- When a server can't start, GeminiCode shows a warning naming the server and the reason, and marks it on the page.
+- When a server can't start, GeminiCode shows a warning naming the server and the reason, with **MCP Servers**, which opens this page, and **Show Log**. The page marks the server too. For a server reached by URL that doesn't answer, the warning asks you to check that it is running.
+
+A server that starts with no tools and lists them later is working, and gets no warning. GeminiCode's own servers start that way for an agent whose task doesn't need them yet, and they stay connected however long a chat sits idle.
 
 A project's servers load only once you trust its folder.
 

@@ -15,25 +15,40 @@ In the Agents layout the top of the window is a single row: the Home button, the
 
 ## Home
 
-**Home** is where you start agents and see what needs you. It opens when no tab is open in the Agents layout, and in front of your restored tabs each time GeminiCode starts.
+**Home** is where you start agents and see what needs you. It opens when no tab is open in the Agents layout, and in front of your restored tabs each time GeminiCode starts. It greets you, and below that come one composer and a few cards.
 
-To start an agent, describe the task and press Return (or **Start agent**). Under the task, choose where it works: **Here**, in this folder on your current branch, or **On a branch**, a new branch and folder (see [Agents on their own branch](#agents-on-their-own-branch)). Hold the pointer over a choice to see what it does. A branch needs a Git repository; outside one the chooser is gone and the agent works here.
+To start an agent, describe the task and press Return (or **Start agent**). You can also paste a Jira, GitLab or Figma link as the task. Under the task, choose where the agent works:
 
-While Projects are on, the chevron beside **On a branch** offers **On its own branch** or a project: the projects of the folder's repository first, then those of other repositories, and **New Project in** the folder. A project's branch is a thread of that project: its coordinator makes it one or passes the task on (see [Projects](projects.md)). The choice then names the project, and the button reads **Send to Project**, or **Start Project** for a new one.
+- **Here**: in this folder, on your current branch.
+- **On a branch**: a new branch in a folder of its own (see [Agents on their own branch](#agents-on-their-own-branch)).
 
-The bar under the composer shows the folder, the approval mode and the model the agent starts with, and **From your tools...** lists your tickets and merge requests to start from one. The folder picker marks each folder **Trusted**, **Trusted by parent** or **Needs trust**, and **Open Folder...** adds a folder for agents without adding it to the window. **On a branch**, alone or in a project, needs a trusted folder: in one that isn't, Home says so in place, with **Trust...**. See [Folder trust](review.md#folder-trust).
+Hold the pointer over a choice to see what it does. A branch needs a Git repository; in a folder outside one the choice isn't shown and the agent works here.
 
-The composer's **+** menu holds **Files** and the actions for this folder: **Review**, and **Run checks...** once Snyk or SonarQube is connected.
+While Projects are on (`gemini.projects.enabled`, on by default), the chevron beside **On a branch** offers **On its own branch** or a project: the projects of the folder's repository first, then those of other repositories, and **New Project in** the folder. A task sent to a project goes to its coordinator, which makes it a thread or passes it on (see [Projects](projects.md)). The choice then shows the project's name, and the button reads **Send to Project**, or **Start Project** for a new one.
+
+The bar under the composer has:
+
+- the folder the agent works in. The folder picker marks each folder **Trusted**, **Trusted by parent** or **Needs trust**, and **Open Folder...** adds a folder for agents without adding it to the window.
+- the approval mode the agent starts in.
+- the model it starts with.
+- **From your tools...**, which lists your Jira tickets and GitLab merge requests so you can start on one. Until you connect Jira or GitLab it says so.
+
+**On a branch**, alone or in a project, needs a trusted folder. In one that isn't trusted, Home says so in place, with **Trust...**. See [Folder trust](review.md#folder-trust).
+
+The composer's **+** menu has the actions for this folder, **Review** and, once Snyk or SonarQube is connected, **Run checks...**, then **Files** to attach files or images.
 
 Cards follow the composer:
 
-- **Pending on you** and **Your tickets**: your merge requests and Jira tickets once you connect GitLab and Jira; until then each card offers to connect. See [Team tools](team-tools.md#home).
-- **Agents**: the agents at work, with **Review** on one whose changes are ready, and your projects. **Show all** lists earlier agents too.
-- **Gemini**: how much of today's quota you have used, the GeminiCode and Gemini CLI versions, and a link to the audit log.
+- **Pending on you**: GitLab merge requests waiting for your review or assigned to you, and your own with their pipeline, approvals and whether they can merge.
+- **Your tickets**: your open Jira tickets, this sprint's first, with **Start** on each one not yet begun or reopened.
+- **Agents**: the agents at work, each with its state and **Review** on one whose changes are ready, then your projects. **All agents** shows the Agents pane, and **Show all** lists earlier agents too.
+- **Gemini**: how much of today's quota you have used, the GeminiCode and Gemini CLI versions and the project, and a link to the audit log.
 
-A card's title shows, as its tooltip, the query that fills it, so you can check its numbers against the tool. **Customize**, the gear at the top right, holds **Refresh** and **Settings** ([Settings](helpers.md)), and turns cards on and off and reorders them. The **Quality** card is off until you turn it on there.
+Until you connect GitLab and Jira, their cards offer to connect. See [Team tools](team-tools.md#home). A card's title shows, as its tooltip, the query that fills it, so you can check its numbers against the tool.
 
-If GeminiCode quit while something was running, **Unfinished when GeminiCode last quit** comes first, listing the flows to reopen and any write whose result never came back. In the chat, a turn that was cut off shows a card with **Retry the Turn**.
+**Customize**, the gear at the top right, holds **Refresh** and **Settings** ([The Settings page](helpers.md)), turns each card on or off and moves it up. The **Quality** card, with SonarQube's quality gate and Snyk's issues on a release branch, is off until you turn it on there; the same menu picks its release branch.
+
+If GeminiCode quit while a Jira or GitLab change was running, **Unfinished when GeminiCode last quit** comes first, listing the flows to reopen and any write whose result never came back. In the chat, a turn that was cut off shows a card with **Retry the Turn**.
 
 To get back to Home, click the house at the start of the title bar, press <kbd>⇧⌘H</kbd> (outside the editor, where it is Replace in Files), or run **Gemini: Home**. To stop it opening at start-up, turn off `gemini.home.openOnStartup`.
 
@@ -41,13 +56,21 @@ In the Agents layout the agent list highlights the agent, project or thread whos
 
 ## Agents side by side
 
-Each agent opens as a tab with its own chat. The tab shows what the agent is doing: a spinner while it works, an amber dot when it needs you, a tick when it has finished, and how many lines it has changed.
+The Agents pane lists your agents under the folder each works in. A folder's projects come first, each a row you can expand to see its threads, then its agents, most recently used first. A fork is listed under the agent it came from, and the agents you archived are under an **Archived** row.
 
-![The Agents pane with an agent working, one waiting on a command and others idle, one with a fork under it](../../site/media/agents-pane-dark.webp)
+![The Agents pane with one agent working, the others done, and a fork under the agent it came from](../../site/media/agents-pane-dark.webp)
 
-In the Agents pane, each agent's row has the same signal (green when finished, red when something went wrong, grey otherwise). On the right it shows how long the agent has been working, "waiting", the lines it added, or when it was last active. Point at a row to see its branch and folder. Rename, stop or remove an agent from its right-click menu; **Gemini: Stop Agent** (<kbd>⌘esc</kbd>) stops the one in front. Removing an agent deletes its conversation and undo history, and the question names any files whose changes you haven't reviewed yet. **Archive**, in the same question, keeps all of that and moves the agent under an **Archived** row in its workspace, out of the list and off Home; its next prompt brings it back.
+Each row's mark shows what the agent is doing: a spinner while it works, a yellow dot when it needs you, a green dot when it has finished and you haven't looked yet, a red dot when something went wrong, and a grey dot otherwise. On the right the row shows how long the current turn has run, "needs you", the lines the agent added, or when it was last active. Point at a row to see its state, its changes, and its branch and folder.
 
-- In the Editor layout, agents that are working, waiting, or finished but not yet read show as pills in the title bar.
+Click an agent to show it. Agents you click share one tab: the next agent you click takes its place there, and the one it showed carries on with its turn. An agent gets a tab of its own once you send it a message, or when you choose **Keep in own tab** in the tab's title bar or under **More** in the row's right-click menu.
+
+Each agent's tab shows the same: a spinner while it works, an amber dot when it needs you, a red mark when something went wrong, a tick when it has finished, and how many lines it has added and removed.
+
+Hovering over a row shows buttons for **Open Changes**, **Fork Agent**, **Try in Workspace** (on its own branch) and **Stop Agent** (while it works). The row's right-click menu has **Open Agent**, **Rename...**, **Fork Agent**, **Stop Agent**, **More** and **Remove Agent**. **More** holds the rest: **Open Changes**, **Merge Back**, **Try in Workspace**, **Take Back**, **Move to its own branch**, **Open Terminal**, **Open Chat as Markdown** and **Keep in own tab**, and for a project **New Thread** and **Project Settings**. A folder's right-click menu starts agents and projects there, holds its **Index** commands, and **Remove Workspace from List**.
+
+**Gemini: Stop Agent** (<kbd>⌘esc</kbd>) stops the agent in front. Removing an agent deletes its conversation and undo history, and the question names any files whose changes you haven't reviewed yet. **Archive**, in the same question, keeps all of that and moves the agent under **Archived**, out of the list and off Home; its next prompt brings it back.
+
+- In the Editor layout, agents that are working, waiting, finished but not yet read, or stopped by an error show as pills in the title bar.
 - Right-click GeminiCode in the Dock for **New Agent**.
 - In a window with several folders, each agent keeps to the folder it works in, and **@** in its composer offers only that folder's files. Turn on `gemini.agents.allWorkspaceFolders` to let every agent use all of them.
 
@@ -91,6 +114,8 @@ Files outside the agent's folder, and files that may hold secrets, such as `.env
 
 Two agents in the same folder can trip over each other's edits. To keep them apart, give an agent its own branch: choose **New Agent on Its Own Branch** (the branch icon next to **+** on a workspace in a Git repository) and enter a branch name. The agent gets its own copy of the repository, on that new branch, in `~/.geminicode/worktrees/<repository>/`. It reads, edits and runs commands there, so your folder and other agents are untouched.
 
+An agent already at work in your folder can move to a branch of its own: choose **Move to its own branch** in its tab's title bar, or under **More** in its row's right-click menu. Its chat and your uncommitted changes go to a new branch in a folder of their own, and the original agent is archived. The changes stay in your folder too, unless you choose **Move and undo here**, which takes the agent's changes out of your folder once they are on the new branch. Wait for the agent's turn to end, or stop it, before moving it.
+
 When the work is done, **Try in Workspace** (the beaker icon on the agent's row, under **More** in its right-click menu, or in the Changes panel) copies the agent's changes into your checkout of the repository as unstaged files, so your local server and tests run with them. Nothing is committed, staged or merged: your branch, its index and HEAD stay as they are. Each time the agent finishes a turn, your workspace updates with what it changed. The status bar shows **Trying:** and the agent's name, and in Source Control the tried files carry a **T**.
 
 ![An agent's changes tried in the workspace: Source Control lists them unstaged with a T, the diff of one is open, and the status bar says Trying](../../site/media/try-scm-dark.webp)
@@ -117,7 +142,7 @@ When an agent's work splits in two, fork it. The fork is a new agent that starts
 
 There are two ways to fork:
 
-- **Fork Agent** forks the conversation as it is. It is the split-arrows icon on an agent's row (on hover), in the row's right-click menu and in the composer's **+** menu, and you can type `/fork`.
+- **Fork Agent** forks the conversation as it is. It is the split-arrows icon on an agent's row (on hover), **Fork Agent** in the row's right-click menu and **Fork** in the composer's **+** menu, and you can type `/fork`.
 - **Fork**, beside Retry at the end of any reply, forks the conversation as it was at the end of that reply.
 
 ![The Fork dialog with Whole session, Compressed and Conversation only, and a new branch or the same folder](../../site/media/fork-dialog-dark.webp)
@@ -143,9 +168,9 @@ A fork is listed under the agent it came from, and the agent's chat gets a card 
 
 GeminiCode keeps an index of the code in each workspace, and of any documentation you attach. With it, an agent finds the code it needs in one step instead of searching file by file. The index stays on your Mac, in `~/.geminicode/index`, and is built in a separate process at low priority, so it never slows the editor.
 
-![The Index page with two indexed workspaces and attached documentation](../../site/media/index-page-dark.webp)
+![The Index page with the workspace indexed and the Vitest docs attached](../../site/media/index-page-dark.webp)
 
-The index is Settings' **Index & Docs** tab: open it with **Gemini: Manage Index**, from the **Gemini** status bar item's menu, or from the Settings page's side index.
+The index has its own page, the **Index & Docs** tab of Settings. Open it with **Gemini: Manage Index**, **Manage Index** in the **Gemini** status bar item's menu, or the tab at the top of the Settings page.
 
 ### Index tools for agents
 

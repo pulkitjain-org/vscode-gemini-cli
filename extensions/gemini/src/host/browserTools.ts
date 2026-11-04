@@ -41,6 +41,8 @@ export class BrowserTools implements vscode.Disposable {
 	private readonly folders = new Map<string, string>();
 	/** The page the user handed each agent, while it has it. */
 	private readonly shared = new Map<string, { readonly pageId: string; readonly url: string; readonly title: string }>();
+	/** Pages of the user's that an agent's Browser link opened, by page id: what is taken from one goes to that agent. */
+	private readonly openedFor = new Map<string, string>();
 	/** Agents whose hand-over this window asked the workbench about, after a reload. */
 	private readonly lookedUp = new Set<string>();
 	/** One question at a time, so a burst of tool calls does not stack dialogs. */
@@ -70,8 +72,8 @@ export class BrowserTools implements vscode.Disposable {
 					this.agents.sharedPageChanged?.(agent);
 				}
 			}),
-			vscode.commands.registerCommand('_gemini.browser.addToPrompt', (context: unknown, agent: unknown) =>
-				this.addToPrompt(context as PageContext, typeof agent === 'string' ? agent : undefined)),
+			vscode.commands.registerCommand('_gemini.browser.addToPrompt', (context: unknown, agent: unknown, pageId: unknown) =>
+				this.addToPrompt(context as PageContext, typeof agent === 'string' ? agent : typeof pageId === 'string' ? this.openedFor.get(pageId) : undefined)),
 			// The workbench asks before an agent's page loads a file, or a local page of the agent's reaches another site (geminiAgentFiles.ts in the browser view's main process code).
 			vscode.commands.registerCommand('_gemini.browser.loadAllowed', (agent: unknown, url: unknown) =>
 				typeof agent === 'string' && typeof url === 'string' && this.host.loadAllowed(agent, url)),
@@ -215,6 +217,18 @@ export class BrowserTools implements vscode.Disposable {
 		return !!newest && await run<boolean>('_gemini.browser.reveal', agent, newest).catch(() => false) === true;
 	}
 
+	/**
+	 * Opens a blank page of the user's in `column`, for `agent`'s Browser link,
+	 * and remembers it as that agent's, so an element, notes or a screenshot
+	 * taken from it goes to that agent's composer, not the chat last in front.
+	 */
+	async openBlankFor(agent: string, column: number | undefined): Promise<void> {
+		const pageId = await run<string>('_gemini.browser.openBlank', column);
+		if (typeof pageId === 'string') {
+			this.openedFor.set(pageId, agent);
+		}
+	}
+
 	/** Gives the page shared with `agent` back to the user, still open: the × on its chip. */
 	async stopSharing(agent: string): Promise<void> {
 		const page = this.shared.get(agent);
@@ -249,6 +263,11 @@ export class BrowserTools implements vscode.Disposable {
 		this.server.unbind(agent);
 		this.allowed.delete(agent);
 		this.folders.delete(agent);
+		for (const [pageId, owner] of this.openedFor) {
+			if (owner === agent) {
+				this.openedFor.delete(pageId);
+			}
+		}
 		void vscode.commands.executeCommand('_gemini.browser.close', agent).then(undefined, () => undefined);
 	}
 

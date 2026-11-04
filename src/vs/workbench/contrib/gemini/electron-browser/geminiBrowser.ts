@@ -286,9 +286,12 @@ CommandsRegistry.registerCommand('_gemini.browser.reveal', async (accessor, key:
  * an agent that has no page. The user can share it with the agent from the
  * page's toolbar, as any page of theirs.
  */
+/** Opens a blank page of the user's in the 1-based grid `column`, or beside; resolves with its id. */
 CommandsRegistry.registerCommand('_gemini.browser.openBlank', async (accessor, column: unknown) => {
 	const editorService = accessor.get(IEditorService);
-	await editorService.openEditor({ resource: BrowserViewUri.forId(generateUuid()), options: { pinned: true } }, groupAt(accessor.get(IEditorGroupsService), column) ?? SIDE_GROUP);
+	const id = generateUuid();
+	await editorService.openEditor({ resource: BrowserViewUri.forId(id), options: { pinned: true } }, groupAt(accessor.get(IEditorGroupsService), column) ?? SIDE_GROUP);
+	return id;
 });
 
 /** The group at the 1-based grid `column` of the main editor part, if there is one. */
@@ -771,10 +774,10 @@ class GeminiPageContext extends BrowserEditorContribution {
 		await this.send(model, { kind: 'element', url: data.url ?? model.url, title: model.title, element: elementOf(data), ...(image ? { image: encodeBase64(image) } : {}) });
 	}
 
-	/** Hands `context` to the extension, for the page's agent or the chat in front. */
+	/** Hands `context` to the extension, for the page's agent, the agent whose Browser link opened it, or the chat in front. */
 	private async send(model: IBrowserViewModel, context: object): Promise<boolean> {
 		try {
-			return await this.commandService.executeCommand<boolean>('_gemini.browser.addToPrompt', context, keyOf(model)) === true;
+			return await this.commandService.executeCommand<boolean>('_gemini.browser.addToPrompt', context, keyOf(model), model.id) === true;
 		} catch {
 			// The Gemini extension is not running (yet).
 			this.notificationService.warn(localize('gemini.browser.addNotReady', "Gemini isn't ready yet. Try again in a moment."));

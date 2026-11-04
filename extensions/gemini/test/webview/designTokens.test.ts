@@ -28,6 +28,17 @@ describe('design tokens', () => {
 		}
 	});
 
+	it('loads tokens.css on every page whose own HTML loads panels.css', () => {
+		// Without it every size in panels.css is unset and the page falls back to the browser's 16px (the Changes panel did).
+		const host = path.join(__dirname, '..', '..', 'src', 'host');
+		const pages = readdirSync(host, { recursive: true, encoding: 'utf8' }).filter(file => file.endsWith('.ts'));
+		const missing = pages.filter(file => {
+			const source = readFileSync(path.join(host, file), 'utf8');
+			return source.includes('\'panels.css\'') && !source.includes('\'tokens.css\'');
+		});
+		expect(missing).toEqual([]);
+	});
+
 	it.each(own)('%s writes no size, radius, shadow or duration of its own', file => {
 		const css = readFileSync(path.join(media, file), 'utf8');
 		// A size relative to its text (em, %) scales a reply's headings and the like with the page; absolute ones come from the scale.

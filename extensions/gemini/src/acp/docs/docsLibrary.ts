@@ -68,8 +68,9 @@ export class DocsLibrary {
 				const id = run('INSERT INTO sections(url, heading, text) VALUES (?, ?, ?)', page.url, section.heading, section.text).lastInsertRowid;
 				run('INSERT INTO sections_fts(rowid, text, heading, title) VALUES (?, ?, ?, ?)', id, section.text, section.heading, converted.title);
 			}
-			if (!this.meta(source.id, 'title') && converted.title) {
-				run('INSERT OR REPLACE INTO meta(key, value) VALUES (\'title\', ?)', siteTitle(converted.title));
+			const site = siteTitleOf(converted.title, page.type === 'html', page.url, source.url);
+			if (site && (!this.meta(source.id, 'title') || site.start)) {
+				run('INSERT OR REPLACE INTO meta(key, value) VALUES (\'title\', ?)', site.title);
 			}
 		});
 		await this.sliced(source.id, unchanged, url => {
@@ -319,8 +320,22 @@ function titleOfMarkdown(markdown: string): string | undefined {
 	return /^#\s+(.+)$/m.exec(markdown)?.[1].trim();
 }
 
-/** A page title's site part: "useEffect | React" → "React", also after a dash or a middle dot. */
-function siteTitle(title: string): string {
+/**
+ * The site's name from one page, if the page says it: the site part of an HTML title
+ * ("useEffect | React" → "React", also after a dash or a middle dot), or the whole title of the
+ * docs' start page. Any other page's title or first heading names the page, such as "describe"
+ * on a Markdown page of an API reference, so it gives nothing. `start` marks the start page's,
+ * which wins over a name taken earlier.
+ */
+export function siteTitleOf(title: string, html: boolean, pageUrl: string, sourceUrl: string): { title: string; start: boolean } | undefined {
+	const start = sameDocsUrl(pageUrl, sourceUrl);
 	const parts = title.split(/\s+[|\u2013\u2014\u00b7-]\s+/);
-	return (parts.length > 1 ? parts[parts.length - 1] : title).trim();
+	const name = (html && parts.length > 1 ? parts[parts.length - 1] : start ? title : '').trim();
+	return name && name !== pageUrl ? { title: name, start } : undefined;
+}
+
+/** Two addresses of one page, ignoring a trailing slash, the fragment and the query. */
+function sameDocsUrl(a: string, b: string): boolean {
+	const bare = (url: string) => url.replace(/[#?].*$/, '').replace(/\/+$/, '');
+	return bare(a) === bare(b);
 }

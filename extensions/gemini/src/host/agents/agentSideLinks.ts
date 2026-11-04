@@ -91,7 +91,8 @@ export class AgentSideLinks {
 			return;
 		}
 		const column = await agentColumn(id, this.host.live.get(id)?.panel, true);
-		await vscode.commands.executeCommand('_gemini.browser.openBlank', column).then(undefined, () =>
+		const browser = this.host.view.browser;
+		await (browser ? browser.openBlankFor(id, column) : vscode.commands.executeCommand('_gemini.browser.openBlank', column)).then(undefined, () =>
 			vscode.commands.executeCommand('workbench.action.browser.open'));
 	}
 

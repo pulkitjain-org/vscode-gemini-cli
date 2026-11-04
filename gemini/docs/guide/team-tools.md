@@ -6,7 +6,7 @@ Everything runs from your Mac, over your VPN. Nothing goes through a GeminiCode 
 
 ## Connect your tools
 
-Open **Connections** from the Command Palette (**Gemini: Connections**), the **Gemini** status bar item's menu (its tooltip lists each connected tool's state), or the Agents pane's **...** menu. Each tool shows who you're signed in as, the server and when the token expires.
+Open **Connections** from the Command Palette (**Gemini: Connections**), the **Gemini** status bar item's menu (its tooltip lists each connected tool's state), the Agents pane's **...** menu, or its tab at the top of the [Settings page](helpers.md). Each tool shows who you're signed in as, the server and when the token expires.
 
 | Tool | How it connects | What you need |
 | --- | --- | --- |
@@ -61,11 +61,11 @@ A checked-in `.gemini/geminicode-tools.json` saves everyone typing addresses. It
 - `figma.designSystem` names your team's design system in Figma, for [Sync Design System](#your-design-system).
 
 > [!IMPORTANT]
-> GeminiCode's own servers, such as `geminicode-tools`, `geminicode-project` and `geminicode-browser`, are always allowed, even when your Gemini settings have an `mcp.allowed` list without them; only `mcp.excluded` keeps them out. Once you've connected, remove any older `jira` and `gitlab` entries from `mcp.allowed` and `mcpServers` yourself; until then agents see two sets of Jira and GitLab tools. The terminal's `gemini` doesn't get these tools.
+> GeminiCode's own servers, such as `geminicode-tools`, `geminicode-project` and `geminicode-browser`, are always allowed, even when your Gemini settings have an `mcp.allowed` list without them; only `mcp.excluded` keeps them out. Once you've connected, remove any `jira` and `gitlab` entries of your own from `mcp.allowed` and `mcpServers`; while they are there, agents see two sets of Jira and GitLab tools. The terminal's `gemini` doesn't get these tools.
 
 ## Home
 
-**Home** opens in front of your restored tabs every time GeminiCode starts. Below the composer, these cards show your team's work:
+**Home** opens in front of your restored tabs every time GeminiCode starts, unless you turn off `gemini.home.openOnStartup`. Below the composer, these cards show your team's work:
 
 - **Pending on you**: merge requests you're asked to review or assigned to finish, then your own under **Mine**, each with its pipeline and approvals. Reviews you started come first, then those where you are the only reviewer, then the longest waiting; one the author must fix first, with conflicts or a failing pipeline, goes after them, and drafts and reviews you already gave go last. One of yours that can merge shows **Merge...**, and one with unresolved threads says so, with **Reply**.
 - **Your tickets**: every open ticket assigned to you. The current sprint's come first, under the sprint's name with how many are done, then the rest under **Not in this sprint**. With several Jira sites, each site has its own group. A ticket not yet started has **Start**, and every ticket's menu has **Start Agent**, **Add Comment...**, **Log Time...**, **Move...** and **Reassign...**.
@@ -107,9 +107,16 @@ Name the file in the team defaults:
 }
 ```
 
-Until the team file names one, **Add Figma Design** offers **Set Up Your Design System**, which says what to add.
+Until the team file names one, **Add Figma Design** offers **Set Up Your Design System**, which says what to add and offers **Copy Example**.
 
-Then open the design-system file in the Figma desktop app, open each page you named once (the app reads a page only after it has been opened, and the sync stops and names any page it got empty), and run **Sync Design System** on Figma's row in Connections (or **Gemini: Sync Design System** from the Command Palette, with `gemini.developer.showTools` on). In a window with several repositories whose team defaults name a design system, Sync opens a menu of them to pick from, the one of the file in front first. GeminiCode reads the pages you named, up to eight, matching each name without regard to case or spacing, so `"└─ colors"` finds a page named `└─  colors `, and it warns about any name it can't find. When `pages` is left out it reads every visible page, as long as the file has no more than eight; Figma limits how many reads its Dev Mode server answers a day, so a larger file has to name its pages. The sync says what changed since the last one, such as "4 new tokens, 1 component removed", and offers **Review Changes**, which shows each file's diff, and **Write Files**. It writes:
+Sync Design System is one of the developer tools, so turn on `gemini.developer.showTools` first. Then:
+
+1. Open the design-system file in the Figma desktop app, and open each page you named once. The app reads a page only after it has been opened in the session; it gives an unopened page as an empty canvas, so the sync stops and names those pages for you to open, rather than writing a design system with their components missing.
+2. Choose **Sync Design System** on Figma's row in Connections, or **Gemini: Sync Design System** in the Command Palette. When several repositories in the window name a design system in their team defaults, Sync asks which one to sync: on the Connections page in a menu under the button, from the Command Palette in a picker. The repository of the file in front comes first.
+
+GeminiCode reads the pages you named, up to eight. A name matches whatever its case and spacing, so `"└─ colors"` finds a page named `└─  colors `. A name the file has no page for gets a warning, and the other pages still sync. When `pages` is left out, the sync reads every visible page, as long as the file has no more than eight. Figma limits how many reads its Dev Mode server answers a day, so a larger file has to name its pages.
+
+The sync says what changed since the last one, such as "4 new tokens, 1 component removed", and offers **Review Changes**, which shows each file's diff, and **Write Files**. It writes:
 
 - a skill in `.gemini/skills/design-system/` (or the folder `skill` names), with the rules for using the design system;
 - `references/tokens.md`, every variable with its value, and `references/components.md`, every component with its variants;
@@ -119,7 +126,7 @@ Commit them like any other change. Syncing again keeps the rules you wrote in th
 
 Once the skill is there, a prompt with a Figma design asks the agent to load it and build with its tokens and components. Colours in the design that are tokens come to the agent with their names, such as `#2F5BD3 (color/brand/primary)`. `codeConnect` turns Code Connect on for this repository; it is off unless the file says so.
 
-The sync reads each page's outline for its components, and the variables of each visible frame at the top of a page, up to 40 frames in all, so it also finds the styles used inside instances. Figma gives each variable's value in the mode the file shows, and only the variables a frame uses, so sync the pages that show the whole design system, such as its foundations.
+The sync reads each page's outline for its components, then the variables of each visible frame at the top of those pages, one frame at a time, so it also finds the styles used inside instances. It reads at most 40 frames: when the pages hold more, it stops and asks you to name fewer pages. Figma gives each variable's value in the mode the file shows, and only the variables a frame uses, so sync the pages that show the whole design system, such as its foundations.
 
 ## From ticket to merge request
 
@@ -234,7 +241,7 @@ Taking over turns on **Gemini › Team: Run Team Servers** (`gemini.team.runTeam
 
 ## What agents get
 
-Every agent session gets a `geminicode-tools` MCP server, with tools only for the tools you connected, such as `jira_get_issue`, `confluence_get_page`, `gitlab_get_mr`, `gitlab_job_log`, `sonar_quality_gate`, `snyk_test` and `figma_design`. Their definitions would be about half of every model call on a team repository, so the server lists none until the agent's task needs them. A ticket, merge request, page or design in a message or an attachment, a flow such as a review, or **Use team tools** in the composer's **+** menu turns them on for that agent for good, and a running chat gets them without a restart.
+Every agent session gets a `geminicode-tools` MCP server, with tools only for the tools you connected, such as `jira_get_issue`, `confluence_get_page`, `gitlab_get_mr`, `gitlab_job_log`, `sonar_quality_gate`, `snyk_test` and `figma_design`. Their definitions would be about half of every model call on a team repository, so the server lists none until the agent's task needs them. A ticket, merge request, page or design in a message or an attachment, a flow such as a review, or **Use team tools** in the composer's **+** menu turns them on for that agent for good, and a running chat gets them without a restart. Until then the server is connected with no tools, which is not a failure, so GeminiCode doesn't warn about it, and it stays connected however long the chat sits idle.
 
 Reading runs without asking, except Snyk's tests: `snyk_test` runs your project's build tools to resolve its dependencies and `snyk_code_test` uploads your source to Snyk, so each shows a permission card, and both are off while `gemini.tools.allowShell` turns shell commands off. Snyk on Home's Quality card refreshes on its own only in a folder that both GeminiCode and the Gemini CLI trust, while shell commands are allowed; elsewhere it shows results once Snyk has run from a chat.
 

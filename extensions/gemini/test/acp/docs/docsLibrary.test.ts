@@ -7,7 +7,7 @@ import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, statSync, wri
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
-import { DocsLibrary } from '../../../src/acp/docs/docsLibrary';
+import { DocsLibrary, siteTitleOf } from '../../../src/acp/docs/docsLibrary';
 import type { DocsPage } from '../../../src/acp/index/indexerProtocol';
 
 describe('DocsLibrary', () => {
@@ -36,5 +36,24 @@ describe('DocsLibrary', () => {
 		mkdirSync(path.join(docs, 'busy.db'));
 		await expect(library.ingest({ source: { id: 'busy', url: 'https://b.example.com/', run: 1 }, pages: [page(1)], unchanged: [], complete: true })).rejects.toThrow();
 		expect([existsSync(path.join(docs, 'busy.db')), statSync(path.join(docs, 'busy.db')).isDirectory()]).toEqual([true, true]);
+	});
+});
+
+describe('siteTitleOf', () => {
+	it('names the docs from a site title or the start page, never from another page\'s heading', () => {
+		const source = 'https://vitest.dev/api/';
+		expect([
+			siteTitleOf('describe | Test API Reference | Vitest', true, 'https://vitest.dev/api/describe', source),
+			siteTitleOf('describe', false, 'https://vitest.dev/api/describe.md', source),
+			siteTitleOf('Expect', true, 'https://vitest.dev/api/expect', source),
+			siteTitleOf('Vitest API', true, 'https://vitest.dev/api', source),
+			siteTitleOf('https://vitest.dev/api/', false, 'https://vitest.dev/api/', source),
+		]).toEqual([
+			{ title: 'Vitest', start: false },
+			undefined,
+			undefined,
+			{ title: 'Vitest API', start: true },
+			undefined,
+		]);
 	});
 });
