@@ -92,7 +92,7 @@ function createMenu(): Menu {
 					vscode.postMessage({ type: 'buildPlan', itemId: turn.id, mode });
 				},
 			});
-			// Only the modes the agent offers: a policy may turn Auto Edit off.
+			// Only the modes the agent offers: Auto Edit goes when gemini.approval.allowAutoEdit is off or the folder is untrusted.
 			const rows: MenuRow[] = [...offered.includes('autoEdit') ? [row('autoEdit', strings.planBuild.autoAccept)] : [], ...offered.includes('default') ? [row('default', strings.planBuild.manualAccept)] : []];
 			if (planFile) {
 				rows.push({ icon: 'comment-discussion', name: strings.planBuild.editFirst, run: () => { created.close(); vscode.postMessage({ type: 'reviewPlan', itemId: turn.id }); } });

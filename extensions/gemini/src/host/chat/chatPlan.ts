@@ -84,7 +84,7 @@ export class ChatPlan {
 		}
 		const mode = this.service.client.settings.mode;
 		if (!mode?.available.some(choice => choice.id === knownModes.plan)) {
-			this.transcript.addNotice(vscode.l10n.t("Plan mode is not available here: the CLI does not offer it, or policy turns it off."), 'error');
+			this.transcript.addNotice(vscode.l10n.t("Plan mode is off for this agent: the Gemini CLI offers it only while its general.plan.enabled setting is on."), 'error');
 			return;
 		}
 		if (mode.currentId !== knownModes.plan) {

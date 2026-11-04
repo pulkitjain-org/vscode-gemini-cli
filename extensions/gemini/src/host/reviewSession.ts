@@ -774,15 +774,16 @@ export class ReviewSession implements vscode.Disposable, ReviewDiffHost {
 			}
 		}
 		if (mode === 'request') {
-			await this.deps.tools.write('gitlab_request_changes', { ...mr, text: vscode.l10n.t("Requesting changes: see the {0} comments above.", comments) }, repository);
+			await this.deps.tools.write('gitlab_request_changes', { ...mr, text: comments === 1 ? vscode.l10n.t("Requesting changes: see the comment above.") : vscode.l10n.t("Requesting changes: see the {0} comments above.", comments) }, repository);
 		} else if (mode === 'approve') {
 			await this.deps.tools.write('gitlab_approve', mr, repository);
 			this.approvedByMe = true;
 		}
 		const total = comments + replies;
-		this.done = mode === 'approve' ? (total ? vscode.l10n.t("Approved !{0} and posted {1} comments.", iid, total) : vscode.l10n.t("Approved !{0}.", iid))
-			: mode === 'request' ? vscode.l10n.t("Posted {0} comments and requested changes on !{1}.", total, iid)
-				: vscode.l10n.t("Posted {0} comments to !{1}.", total, iid);
+		const one = total === 1;
+		this.done = mode === 'approve' ? (total ? (one ? vscode.l10n.t("Approved !{0} and posted 1 comment.", iid) : vscode.l10n.t("Approved !{0} and posted {1} comments.", iid, total)) : vscode.l10n.t("Approved !{0}.", iid))
+			: mode === 'request' ? (one ? vscode.l10n.t("Posted 1 comment and requested changes on !{0}.", iid) : vscode.l10n.t("Posted {0} comments and requested changes on !{1}.", total, iid))
+				: one ? vscode.l10n.t("Posted 1 comment to !{0}.", iid) : vscode.l10n.t("Posted {0} comments to !{1}.", total, iid);
 		this.offerRemove = true;
 		// The review is done: its saved draft goes, and the diffs show the merge request's threads as GitLab has them now.
 		this.posted = true;

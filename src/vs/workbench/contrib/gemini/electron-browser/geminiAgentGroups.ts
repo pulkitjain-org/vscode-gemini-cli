@@ -261,6 +261,9 @@ class GeminiAgentGroups extends Disposable implements IWorkbenchContribution {
 			}
 			visibility?.geminiSetGroupVisible(group, id === this.current);
 		}
+		if (visibility) {
+			this.showStrayGroups(visibility);
+		}
 		const shown = this.current;
 		const widths = shown === undefined ? undefined : this.hiddenWidths.get(shown);
 		if (shown !== undefined && widths && agentsGroup && inView(this.groups.get(shown))) {
@@ -270,6 +273,28 @@ class GeminiAgentGroups extends Disposable implements IWorkbenchContribution {
 			if (widths.tree !== undefined && inView(tree)) {
 				this.part.setSize(tree, { width: widths.tree, height: this.part.getSize(tree).height });
 			}
+		}
+	}
+
+	/**
+	 * Shows any hidden group that no agent claims, such as one whose agent's
+	 * record was lost or a layout that came back hidden from a reload: nothing
+	 * else would show it, and an editor opened in it would not draw. And when
+	 * every group is hidden, which leaves the editor area blank, it shows the
+	 * active one.
+	 */
+	private showStrayGroups(visibility: GroupVisibility): void {
+		const claimed = new Set<GroupIdentifier>([...this.groups.values(), ...[...this.trees.values()].map(tree => tree.group)]);
+		const all = this.part.getGroups(GroupsOrder.GRID_APPEARANCE);
+		for (const group of all) {
+			if (!claimed.has(group.id) && !visibility.geminiIsGroupVisible(group.id)) {
+				this.logService.warn(`[GeminiAgentGroups] Showing hidden group ${group.id}, which no agent claims.`);
+				visibility.geminiSetGroupVisible(group.id, true);
+			}
+		}
+		if (all.length && !all.some(group => visibility.geminiIsGroupVisible(group.id))) {
+			this.logService.warn('[GeminiAgentGroups] Every editor group was hidden: showing the active one.');
+			visibility.geminiSetGroupVisible(this.part.activeGroup.id, true);
 		}
 	}
 
