@@ -482,7 +482,7 @@ interface PageMeta {
  */
 const ogImages = {
 	'home.jpg': 'GeminiCode in Agents layout: the agent list, an agent\'s chat and the files it opened beside it',
-	'agents.jpg': 'The Index page, with two indexed workspaces and attached documentation',
+	'agents.jpg': 'The Index page, with the workspace indexed and the Vitest docs attached',
 	'chat-and-review.jpg': 'An agent\'s edits in the file, with Keep and Undo above each change',
 	'projects.jpg': 'Finished thread cards in a project chat, with the side panel counting threads and their requests',
 	'browser.jpg': 'A cart page in GeminiCode\'s browser beside the chat, with Add to Gemini',
@@ -500,15 +500,15 @@ const indexedPages = new Map<string, string | undefined>();
  */
 const clipDates: Readonly<Record<string, string>> = {
 	'showcase-console': '2026-10-15',
-	'showcase-enhance': '2026-10-28',
-	'showcase-mr-review': '2026-10-23',
-	'showcase-notes': '2026-10-19',
-	'showcase-plan': '2026-10-28',
-	'showcase-plan-review': '2026-10-28',
-	'showcase-projects': '2026-10-28',
-	'showcase-review': '2026-10-19',
-	'showcase-wait': '2026-10-28',
-	'showcase-work': '2026-10-28',
+	'showcase-enhance': '2026-11-03',
+	'showcase-mr-review': '2026-11-03',
+	'showcase-notes': '2026-11-03',
+	'showcase-plan': '2026-11-03',
+	'showcase-plan-review': '2026-11-03',
+	'showcase-projects': '2026-11-03',
+	'showcase-review': '2026-11-03',
+	'showcase-wait': '2026-11-03',
+	'showcase-work': '2026-11-03',
 };
 
 /** A clip's length in whole seconds, from its MP4's movie header (the mvhd box). */
@@ -794,7 +794,7 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 		{ href: 'docs/team-tools.html#review-a-merge-request', title: 'Merge request review', cap: 'An agent reviews, you post', thumb: thumbShot('mr-review-diff') },
 		{ href: 'docs/chat.html#sending-while-the-agent-works', title: 'Steer or queue', cap: 'Talk to it while it works', thumb: `<span class="thumb white" style="justify-content: center; gap: 6px"><span class="row-xs"><span class="draft" style="flex: 1">use the shared money helper</span></span><span class="row-xs mono"><span><kbd>↩</kbd> after this step</span></span><span class="row-xs mono"><span><kbd>⌘↩</kbd> after the turn</span></span></span>` },
 		{ href: 'docs/team-tools.html#draft-confluence-pages', title: 'Confluence drafts', cap: 'Keep or undo each change, then publish', thumb: thumbShot('confluence-review') },
-		{ href: 'docs/helpers.html', title: 'Agent Setup', cap: 'MCP, skills, trust rules, storage', thumb: `<span class="thumb white" style="justify-content: center; gap: 6px"><span class="row-xs"><span>MCP servers</span><span class="toggle"></span></span><span class="row-xs"><span>Skills</span><span class="toggle"></span></span><span class="row-xs"><span>Trust rules</span><span class="toggle"></span></span><span class="row-xs"><span>Storage</span><span class="mono" style="font-size: 9px; color: var(--muted)">2.1 GB</span></span></span>` },
+		{ href: 'docs/helpers.html', title: 'Settings', cap: 'MCP, skills, trust rules, storage', thumb: `<span class="thumb white" style="justify-content: center; gap: 6px"><span class="row-xs"><span>MCP servers</span><span class="toggle"></span></span><span class="row-xs"><span>Skills</span><span class="toggle"></span></span><span class="row-xs"><span>Trust rules</span><span class="toggle"></span></span><span class="row-xs"><span>Storage</span><span class="mono" style="font-size: 9px; color: var(--muted)">2.1 GB</span></span></span>` },
 	];
 	const inner: Capability[] = [
 		{ href: 'docs/agents.html#the-files-page', title: 'Files page', cap: 'Search, recent files and the tree', thumb: thumbShot('agent-files') },
@@ -817,7 +817,7 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 		'<b>Rewind</b> to any message',
 		'<kbd>↩</kbd> steer · <kbd>⌘↩</kbd> queue',
 		'<b>Fork</b> an agent',
-		'<b>/compact</b> long chats',
+		'<b>/compress</b> long chats',
 		'<b>👍 👎 ❓</b> react to a reply',
 		'<b>Run</b> a suggested command',
 		'<b>Try in Workspace</b> before you keep it',
@@ -952,7 +952,7 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 					<p style="max-width: 480px">A status dot per agent: a spinner while it works, amber when it waits for you, green when done. One short note says how long it has worked or the lines it added.</p>
 				</div>
 				<div class="agents-shot">
-					${shot('agents-pane', available, 'The Agents pane with an agent working, one waiting on a command and others idle, one with a fork under it', { sizes: '(max-width: 1100px) 250vw, 1700px' })}
+					${shot('agents-pane', available, 'The Agents pane with one agent working, the others done, and a fork under the agent it came from', { sizes: '(max-width: 1100px) 250vw, 1700px' })}
 				</div>
 			</div>
 			<div class="tile s5 reveal" data-reveal style="gap: 20px">
@@ -1105,7 +1105,7 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 					<p>Agents read your team's pages and draft new ones or new versions. The <b>Review Page</b> shows a draft against the page: keep or undo each change, and <b>Publish</b> sends only what you kept, merged with edits other people made in the meantime.</p>
 					<a class="more" href="docs/team-tools.html#draft-confluence-pages">Drafting Confluence pages ${icon('arrow-right')}</a>
 				</div>
-				${shot('confluence-review', available, 'A Confluence draft on the Review Page, with the kept changes, a table of owners left as it is, and Publish Changes', { sizes: '(max-width: 1100px) calc(100vw - 32px), 640px' })}
+				${shot('confluence-review', available, 'A Confluence draft on the Review Page, with the agent\'s changes marked, the page\'s table kept as it is, and Publish Changes', { sizes: '(max-width: 1100px) calc(100vw - 32px), 640px' })}
 			</div>
 		</div>
 	</section>

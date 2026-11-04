@@ -55,7 +55,7 @@ export const featurePages: readonly FeaturePage[] = [
 		lead: 'Each agent is a tab with its own chat, files and changes, in the folder it works in or on a branch of its own. A local index of every workspace lets agents go straight to the code that matters, instead of reading file by file.',
 		hero: { name: 'showcase-work', alt: 'An agent at work in Agents layout: the agent list on the left, its chat in the middle and its changes on the right', clip: true },
 		steps: [
-			{ title: 'Describe the task', body: 'Type it on Home and press Return. **Here** works in your folder, **On a Branch** gives the agent a copy of the repository on a new branch, and its chevron hands the task to a project.' },
+			{ title: 'Describe the task', body: 'Type it on Home and press Return. **Here** works in your folder, **On a branch** gives the agent a copy of the repository on a new branch, and **In a project** hands the task to a project\'s coordinator.' },
 			{ title: 'Watch, or step away', body: 'A status dot per agent: a spinner while it works, amber when it waits for you, green when done. A Mac notification says when one needs you.' },
 			{ title: 'Review its changes', body: 'Every file it changed is in Changes, beside its chat. Keep or undo each change in the file, or all at once.' },
 			{ title: 'Bring the work back', body: '**Try in Workspace** puts an agent\'s changes in your checkout, unstaged, to run and test. **Keep Changes** makes them yours; **Take Back** removes them.' },
@@ -80,11 +80,11 @@ export const featurePages: readonly FeaturePage[] = [
 					'Each workspace keeps an index of its code on your Mac, built in a separate process at low priority and kept current as you save, switch branches and as agents edit. Agents ask it in one step: `code_search` for code by words or a description, `find_symbol` for where something is defined and used, `related_files` for imports, tests and files changed together, and `repo_map` for an outline of the repository.',
 					'Attach a library\'s documentation and agents search it with `docs_search` instead of the web. GeminiCode suggests the docs for the dependencies your project names, at the versions you use.',
 				],
-				media: { name: 'index-page', alt: 'The Index page with two indexed workspaces and attached documentation' },
+				media: { name: 'index-page', alt: 'The Index page with the workspace indexed and the Vitest docs attached' },
 			},
 			{
 				title: 'Fork an agent',
-				body: ['When an agent\'s work splits in two, fork it. The fork starts from the same conversation, so it already knows what was read, decided and planned, and works on its part while the agent carries on. Take the whole session, a compacted copy or just the conversation, on a new branch with the agent\'s uncommitted changes or in the same folder. **Fork** at the end of any reply forks from that point. The fork is listed under its agent, whose chat gets a card for it with **Open** and **Try in Workspace**.'],
+				body: ['When an agent\'s work splits in two, fork it. The fork starts from the same conversation, so it already knows what was read, decided and planned, and works on its part while the agent carries on. Take the whole session, a compressed copy or just the conversation, on a new branch with the agent\'s uncommitted changes or in the same folder. **Fork** at the end of any reply forks from that point. The fork is listed under its agent, whose chat gets a card for it with **Open** and **Try in Workspace**.'],
 				media: { name: 'fork-list', alt: 'A fork listed under its agent in the Agents pane, and the fork\'s card in the agent\'s chat with Open and Try in Workspace' },
 			},
 			{
@@ -96,7 +96,7 @@ export const featurePages: readonly FeaturePage[] = [
 			'Agents keep to the folder they work in, and can\'t read secret files such as `.env`, private keys or git-ignored files.',
 			'The index never leaves your Mac. Secret files, binaries and git-ignored files are never indexed.',
 			'While any agent works, the Mac doesn\'t go to sleep.',
-			'The first time you pick a folder for agents, GeminiCode asks once whether to trust it. **Agent Setup** lists every trust rule.',
+			'The first time you pick a folder for agents, GeminiCode asks once whether to trust it. The **Settings** page lists every trust rule.',
 			'**Archive** puts an agent aside with its conversation and branch, and its next prompt brings it back.',
 		],
 		docs: [
@@ -148,9 +148,9 @@ export const featurePages: readonly FeaturePage[] = [
 				media: { name: 'run-command', alt: 'A reply\'s shell command run with Run, marked as passed, and its output in the agent\'s terminal beside the chat' },
 			},
 			{
-				title: 'Compact long chats',
-				body: ['Type `/compact`, or choose **Compact** in the usage popover. Gemini summarizes the work so far and the chat moves to a session made of that summary and your latest messages, so each turn sends less. It stays compacted when the chat is reopened, and **Undo** goes back to the full session.'],
-				media: { name: 'compact-line', alt: 'A chat after /compact, with the Compacted line showing the tokens before and after, View Summary and Undo' },
+				title: 'Compress long chats',
+				body: ['Type `/compress`, or choose **Compress** in the usage popover. Gemini summarizes the work so far and the chat moves to a session made of that summary and your latest messages, so each turn sends less. It stays compressed when the chat is reopened, and **Undo** goes back to the full session.'],
+				media: { name: 'compact-line', alt: 'A chat after /compress, with the Compressed line showing the tokens before and after, View Summary and Undo' },
 			},
 			{
 				title: 'Plan mode',
@@ -197,7 +197,7 @@ export const featurePages: readonly FeaturePage[] = [
 		steps: [
 			{ title: 'Describe the work', body: 'The coordinator answers with a plan of threads, or starts them straight away.' },
 			{ title: 'Threads work side by side', body: 'Each thread is an agent on a new branch in a worktree of its own, with its card in the project chat updating as it works.' },
-			{ title: 'Plan first, when it matters', body: 'A thread can wait for your **Approve plan** before it changes a file.' },
+			{ title: 'Plan first, when it matters', body: 'A thread can wait for your **Approve Plan** before it changes a file.' },
 			{ title: 'Try, then keep', body: '**Try in Workspace** puts a finished thread\'s changes in your checkout. **Keep Changes** makes them yours; **Take Back** removes them.' },
 		],
 		sections: [
@@ -226,7 +226,7 @@ export const featurePages: readonly FeaturePage[] = [
 			'Write to the coordinator while it works: your message goes when its turn ends. A thread shows the coordinator\'s notes the same way.',
 			'**Fork Agent** on a thread starts a new thread from its conversation, on a branch of its own.',
 			'Up to four threads of a project work at once, and the rest wait their turn. Near the end of the day\'s quota, new threads wait for it to reset.',
-			'To merge a thread with a commit instead of trying it, set `gemini.agents.mergeBack` to `commit`.',
+			'To merge a thread with a commit instead of trying it, pick **Merge Back** from the chevron beside **Try in Workspace**. The pick is remembered for the repository.',
 			'Projects are on by default. Turn them off with `gemini.projects.enabled`.',
 		],
 		docs: [
@@ -251,7 +251,7 @@ export const featurePages: readonly FeaturePage[] = [
 			{
 				title: 'Notes on the page',
 				body: ['Pin notes on the elements you want changed, as you would on a design review, then send them to the agent as one list.'],
-				media: { name: 'showcase-notes', alt: 'Notes pinned on elements of a page and sent to Gemini', clip: true },
+				media: { name: 'showcase-notes', alt: 'Notes pinned on elements of a page, then added to the agent\'s message with Send to Gemini', clip: true },
 			},
 			{
 				title: 'Console and network',
@@ -274,7 +274,7 @@ export const featurePages: readonly FeaturePage[] = [
 		description: 'Connect Jira, Confluence, GitLab, SonarQube, Snyk and Figma to GeminiCode. Go from a ticket to a merged merge request, and review it with Gemini.',
 		headline: ['From ticket to merge request.', 'Without leaving the editor.'],
 		lead: 'Connect Jira, Confluence, GitLab, SonarQube, Snyk and Figma with your own account. Home shows your tickets and merge requests. Start an agent from a ticket, open its merge request, fix the pipeline and the comments, review a teammate\'s work with Gemini, and merge when GitLab\'s checks pass.',
-		hero: { name: 'showcase-mr-review', alt: 'Gemini\'s review of a merge request, a comment of your own with a suggested change, and the review posted', clip: true },
+		hero: { name: 'showcase-mr-review', alt: 'Gemini\'s review of a merge request, its findings ticked, and the review posted as comments', clip: true },
 		steps: [
 			{ title: 'Connect', body: 'Paste a token per tool in **Connections**. A checked-in `.gemini/geminicode-tools.json` fills in the addresses for your team.' },
 			{ title: 'Start from a ticket', body: 'The agent gets its own branch named after the ticket, reads it, plans, and offers to move it to In Progress.' },
@@ -293,12 +293,12 @@ export const featurePages: readonly FeaturePage[] = [
 					'Gemini reviews a teammate\'s merge request against its ticket and drafts the comments. In the diff you add your own on any line or range, reply to and resolve the merge request\'s threads, and attach suggested changes the author applies with one click.',
 					'The draft is saved as you go and reopens from Home. Post it in one go, approve, or request changes.',
 				],
-				media: { name: 'mr-review-diff', alt: 'A merge request\'s diff with Gemini\'s comments on their lines, a comment of yours with a suggested change, and an open thread' },
+				media: { name: 'mr-review-diff', alt: 'A merge request\'s diff with Gemini\'s comment and suggested change on its line, and an open thread with your reply' },
 			},
 			{
 				title: 'Comment on a ticket',
 				body: ['Write a Jira comment in Markdown, mention people with @, drop in screenshots and choose who can see it. It is posted as you, with Jira\'s own formatting.'],
-				media: { name: 'jira-comment', alt: 'A Jira comment with formatting, a mention and an attached screenshot' },
+				media: { name: 'jira-comment', alt: 'A Jira comment with formatting and a mention' },
 			},
 			{
 				title: 'Draft Confluence pages',
@@ -306,7 +306,7 @@ export const featurePages: readonly FeaturePage[] = [
 					'Ask an agent to update a page and it drafts a new version. The **Review Page** shows the draft against the page as it is now, and you keep or undo each change, or edit it yourself.',
 					'**Publish Changes** sends only what you kept. Tables, mentions, macros and images the agent can\'t write stay as they are, and edits someone made to the page in the meantime are merged in.',
 				],
-				media: { name: 'confluence-review', alt: 'A Confluence draft on the Review Page, with the kept changes, a table of owners left as it is, and Publish Changes' },
+				media: { name: 'confluence-review', alt: 'A Confluence draft on the Review Page, with the agent\'s changes marked, the page\'s table kept as it is, and Publish Changes' },
 			},
 		],
 		notes: [

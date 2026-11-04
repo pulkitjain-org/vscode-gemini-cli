@@ -13,13 +13,13 @@ In a sentence each, with the guide page that covers it:
 
 - **Agents.** Several agents side by side, each in its own tab and folder, optionally on a branch of its own whose work you try in your workspace before keeping it, and forkable when the work splits. A column beside each chat opens the agent's changes, browser, terminal and files. [Agents](docs/guide/agents.md)
 - **Chat.** A composer with context, slash commands, Enhance prompt and Plan mode, whose plans you edit and comment on in Plan Review; send or queue messages while an agent works, react to replies with an emoji, and compress long chats with `/compress`. [Chat and prompting](docs/guide/chat.md)
-- **Review.** Approval modes, permission cards, Keep and Undo in the file, Rewind, inline edit and Review My Changes. [Review and safety](docs/guide/review.md)
+- **Review.** Approval modes, permission cards, Keep and Undo in the file, Rewind, inline edit, and **Review** for your uncommitted changes, an agent's changes or a merge request. [Review and safety](docs/guide/review.md)
 - **Terminal.** Each agent has a terminal; a reply's shell commands run there with one click, and terminal output goes back to Gemini. [Terminal](docs/guide/terminal.md)
 - **Projects.** A coordinator that splits larger work into threads, each an agent on its own branch, whose work you try in your workspace and keep, or take back. [Projects](docs/guide/projects.md)
 - **Browser.** A browser agents can use, with Add to Gemini and notes on the page. [Browser](docs/guide/browser.md)
 - **Workspace index.** A local index of each workspace, and of attached docs, that agents search in one step. [Workspace index and docs](docs/guide/agents.md#workspace-index-and-docs)
 - **Team tools.** Jira (one site or several), Confluence, GitLab, SonarQube, Snyk and Figma with your own account, from ticket to merged merge request, merge request reviews, and Confluence pages agents draft for you to review and publish. [Team tools](docs/guide/team-tools.md)
-- **Setup.** A managed Gemini CLI, folder trust asked once per repository, and Agent Setup for MCP servers, skills, rules and trusted folders. [Getting started](docs/guide/getting-started.md), [Agent Setup](docs/guide/helpers.md), [Settings](docs/guide/settings.md)
+- **Setup.** A bundled Gemini CLI that offers its own updates, folder trust asked once per repository, and the **Settings** page, which holds every setting and what agents load: MCP servers, skills, rules and trusted folders. [Getting started](docs/guide/getting-started.md), [The Settings page](docs/guide/helpers.md), [Settings](docs/guide/settings.md)
 
 ## What is in this folder
 
@@ -76,11 +76,11 @@ To run the dev build on the bundled CLI, as a release does, run `npm run bundle-
 Before a pull request, run Gemini CI's checks for what your branch changes. The pre-push hook runs the quick set, once the hooks are installed (`gemini/scripts/git-hooks/install.sh`); CI runs the full set on every push:
 
 ```sh
-gemini/scripts/ci-checks.sh                        # quick: lint of the changed files, hygiene, patch series, type checks
+gemini/scripts/ci-checks.sh                        # quick: workflow files, lint of the changed files, hygiene, patch series, type checks
 GEMINI_FULL_CHECKS=1 gemini/scripts/ci-checks.sh   # full: adds both bundles, the unit tests, the site's build and SEO check when gemini/site changed, and the compile when an upstream file changed
 ```
 
-Both check the working tree against `origin/main`; pass another base as the first argument. `GEMINI_SKIP_CHECKS=1` skips them in the pre-push hook, for a push that only needs CI's result.
+Both check the files your branch's commits change against `origin/main` (pass another base as the first argument), as those files are in the working tree, so commit or stash other edits first. `GEMINI_SKIP_CHECKS=1` skips them in the pre-push hook, for a push that only needs CI's result.
 
 While working, run the extension's checks:
 

@@ -36,17 +36,17 @@ export const docGroups: readonly { readonly name: string; readonly pages: readon
 	{
 		name: 'Using GeminiCode', pages: [
 			{ slug: 'agents', title: 'Agents', icon: 'bot', summary: 'Agents and Editor layouts, Home, branches, forks, and the workspace index and docs agents search.', description: 'Run Gemini agents side by side in GeminiCode: Home, Agents layout, agents on their own branch, forks, and the workspace index they search.', topics: ['Home', 'Agents layout', 'Own branch', 'Fork', 'Workspace index', 'Docs'] },
-			{ slug: 'chat', title: 'Chat and prompting', icon: 'message', summary: 'The + menu, context, Enhance, Plan mode and Plan Review, steering, reactions and Compact.', description: 'Prompt a Gemini agent in GeminiCode: attach context, enhance prompts, plan first and review the plan, steer or queue messages, react with emoji and compact.', topics: ['+ menu', '@ context', 'Enhance', 'Plan Review', 'Send or queue', 'Reactions', 'Compact'] },
-			{ slug: 'review', title: 'Review and safety', icon: 'shield-check', summary: 'Approvals, folder trust, Keep and Undo, Rewind, inline edit and Review My Changes.', description: 'How GeminiCode keeps you in control of Gemini agents: approval modes, permission cards, Keep and Undo, Rewind, inline edit and what agents can\'t read.', topics: ['Approval modes', 'Folder trust', 'Keep and Undo', 'Rewind', 'Inline edit', 'Review My Changes'] },
+			{ slug: 'chat', title: 'Chat and prompting', icon: 'message', summary: 'The + menu, context, Enhance, Plan mode and Plan Review, steering, reactions and Compress.', description: 'Prompt a Gemini agent in GeminiCode: attach context, enhance prompts, plan first and review the plan, steer or queue messages, react with emoji and compress.', topics: ['+ menu', '@ context', 'Enhance', 'Plan Review', 'Send or queue', 'Reactions', 'Compress'] },
+			{ slug: 'review', title: 'Review and safety', icon: 'shield-check', summary: 'Approvals, folder trust, Keep and Undo, Rewind, inline edit, and reviews of your changes or an agent\'s.', description: 'How GeminiCode keeps you in control of Gemini agents: approval modes, permission cards, Keep and Undo, Rewind, inline edit and what agents can\'t read.', topics: ['Approval modes', 'Folder trust', 'Keep and Undo', 'Rewind', 'Inline edit', 'Review'] },
 			{ slug: 'terminal', title: 'Terminal', icon: 'terminal', summary: 'Each agent\'s terminal, Run on a reply\'s commands, and sending output to Gemini.', description: 'Each GeminiCode agent has its own terminal. Run the commands Gemini suggests, send terminal output to Gemini, and press ⌘I to ask for a command.', topics: ['Agent terminal', 'Run', 'Send to Gemini', '⌘I'] },
 			{ slug: 'projects', title: 'Projects', icon: 'network', summary: 'A coordinator and its threads, across one or more repositories.', description: 'GeminiCode Projects: talk to a coordinator that splits work into threads, each a Gemini agent on its own branch, across one or more repositories.', topics: ['Coordinator', 'Threads', 'Try in Workspace', 'Repositories', 'Memory'] },
 			{ slug: 'browser', title: 'Browser', icon: 'globe', summary: 'Add to Gemini, notes on the page, console and network.', description: 'Let Gemini agents use GeminiCode\'s browser: open your app, point at elements, pin notes on the page, and read the console and network.', topics: ['Add to Gemini', 'Notes', 'Shared pages', 'Console'] },
-			{ slug: 'team-tools', title: 'Team tools', icon: 'plug', summary: 'Jira, Confluence, GitLab, SonarQube, Snyk and Figma, and the Home dashboard.', description: 'Connect Jira, Confluence, GitLab, SonarQube, Snyk and Figma to GeminiCode: start from a ticket, open and merge the merge request, and review with Gemini.', topics: ['Connections', 'Home', 'Ticket to MR', 'Ticket comments', 'Confluence', 'Review', 'Audit log'] },
+			{ slug: 'team-tools', title: 'Team tools', icon: 'plug', summary: 'Jira, Confluence, GitLab, SonarQube, Snyk and Figma, your design system, and the Home dashboard.', description: 'Connect Jira, Confluence, GitLab, SonarQube, Snyk and Figma to GeminiCode: start from a ticket, open and merge the merge request, and review with Gemini.', topics: ['Connections', 'Home', 'Design system', 'Ticket to MR', 'Ticket comments', 'Confluence', 'Review', 'Audit log'] },
 		],
 	},
 	{
 		name: 'Set up and fix', pages: [
-			{ slug: 'helpers', title: 'Agent Setup', icon: 'blocks', summary: 'Four tabs: what agents load, the index and docs, connections, and storage with the audit log.', description: 'GeminiCode\'s Agent Setup: what agents load and what each model call costs, the workspace index and docs, your connections, and storage with the audit log.', topics: ['Loads', 'Index & Docs', 'Connections', 'Storage & Audit'] },
+			{ slug: 'helpers', title: 'The Settings page', icon: 'blocks', summary: 'Every setting on one page, what agents load, and the pages for the index, connections and storage.', description: 'GeminiCode\'s Settings page: every setting, what agents load and what each model call costs, MCP servers, skills, rules and trusted folders.', topics: ['Loads', 'Context per model call', 'MCP servers', 'Skills', 'Trusted folders'] },
 			{ slug: 'settings', title: 'Settings', icon: 'settings', summary: 'Every GeminiCode setting by area.', description: 'Every GeminiCode setting, grouped by area with its default, and when a change applies.', topics: ['Chat', 'Agents', 'Browser', 'Team tools', 'Safety'] },
 			{ slug: 'shortcuts', title: 'Keyboard shortcuts', icon: 'keyboard', summary: 'Every shortcut in one table, by area.', description: 'Every GeminiCode keyboard shortcut in one place: agents and layout, the chat, the editor, the terminal and the browser.', topics: ['Agents', 'Chat', 'Editor', 'Browser'] },
 			{ slug: 'troubleshooting', title: 'Troubleshooting', icon: 'life-buoy', summary: 'Common problems, a performance trace, and how to report a bug well.', description: 'Fix common GeminiCode problems: sign-in, the Gemini CLI, folder trust, the index, slow agents, and how to report a bug.', topics: ['Common problems', 'Trace', 'Report'] },
@@ -63,7 +63,7 @@ export const featureIndex: readonly { readonly name: string; readonly items: rea
 	{
 		name: 'Agents', items: [
 			{ icon: 'layout-grid', title: 'Agents and Editor layouts', body: 'Agents on the left, the chat in the middle, its changes on the right. ⌥⌘M switches.', href: 'agents.html#agents-and-editor-layouts' },
-			{ icon: 'sparkles', title: 'Home', body: 'Describe a task, choose Here or On a Branch, and press Return.', href: 'agents.html#home' },
+			{ icon: 'sparkles', title: 'Home', body: 'Describe a task, choose Here or On a branch, and press Return.', href: 'agents.html#home' },
 			{ icon: 'bot', title: 'Agents side by side', body: 'Each agent has its own tab and chat, with a status dot.', href: 'agents.html#agents-side-by-side' },
 			{ icon: 'columns-2', title: 'Files beside each agent', body: 'What an agent opens goes in a group of its own beside its chat.', href: 'agents.html#files-beside-each-agent' },
 			{ icon: 'git-branch', title: 'Agents on their own branch', body: 'A copy of the repository on a new branch. Try its work in yours, then keep it.', href: 'agents.html#agents-on-their-own-branch' },
@@ -87,7 +87,7 @@ export const featureIndex: readonly { readonly name: string; readonly items: rea
 			{ icon: 'sigma', title: 'Replies that read well', body: 'Typeset math, coloured code, file links and spell check.', href: 'chat.html#replies' },
 			{ icon: 'send', title: 'Send or queue while it works', body: 'Return steers the agent at the next safe point; ⌘Return queues for after the turn.', href: 'chat.html#sending-while-the-agent-works' },
 			{ icon: 'smile', title: 'React to replies', body: '👍 go ahead, 👎 not what I meant, ❓ explain more simply, or any emoji.', href: 'chat.html#reacting-to-replies' },
-			{ icon: 'minimize-2', title: 'Compact', body: 'Summarise a long chat into a smaller session that stays compacted.', href: 'chat.html#compact' },
+			{ icon: 'minimize-2', title: 'Compress', body: 'Summarise a long chat into a smaller session, kept across restarts and undoable.', href: 'chat.html#compress' },
 			{ icon: 'gauge', title: 'Usage and quota', body: 'A ring shows how full the chat is; click it for today\'s quota.', href: 'chat.html#usage-and-quota' },
 		],
 	},
@@ -102,12 +102,12 @@ export const featureIndex: readonly { readonly name: string; readonly items: rea
 	{
 		name: 'Review and safety', items: [
 			{ icon: 'shield-check', title: 'Approval modes', body: 'Every command and edit asks first. Allow once, for the session, or reject.', href: 'review.html#approval-modes' },
-			{ icon: 'check', title: 'Folder trust', body: 'One question per folder, and every rule listed in Agent Setup.', href: 'review.html#folder-trust' },
+			{ icon: 'check', title: 'Folder trust', body: 'One question per folder, and every rule listed on the Settings page.', href: 'review.html#folder-trust' },
 			{ icon: 'git-compare', title: 'Keep and Undo in place', body: 'Review each change in the file, or all at once from Changes.', href: 'review.html#review-changes-in-place' },
 			{ icon: 'undo', title: 'Undo or retry a reply', body: 'Each reply that changed files can be undone in one click.', href: 'review.html#undo-or-retry-a-reply' },
 			{ icon: 'history', title: 'Rewind', body: 'Go back to before any message, files included.', href: 'review.html#rewind' },
 			{ icon: 'text-cursor-input', title: 'Inline edit and commit messages', body: 'Select code, press ⌘I and say what to change.', href: 'review.html#inline-edit' },
-			{ icon: 'scan-search', title: 'Review My Changes', body: 'An agent reads your uncommitted diff and reports findings.', href: 'review.html#review-my-changes' },
+			{ icon: 'scan-search', title: 'Review', body: 'An agent reads your uncommitted diff, or another agent\'s, and reports findings.', href: 'review.html#review' },
 			{ icon: 'lock', title: 'Secrets stay out', body: 'Agents can\'t read .env, private keys or git-ignored files.', href: 'review.html#what-agents-cant-reach' },
 		],
 	},
@@ -115,7 +115,7 @@ export const featureIndex: readonly { readonly name: string; readonly items: rea
 		name: 'Projects', items: [
 			{ icon: 'network', title: 'A project chat', body: 'The coordinator splits bigger work into threads.', href: 'projects.html#talk-to-the-coordinator' },
 			{ icon: 'git-merge', title: 'Try, keep or take back', body: 'Try a thread\'s changes in your checkout, then keep them or take them back.', href: 'projects.html#try-keep-or-take-back' },
-			{ icon: 'list-checks', title: 'Plan first', body: 'A thread can wait for Approve plan before it changes files.', href: 'projects.html#start-a-thread-yourself' },
+			{ icon: 'list-checks', title: 'Plan first', body: 'A thread can wait for Approve Plan before it changes files.', href: 'projects.html#start-a-thread-yourself' },
 			{ icon: 'folder', title: 'Several repositories', body: 'A thread gets a worktree of each repository it needs.', href: 'projects.html#several-repositories' },
 			{ icon: 'book', title: 'Project settings and memory', body: 'Defaults, instructions and context files every thread reads.', href: 'projects.html#project-settings-and-memory' },
 		],
@@ -138,11 +138,12 @@ export const featureIndex: readonly { readonly name: string; readonly items: rea
 			{ icon: 'book', title: 'Draft Confluence pages', body: 'Agents draft; you keep or undo each change, then publish.', href: 'team-tools.html#draft-confluence-pages' },
 			{ icon: 'plug', title: 'Several Jira sites', body: 'Tickets go to the site their link names.', href: 'team-tools.html#several-jira-sites' },
 			{ icon: 'scan-search', title: 'Review a merge request', body: 'Gemini drafts the review; add your own comments, replies and suggestions, then post.', href: 'team-tools.html#review-a-merge-request' },
+			{ icon: 'palette', title: 'Your design system', body: 'Sync your Figma design system into the repository, so agents build with its tokens and components.', href: 'team-tools.html#your-design-system' },
 		],
 	},
 	{
 		name: 'Set up', items: [
-			{ icon: 'blocks', title: 'Agent Setup', body: 'Loads, Index & Docs, Connections, and Storage & Audit, in one page with tabs.', href: 'helpers.html' },
+			{ icon: 'blocks', title: 'The Settings page', body: 'Every setting with a switch or a field, and Loads: what every agent starts with.', href: 'helpers.html' },
 			{ icon: 'terminal', title: 'Gemini CLI inside', body: 'Your terminal\'s gemini and GeminiCode share settings and chats.', href: 'getting-started.html#set-up' },
 			{ icon: 'settings', title: 'Settings', body: 'Every setting by area, and when a change applies.', href: 'settings.html' },
 			{ icon: 'sparkles', title: 'Make it yours', body: 'Theme, code font and file icons.', href: 'getting-started.html#make-it-yours' },
