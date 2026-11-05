@@ -345,6 +345,22 @@ describe('ChatTranscript.updateTurnEnd', () => {
 		transcript.updateTurnEnd(id, { retry: undefined, undo: 'undone' });
 		expect(transcript.items.at(-1)).toEqual({ id, kind: 'turnEnd', durationMs: 1200, at: 5000, undo: 'undone', files: 2 });
 	});
+
+	it('sends no update for a patch that changes nothing, so the view\'s render stats cannot loop', () => {
+		const transcript = new ChatTranscript(() => 5000);
+		transcript.addPrompt('hi');
+		const id = transcript.addTurnEnd(1200);
+		const changed: string[] = [];
+		transcript.onDidChangeItem(item => changed.push(item.id));
+		transcript.updateTurnEnd(id, { renderMs: 40, renderedUpdates: 12 });
+		transcript.updateTurnEnd(id, { renderMs: 40, renderedUpdates: 12 });
+		transcript.updateTurnEnd(id, { retry: undefined });
+		transcript.updateTurnEnd(id, { renderMs: 0, renderedUpdates: 0 });
+		expect({ changed, last: transcript.items.at(-1) }).toEqual({
+			changed: [id, id],
+			last: { id, kind: 'turnEnd', durationMs: 1200, at: 5000, renderMs: 0, renderedUpdates: 0 },
+		});
+	});
 });
 
 describe('ChatTranscript reactions', () => {

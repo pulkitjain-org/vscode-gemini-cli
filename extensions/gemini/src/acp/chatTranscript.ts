@@ -420,10 +420,14 @@ export class ChatTranscript {
 		return id;
 	}
 
-	/** Changes what a turnEnd item offers. */
+	/**
+	 * Changes what a turnEnd item offers. A patch that changes nothing sends no
+	 * update: the view answers a turnEnd update with its render stats, which
+	 * come back here, so an update that changed nothing would loop forever.
+	 */
 	updateTurnEnd(id: string, patch: Pick<TurnEndItem, 'files' | 'undo' | 'retry' | 'buildPlan' | 'build' | 'firstTokenMs' | 'renderMs' | 'renderedUpdates' | 'unfinished'>): void {
 		const item = this._items.find(i => i.id === id);
-		if (item?.kind === 'turnEnd') {
+		if (item?.kind === 'turnEnd' && (Object.keys(patch) as (keyof typeof patch)[]).some(key => !Object.is(item[key], patch[key]))) {
 			const next: Record<string, unknown> = { ...item, ...patch };
 			for (const key of Object.keys(patch) as (keyof typeof patch)[]) {
 				if (patch[key] === undefined) {

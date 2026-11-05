@@ -83,6 +83,9 @@ function onVisibility(): void {
 
 document.addEventListener('visibilitychange', onVisibility);
 
+/** The turns whose render stats went to the host: each goes once. */
+const reportedTurns = new Set<string>();
+
 function applyUpdates(updates: readonly ItemUpdate[]): void {
 	const stick = isNearBottom();
 	let scroll = stick;
@@ -107,9 +110,13 @@ function applyUpdates(updates: readonly ItemUpdate[]): void {
 	const turnEnd = updates.findLast(update => update.kind === 'turnEnd');
 	if (turnEnd) {
 		updateUsage();
-		// What the view spent on the turn, for its line in the Gemini log.
-		const { ms, updates: rendered } = takeRenderStats();
-		vscode.postMessage({ type: 'turnRendered', turnEnd: turnEnd.id, renderMs: ms, updates: rendered });
+		// What the view spent on the turn, for its line in the Gemini log: once per turn, as the turn
+		// end comes back with the stats on it, and Undo, Retry and the like update it later.
+		if (!reportedTurns.has(turnEnd.id)) {
+			reportedTurns.add(turnEnd.id);
+			const { ms, updates: rendered } = takeRenderStats();
+			vscode.postMessage({ type: 'turnRendered', turnEnd: turnEnd.id, renderMs: ms, updates: rendered });
+		}
 	}
 	updatePlaceholder();
 }
@@ -133,6 +140,13 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			// The reset carries every item as it is now.
 			hiddenUpdates.clear();
 			state.busy = message.busy;
+			// Another agent's chat, or this one again: its finished turns were reported when they ended.
+			reportedTurns.clear();
+			for (const item of message.items) {
+				if (item.kind === 'turnEnd') {
+					reportedTurns.add(item.id);
+				}
+			}
 			reset(message.items);
 			updateOutline();
 			updatePlaceholder();
