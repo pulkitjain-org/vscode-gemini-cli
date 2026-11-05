@@ -187,6 +187,8 @@ export function stripApiWrapper(text: string): ApiErrorText {
 export type TurnErrorKind =
 	/** 429 or `RESOURCE_EXHAUSTED`: the model's quota or rate limit is used up. */
 	| 'quota'
+	/** The Google Cloud project billed for Gemini reached its spending cap: no model or retry helps until it is raised. */
+	| 'spending-cap'
 	/** Google could not be reached (see `isNetworkError`). */
 	| 'network'
 	/** 401 or `UNAUTHENTICATED`: the sign-in expired or was revoked. */
@@ -251,6 +253,10 @@ export function classifyTurnError(error: unknown, options: { readonly model?: st
 	}
 	if (info.kind === 'timeout') {
 		return { kind: 'timeout', message };
+	}
+	// gemini-cli 0.67 stops retrying these (`isSpendingCapMessage`, as a 400, 429 or 499); other models are billed to the same project.
+	if (/\b(spending|spend)\s+cap\b/i.test(message)) {
+		return { kind: 'spending-cap', message };
 	}
 	if (code === 429 || api.status === 'RESOURCE_EXHAUSTED' || /RESOURCE_EXHAUSTED|rate limit exceeded|quota (exceeded|will reset)|exhausted your (daily )?(quota|capacity)/i.test(message)) {
 		const model = /\bmodel: ?(?<model>[\w.-]+)/.exec(message)?.groups?.model ?? options.model;

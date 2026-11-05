@@ -255,6 +255,15 @@ describe('ChatTranscript permissions', () => {
 		expect(item.kind === 'permission' && [item.prefixes, item.others]).toEqual([['npx vitest'], [{ agent: 'a2', title: 'Login fix' }]]);
 	});
 
+	it('names the MCP server when gemini-cli 0.67 says which one asks, and nothing for a placeholder', () => {
+		const transcript = new ChatTranscript();
+		const mcp = (server_name: string) => ({ ...request, toolCall: { ...request.toolCall, _meta: { 'gemini-cli': { mcp: { server_name, tool_name: 'create_issue' } } } } });
+		transcript.addPermission({ id: 'permission-0', request: mcp('github') });
+		transcript.addPermission({ id: 'permission-1', request: mcp('generic_server') });
+		transcript.addPermission({ id: 'permission-2', request });
+		expect(transcript.items.map(item => item.kind === 'permission' ? item.mcpServer : 'other')).toEqual(['github', undefined, undefined]);
+	});
+
 	it('records the answer in place', () => {
 		const transcript = new ChatTranscript();
 		transcript.addPermission({ id: 'permission-0', request });

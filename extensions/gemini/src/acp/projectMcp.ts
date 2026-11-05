@@ -12,6 +12,7 @@
 
 import type { McpTool, McpToolResult } from './browserMcp';
 import { LocalMcpServer, type McpHttpConfig } from './localMcpServer';
+import { mcpToolFromMeta } from './mcpToolMeta';
 
 /** Who is calling: a project's coordinator, or one of its threads. */
 export type ProjectCaller = { readonly role: 'coordinator'; readonly project: string } | { readonly role: 'thread'; readonly project: string; readonly thread: string };
@@ -87,7 +88,18 @@ export const threadTools: readonly McpTool[] = [
 ];
 
 /** A permission request as far as telling whose tool it is goes. */
-type ToolRequest = { readonly toolCall: { readonly toolCallId: string; readonly title?: string | null }; readonly options: readonly { readonly optionId: string }[] };
+type ToolRequest = { readonly toolCall: { readonly toolCallId: string; readonly title?: string | null; readonly _meta?: unknown }; readonly options: readonly { readonly optionId: string }[] };
+
+/**
+ * The MCP server and tool a permission request is for. gemini-cli 0.67 says
+ * so itself, in the tool call's `_meta["gemini-cli"].mcp` (`server_name`, and
+ * `tool_name` as the server names it); an older CLI does not, and the tool
+ * call's id is read instead (`mcpToolOf`). The CLI's placeholders for a name
+ * it lacks (`generic_server`, `generic_tool`) count as no name.
+ */
+export function mcpToolOfRequest(request: { readonly toolCall: { readonly toolCallId: string; readonly _meta?: unknown } }): { readonly server: string; readonly tool: string } | undefined {
+	return mcpToolFromMeta(request.toolCall._meta) ?? mcpToolOf(request.toolCall.toolCallId);
+}
 
 /**
  * The MCP server and tool a call is for, from its tool call id; undefined
@@ -104,12 +116,12 @@ export function mcpToolOf(toolCallId: string): { readonly server: string; readon
 
 /**
  * Whether a permission request is for one of `tools` of the MCP server named
- * `server`, as GeminiCode passes it to the session: by the tool call's id,
- * which carries the server's name, and by the title, which names the tool. A
- * user's server with a tool of the same name is not this server's.
+ * `server`, as GeminiCode passes it to the session: by the server and tool
+ * the request names (`mcpToolOfRequest`), and by the title, which names the
+ * tool. A user's server with a tool of the same name is not this server's.
  */
 export function isProjectToolCall(request: ToolRequest, tools: readonly McpTool[], server: string): boolean {
-	const id = mcpToolOf(request.toolCall.toolCallId);
+	const id = mcpToolOfRequest(request);
 	return !!id && id.server === server && tools.some(tool => tool.name === id.tool)
 		&& request.options.some(option => /server/i.test(option.optionId))
 		&& isProjectToolTitle(request.toolCall.title ?? '', tools.filter(tool => tool.name === id.tool));
@@ -124,7 +136,7 @@ export function toolCallOwner(request: ToolRequest, tools: readonly McpTool[], s
 	if (isProjectToolCall(request, tools, server)) {
 		return 'ours';
 	}
-	return !mcpToolOf(request.toolCall.toolCallId) && isProjectToolTitle(request.toolCall.title ?? '', tools) ? 'unknown' : 'other';
+	return !mcpToolOfRequest(request) && isProjectToolTitle(request.toolCall.title ?? '', tools) ? 'unknown' : 'other';
 }
 
 /** Whether a tool call's title is a call of one of `tools`, as the CLI titles MCP calls. */

@@ -367,6 +367,8 @@ export interface ChatStrings {
 	readonly permission: {
 		readonly once: string; readonly session: string; readonly reject: string;
 		readonly hint: string; readonly hintNoSession: string;
+		/** Under an MCP tool's title: `{0}` is the server's name. */
+		readonly mcpServer: string;
 		/** On another agent's unreviewed changes in the file: `{0}` is the agent's name. */
 		readonly othersChanging: string; readonly othersDetail: string; readonly showTheirChanges: string;
 	};

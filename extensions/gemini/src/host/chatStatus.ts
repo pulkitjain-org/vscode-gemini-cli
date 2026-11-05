@@ -97,6 +97,8 @@ export function turnErrorNotice(error: TurnErrorInfo, now = Date.now()): TurnErr
 						: vscode.l10n.t("Gemini's quota is used up. Try again later, or switch to another model.");
 			return { text, actions: ['retry', 'switchModel'], error };
 		}
+		case 'spending-cap':
+			return { text: vscode.l10n.t("Your Google Cloud project has reached its spending cap. Raise the cap in the Google Cloud console's billing settings, then retry."), actions: ['retry', 'showLog'], error };
 		case 'network':
 			return { text: vscode.l10n.t("Can't reach Google. Check your connection, VPN or proxy."), actions: ['retry', 'showLog'], error };
 		case 'auth-expired':

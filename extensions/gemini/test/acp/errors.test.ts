@@ -80,6 +80,19 @@ describe('classifyTurnError', () => {
 		]);
 	});
 
+	it('knows a project\'s spending cap, which gemini-cli 0.67 stops retrying, apart from a model\'s quota', () => {
+		const message = 'Your project has exceeded its spending cap. Please visit the Google Cloud console to adjust it.';
+		expect([
+			classifyTurnError(rpc(429, message), { model: 'gemini-3.8-pro', now }),
+			classifyTurnError(rpc(500, `{"error":{"code":400,"message":"${message}","status":"FAILED_PRECONDITION"}}`), { now }),
+			classifyTurnError(rpc(429, 'Monthly spend cap reached for this billing account.'), { now }),
+		]).toEqual([
+			{ kind: 'spending-cap', message },
+			{ kind: 'spending-cap', message },
+			{ kind: 'spending-cap', message: 'Monthly spend cap reached for this billing account.' },
+		]);
+	});
+
 	it('knows network, expired sign-in, server and restart failures, and leaves the rest as they are', () => {
 		expect([
 			classifyTurnError(rpc(500, 'request to https://cloudcode-pa.googleapis.com/v1internal:streamGenerateContent failed, reason: connect ECONNREFUSED 10.0.0.1:443')),

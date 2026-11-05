@@ -25,6 +25,7 @@ What to do when something doesn't work. Most fixes are in two places: the menu o
 | "Where is your copy of …?" when reviewing or fixing a merge request | GeminiCode found no clone of the repository among your folders. Choose **Choose Folder...** for a clone you have, whose remote is on your GitLab server, or **Clone It...** to clone it. GeminiCode remembers the clone for that project. |
 | A thread's or agent's changes didn't update in your workspace | Updating pauses while a tried file has conflict markers: resolve them, or use **Open the Conflict** on the thread's card. A file with unsaved edits updates when you save it. |
 | Agents ignore a folder's MCP servers, hooks or settings | The folder isn't trusted. Choose **Trust...** on Home, or add it under **Trusted Folders** in **Settings**. See [Folder trust](review.md#folder-trust). |
+| "Your Google Cloud project has reached its spending cap" | The project the Gemini CLI bills to has a spending cap in its Google Cloud billing settings, and it is reached. Switching models doesn't help, since every model bills to the same project. Raise the cap in the Google Cloud console, then choose **Retry**. |
 | "Can't reach … Check that your VPN is on" | A team tool behind your VPN didn't answer. Connect the VPN; the other tools keep working. |
 | The macOS build won't open | See the note under [Install](getting-started.md#install). |
 

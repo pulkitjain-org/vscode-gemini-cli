@@ -139,6 +139,7 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 			reject: vscode.l10n.t("Reject"),
 			hint: vscode.l10n.t("Answer from the chat box: {0} allows once, {1} allows for this session, {2} rejects."),
 			hintNoSession: vscode.l10n.t("Answer from the chat box: {0} allows once, {1} rejects."),
+			mcpServer: vscode.l10n.t("From the MCP server {0}"),
 			othersChanging: vscode.l10n.t("\"{0}\" also has unreviewed changes in this file."),
 			othersDetail: vscode.l10n.t("Edits from both agents will mix. Give this agent its own branch to keep them apart."),
 			showTheirChanges: vscode.l10n.t("Show Its Changes"),

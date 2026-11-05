@@ -1570,6 +1570,14 @@ body.vscode-high-contrast-light {
 	font-weight: var(--gc-weight-semibold);
 }
 
+.permission-server {
+	margin-top: 2px;
+	padding-left: 20px;
+	font-size: var(--gc-text-sm);
+	color: var(--gemini-muted);
+	overflow-wrap: anywhere;
+}
+
 .permission.answered .permission-title {
 	font-weight: normal;
 	color: var(--gemini-muted);
