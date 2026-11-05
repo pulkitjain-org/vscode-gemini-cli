@@ -19,8 +19,18 @@ const vscode = acquireVsCodeApi();
 const strings = pageStrings<ChangesPanelStrings>();
 const bar = document.getElementById('bar')!;
 const list = document.getElementById('files')!;
-/** Files the user folded, by path; kept across updates and reloads. */
-const folded = new Set<string>(Array.isArray(vscode.getState()) ? vscode.getState() as string[] : []);
+/**
+ * Files the user folded, and new files the user unfolded, by path; kept across
+ * updates and reloads. A new file starts folded: its lines are all additions,
+ * and the file itself is a click away. An edited file starts unfolded.
+ */
+const saved = vscode.getState() as unknown;
+const folded = new Set<string>(Array.isArray(saved) ? saved as string[] : (saved as { folded?: string[] } | undefined)?.folded ?? []);
+const unfolded = new Set<string>((saved as { unfolded?: string[] } | undefined)?.unfolded ?? []);
+
+function isFolded(file: ChangedFileView): boolean {
+	return folded.has(file.path) || !!file.created && !unfolded.has(file.path);
+}
 
 type ChangesMenuModule = typeof import('./changesMenu');
 const changesMenuUrl = document.querySelector<HTMLScriptElement>('script[data-changes-menu]')?.dataset.changesMenu;
@@ -95,22 +105,27 @@ function renderFile(file: ChangedFileView): HTMLElement {
 	const header = el('div', 'file-header');
 	header.tabIndex = 0;
 	header.setAttribute('role', 'button');
-	header.setAttribute('aria-expanded', String(!folded.has(file.path)));
+	header.setAttribute('aria-expanded', String(!isFolded(file)));
 	const toggle = () => {
-		if (folded.has(file.path)) {
+		if (isFolded(file)) {
 			folded.delete(file.path);
+			unfolded.add(file.path);
 		} else {
 			folded.add(file.path);
+			unfolded.delete(file.path);
 		}
-		vscode.setState([...folded]);
-		section.classList.toggle('folded', folded.has(file.path));
-		header.setAttribute('aria-expanded', String(!folded.has(file.path)));
+		vscode.setState({ folded: [...folded], unfolded: [...unfolded] });
+		section.classList.toggle('folded', isFolded(file));
+		header.setAttribute('aria-expanded', String(!isFolded(file)));
 	};
 	header.addEventListener('click', toggle);
 	// Only the header itself: Enter on one of its buttons should press that button.
 	header.addEventListener('keydown', e => e.target === header && (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), toggle()));
 	const name = el('span', 'file-name');
-	name.append(icon('chevron-down'), el('span', 'name', file.name));
+	const label = el('span', 'name', file.name);
+	// The name may be cut in a narrow panel.
+	setTip(label, file.name);
+	name.append(icon('chevron-down'), label);
 	if (file.dir) {
 		const dir = el('span', 'dir', file.dir);
 		setTip(dir, file.dir);
@@ -129,7 +144,7 @@ function renderFile(file: ChangedFileView): HTMLElement {
 	);
 	header.append(name, counts, actions);
 	section.append(header);
-	section.classList.toggle('folded', folded.has(file.path));
+	section.classList.toggle('folded', isFolded(file));
 	const body = el('div', 'file-body');
 	if (!file.hunks) {
 		body.append(el('p', 'note', strings.noDiff));

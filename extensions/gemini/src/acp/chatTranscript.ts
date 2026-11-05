@@ -9,6 +9,7 @@
 
 import type * as acp from '@agentclientprotocol/sdk';
 import { Emitter } from './events';
+import { mcpToolFromMeta } from './mcpToolMeta';
 import type { PendingPermission } from './permissions';
 import { Attachment, attachmentLabel } from './attachments';
 import { leadingReaction, type ReactionRef } from './reactions';
@@ -89,6 +90,8 @@ export type TranscriptItem =
 		readonly confirm?: boolean;
 		/** For a shell command, the prefixes "Allow for this session" covers (`npx vitest`, `git status`). */
 		readonly prefixes?: readonly string[];
+		/** For an MCP tool, the server it belongs to, when the CLI names it (gemini-cli 0.67 and later). */
+		readonly mcpServer?: string;
 		/** Other agents with unreviewed changes in a file this edit changes. */
 		readonly others?: readonly OtherAgentChanges[];
 		/** Unset while the agent waits for an answer. */
@@ -381,6 +384,7 @@ export class ChatTranscript {
 	/** `others`: agents with unreviewed changes in a file the request edits. */
 	addPermission(permission: PendingPermission, others?: readonly OtherAgentChanges[]): void {
 		const { toolCall, options } = permission.request;
+		const mcp = mcpToolFromMeta(toolCall._meta);
 		this.push({
 			id: permission.id,
 			kind: 'permission',
@@ -389,6 +393,7 @@ export class ChatTranscript {
 			diffPaths: (toolCall.content ?? []).flatMap(c => c.type === 'diff' ? [c.path] : []),
 			...permission.confirm ? { confirm: true } : {},
 			...permission.prefixes?.length ? { prefixes: permission.prefixes } : {},
+			...mcp ? { mcpServer: mcp.server } : {},
 			...others?.length ? { others } : {},
 		});
 	}
@@ -420,10 +425,14 @@ export class ChatTranscript {
 		return id;
 	}
 
-	/** Changes what a turnEnd item offers. */
+	/**
+	 * Changes what a turnEnd item offers. A patch that changes nothing sends no
+	 * update: the view answers a turnEnd update with its render stats, which
+	 * come back here, so an update that changed nothing would loop forever.
+	 */
 	updateTurnEnd(id: string, patch: Pick<TurnEndItem, 'files' | 'undo' | 'retry' | 'buildPlan' | 'build' | 'firstTokenMs' | 'renderMs' | 'renderedUpdates' | 'unfinished'>): void {
 		const item = this._items.find(i => i.id === id);
-		if (item?.kind === 'turnEnd') {
+		if (item?.kind === 'turnEnd' && (Object.keys(patch) as (keyof typeof patch)[]).some(key => !Object.is(item[key], patch[key]))) {
 			const next: Record<string, unknown> = { ...item, ...patch };
 			for (const key of Object.keys(patch) as (keyof typeof patch)[]) {
 				if (patch[key] === undefined) {

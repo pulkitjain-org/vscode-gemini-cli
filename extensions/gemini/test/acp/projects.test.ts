@@ -13,7 +13,7 @@ import { AgentsModel } from '../../src/acp/agents';
 import { ChatTranscript, threadCardId } from '../../src/acp/chatTranscript';
 import { PermissionBroker, PermissionEvent } from '../../src/acp/permissions';
 import { coordinatorModel, threadCounts, threadPrompt } from '../../src/acp/projectHub';
-import { coordinatorTools, isProjectToolCall, isProjectToolTitle, mcpToolOf, threadTools, toolCallOwner } from '../../src/acp/projectMcp';
+import { coordinatorTools, isProjectToolCall, isProjectToolTitle, mcpToolOf, mcpToolOfRequest, threadTools, toolCallOwner } from '../../src/acp/projectMcp';
 
 const mcpOptions: acp.PermissionOption[] = [
 	{ optionId: 'proceed_once', name: 'Allow', kind: 'allow_once' },
@@ -125,6 +125,31 @@ describe('project tools in permission requests', () => {
 		expect(mcpToolOf('mcp_geminicode-tools_jira_get_issue__call_124')).toEqual({ server: 'geminicode-tools', tool: 'jira_get_issue' });
 		expect(isProjectToolTitle('message_thread(thread: t1, text: x)', coordinatorTools)).toBe(true);
 		expect(isProjectToolTitle('Edit cli.js', coordinatorTools)).toBe(false);
+	});
+
+	it('takes the server and tool from the request\'s metadata when gemini-cli 0.67 sends it, and from the id otherwise', () => {
+		const meta = (server_name: string, tool_name: string) => ({ 'gemini-cli': { mcp: { server_name, tool_name } } });
+		const call = (title: string, toolCallId: string, _meta?: unknown) => ({ toolCall: { toolCallId, title, _meta }, options: mcpOptions });
+		const project = 'geminicode-project';
+		expect([
+			mcpToolOfRequest(call('post(text: Hi)', 'post-1761400000000-3', meta(project, 'post'))),
+			// A server name with `_`, which the id cannot tell from the tool's name.
+			mcpToolOfRequest(call('get_issue(key: A-1)', 'mcp_acme_jira_get_issue__call_2', meta('acme_jira', 'get_issue'))),
+			// The CLI's placeholders name nothing: the id is read.
+			mcpToolOfRequest(call('report(kind: result)', 'mcp_acme_report__call_4', meta('generic_server', 'generic_tool'))),
+			mcpToolOfRequest(call('ls', 'run_shell_command__call_3')),
+		]).toEqual([
+			{ server: project, tool: 'post' },
+			{ server: 'acme_jira', tool: 'get_issue' },
+			{ server: 'acme', tool: 'report' },
+			undefined,
+		]);
+		// An id that doesn't say whose the tool is no longer leaves it unknown when the metadata does.
+		expect([
+			toolCallOwner(call('post(text: Hi)', 'call_2', meta(project, 'post')), coordinatorTools, project),
+			toolCallOwner(call('post(text: Hi)', 'call_2', meta('slack', 'post')), coordinatorTools, project),
+			toolCallOwner(call('post(text: Hi)', 'mcp_geminicode-project_post__call_2', meta('slack', 'post')), coordinatorTools, project),
+		]).toEqual(['ours', 'other', 'other']);
 	});
 
 	it('answers at once as told: quietly, or with a row that says why', async () => {

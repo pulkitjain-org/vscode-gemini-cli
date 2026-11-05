@@ -13,12 +13,14 @@
  */
 
 :root {
-	/* Type: five sizes, three weights, three line heights. */
+	/* Type: five sizes and one for emoji, three weights, three line heights. */
 	--gc-text-xs: 11px;
 	--gc-text-sm: 12px;
 	--gc-text-md: 13px;
 	--gc-text-lg: 15px;
 	--gc-text-xl: 20px;
+	/* An emoji drawn on its own, as a reaction: color emoji blur below about 16px, so thumbs up and down look alike. */
+	--gc-text-emoji: 18px;
 	--gc-weight-regular: 400;
 	--gc-weight-medium: 500;
 	--gc-weight-semibold: 600;

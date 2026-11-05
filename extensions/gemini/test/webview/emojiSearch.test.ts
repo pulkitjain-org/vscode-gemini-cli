@@ -6,7 +6,7 @@
 import { readFileSync } from 'node:fs';
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { buildIndex, moveInGrid, recentEmoji, searchEmoji, type EmojiEntry } from '../../webview-src/emojiSearch';
+import { buildIndex, emojiNameIn, moveInGrid, recentEmoji, searchEmoji, type EmojiEntry } from '../../webview-src/emojiSearch';
 
 const data = JSON.parse(readFileSync(path.join(__dirname, '..', '..', 'webview-src', 'emojiData.json'), 'utf8')) as { source: string; groups: EmojiEntry[][] };
 const index = buildIndex(data.groups, Infinity);
@@ -87,5 +87,12 @@ describe('moveInGrid', () => {
 describe('recentEmoji', () => {
 	it('finds the recent emoji, with or without a variation selector, newest first', () => {
 		expect(recentEmoji(index, ['🚀', '❤', 'not an emoji', '👍']).map(entry => entry.name)).toEqual(['rocket', 'red heart', 'thumbs up']);
+	});
+});
+
+describe('emojiNameIn', () => {
+	it('names an emoji for the tooltip of Gemini\'s reaction, with or without the variation selector', () => {
+		const names = ['\u{1F4AD}', '\u{2705}', '\u{2764}\u{FE0F}', '\u{2764}', 'x'].map(emoji => emojiNameIn(data.groups, emoji));
+		expect(names).toEqual(['thought balloon', 'check mark button', 'red heart', 'red heart', undefined]);
 	});
 });

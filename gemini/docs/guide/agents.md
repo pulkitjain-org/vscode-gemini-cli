@@ -46,7 +46,7 @@ Cards follow the composer:
 
 Until you connect GitLab and Jira, their cards offer to connect. See [Team tools](team-tools.md#home). A card's title shows, as its tooltip, the query that fills it, so you can check its numbers against the tool.
 
-**Customize**, the gear at the top right, holds **Refresh** and **Settings** ([The Settings page](helpers.md)), turns each card on or off and moves it up. The **Quality** card, with SonarQube's quality gate and Snyk's issues on a release branch, is off until you turn it on there; the same menu picks its release branch.
+**Refresh**, beside the gear at the top right, reads Jira, GitLab, SonarQube and Snyk again; it spins until they answer, and its tooltip says when the cards were last updated. **Customize**, the gear, holds **Settings** ([The Settings page](helpers.md)), turns each card on or off and moves it up. The **Quality** card, with SonarQube's quality gate and Snyk's issues on a release branch, is off until you turn it on there; the same menu picks its release branch.
 
 If GeminiCode quit while a Jira or GitLab change was running, **Unfinished when GeminiCode last quit** comes first, listing the flows to reopen and any write whose result never came back. In the chat, a turn that was cut off shows a card with **Retry the Turn**.
 
@@ -79,6 +79,8 @@ A new agent starts on your task as soon as you press Return, because GeminiCode 
 ## Files beside each agent
 
 Files, diffs, pages and terminals an agent opens go in an editor group beside its chat, with a tab row so you can close them. Each agent has its own group. Switching agents hides the other groups without closing them, so when you come back to an agent its files are as you left them. Closing an agent's tab, or removing the agent, closes its files, except those with unsaved changes.
+
+To give a page more room, such as Plan Review, a diff or the browser, click **Expand** at the top right of the group. The page opens over the whole window, with the chat dimmed behind it. **Back Beside the Chat**, Escape or a click outside it puts the page back where it was, with nothing lost.
 
 ![An agent's chat with the column in its right margin: where it works, Changes with the lines added and removed, Browser, Terminal and Files](../../site/media/agent-links-dark.webp)
 

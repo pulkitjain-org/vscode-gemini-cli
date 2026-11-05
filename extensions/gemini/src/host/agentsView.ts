@@ -325,6 +325,8 @@ export class AgentsView implements vscode.Disposable {
 				}
 			},
 		});
+		// From the workbench: the comments the user left on an agent's Markdown file, in the rich Markdown editor.
+		this.disposables.push(vscode.commands.registerCommand('_gemini.sendFileComments', (args: unknown) => this.features.sendFileComments(args)));
 		this.sideLinks = new AgentSideLinks({ model: this.model, live: this.live, terminals: this.terminals, view: this, features: this.features });
 		this.starter = new AgentStarter({
 			extensionUri: context.extensionUri, planReviewFolder: vscode.Uri.joinPath(context.globalStorageUri, 'planReviews').fsPath,
@@ -619,6 +621,11 @@ export class AgentsView implements vscode.Disposable {
 	tryChoiceOf(id: string): TryChoice {
 		const choice = this.tryChoices.get(this.tryKey(id));
 		return choice === 'mr' && !this.mergeRequests() ? 'try' : choice;
+	}
+
+	/** Opens `file`, a Markdown file agent `id` created, in the rich Markdown editor beside its chat; false when it can't. */
+	openMarkdown(id: string, file: string, preserveFocus: boolean): Promise<boolean> {
+		return this.features.openMarkdown(id, file, preserveFocus);
 	}
 
 	/** Whether GitLab is connected, so the Try chevron's menu (webview-src/tryChoiceMenu.ts) offers Open Merge Request. */

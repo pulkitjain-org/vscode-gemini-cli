@@ -61,7 +61,7 @@ An agent's browser page can fetch from any site its policy allows; the platform'
 
 ### Sessions are never closed
 
-gemini-cli 0.66.0 offers no `session/close`, so a long-lived agent process keeps every session it opened, a few MB each. That includes Enhance prompt's fallback sessions and hidden command sessions. GeminiCode closes sessions as soon as a CLI advertises `sessionCapabilities.close`. Until a CLI does, a process holding eight or more sessions that has served no prompt for half an hour is restarted (`agentService.ts`, `recycleIfIdle`); its chats reopen their sessions by id on their next prompt, and the status bar's menu shows the count and the last such restart.
+gemini-cli 0.67.0 offers no `session/close`, so a long-lived agent process keeps every session it opened, a few MB each. That includes Enhance prompt's fallback sessions and hidden command sessions. GeminiCode closes sessions as soon as a CLI advertises `sessionCapabilities.close`. Until a CLI does, a process holding eight or more sessions that has served no prompt for half an hour is restarted (`agentService.ts`, `recycleIfIdle`); its chats reopen their sessions by id on their next prompt, and the status bar's menu shows the count and the last such restart.
 
 ### Stopping one shell command
 
@@ -111,7 +111,7 @@ At each upstream move, check whether `src/vs/sessions` has gained an extension A
 
 ## Ideas from upstream 1.144
 
-Upstream's 1.142 to 1.144 releases put a thinking level and the context window in the model picker for Copilot's agents. GeminiCode could offer them once the CLI offers `session/set_config_option`, which 0.66.0 does not.
+Upstream's 1.142 to 1.144 releases put a thinking level and the context window in the model picker for Copilot's agents. GeminiCode could offer them once the CLI offers `session/set_config_option`, which 0.67.0 does not.
 
 ## Risks
 

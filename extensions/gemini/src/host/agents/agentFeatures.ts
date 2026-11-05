@@ -9,9 +9,11 @@
 // asks of the pane, and disposed with the pane.
 
 import * as fs from 'node:fs';
+import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { agentFolder, AgentsModel } from '../../acp/agents';
 import { writeCommitMessage } from '../../acp/commitMessage';
+import { fileCommentsMessage, validComments } from '../../acp/fileComments';
 import { inRepository } from '../../acp/worktrees';
 import type { AgentsView } from '../agentsView';
 import type { DiffPreview } from '../diffPreview';
@@ -129,6 +131,72 @@ export class AgentFeatures {
 			this.host.disposables.push(this.planReviewsLoaded, this.host.onDidChangeTurnEmitter);
 		}
 		return this.planReviewsLoaded;
+	}
+
+	/**
+	 * Opens `file`, a Markdown file agent `id` wrote, beside its chat in the
+	 * rich Markdown editor, where the user edits it in place and comments on it
+	 * for the agent (the workbench's geminiMarkdownComments.ts takes the
+	 * comments). False when the editor can't open, for the caller's fallback.
+	 */
+	async openMarkdown(id: string, file: string, preserveFocus: boolean): Promise<boolean> {
+		const uri = vscode.Uri.file(file);
+		const live = this.host.live.get(id);
+		const viewColumn = live ? await agentColumn(id, live.panel) : vscode.ViewColumn.Active;
+		// GeminiCode's workbench takes comments on the file from now on; outside it the editor has none.
+		await Promise.resolve(vscode.commands.executeCommand('_gemini.markdownComments.allow', uri.toString(), id)).catch(() => undefined);
+		try {
+			await vscode.commands.executeCommand('vscode.openWith', uri, 'vscode.markdown.editor', { viewColumn, preserveFocus, preview: true });
+			return true;
+		} catch {
+			return false;
+		}
+	}
+
+	/**
+	 * The comments the user left on a Markdown file agent `agent` wrote, from
+	 * the workbench (`_gemini.sendFileComments`), as one message to that agent,
+	 * after a running turn. The user's unsaved edits are saved first, so the
+	 * agent revises what the user sees. Resolves whether the message reached
+	 * the agent; when it didn't, the workbench puts the comments back.
+	 */
+	async sendFileComments(args: unknown): Promise<boolean> {
+		const { agent, file, comments } = (args ?? {}) as { agent?: unknown; file?: unknown; comments?: unknown };
+		const valid = validComments(comments);
+		if (typeof agent !== 'string' || typeof file !== 'string' || !path.isAbsolute(file) || !valid.length) {
+			return false;
+		}
+		const name = path.basename(file);
+		if (!this.host.model.agent(agent)) {
+			void vscode.window.showWarningMessage(vscode.l10n.t("The agent that wrote {0} was removed, so there's no one to send your comments to. They're back on the file.", name));
+			return false;
+		}
+		let text = '';
+		try {
+			const document = await vscode.workspace.openTextDocument(vscode.Uri.file(file));
+			if (document.isDirty) {
+				await document.save();
+			}
+			text = document.getText();
+		} catch {
+			// A file that is gone still gets the comments, without quotes.
+		}
+		const message = fileCommentsMessage(name, text, valid, {
+			intro: vscode.l10n.t("Revise {0} using my comments. Change only what they ask for, and keep any edits I made to it."),
+			comments: vscode.l10n.t("Comments:"),
+			onText: vscode.l10n.t("On \"{0}\" (line {1})"),
+			onLine: vscode.l10n.t("At line {0}"),
+		});
+		const live = message ? this.host.tabs.ensureLive(agent) : undefined;
+		if (!message || !live) {
+			return false;
+		}
+		// Waits for a running turn, as Plan Review's comments do; resolves once the message's own turn is over.
+		const sent = await new Promise<boolean>(settle => live.controller.send(message, [], undefined, 'queue', { settle }).catch(() => settle(false)));
+		if (!sent) {
+			void vscode.window.showWarningMessage(vscode.l10n.t("Your comments on {0} didn't go to Gemini: the turn before them was stopped or failed, or the message was taken out of the queue. They're back on the file: send them again when you're ready.", name));
+		}
+		return sent;
 	}
 
 	get merge(): AgentMerge {

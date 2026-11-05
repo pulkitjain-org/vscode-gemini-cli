@@ -19,7 +19,7 @@ Sign-in, the Gemini Code Assist licence and billing by project ID live in the CL
 
 ## Evidence
 
-`extensions/gemini/package.json` pins `bundledCli` with its npm SHA-512 (0.64.0 when this was accepted, 0.66.0 today), and the real-CLI tests run against it. [FINDINGS.md](../FINDINGS.md#prompt-enhancement-direct-requests-or-the-cli): direct requests carrying the CLI's headers answered 12 of 12 on a real account, in 2.8 s at the median against 4.8 s through the CLI.
+`extensions/gemini/package.json` pins `bundledCli` with its npm SHA-512 (0.64.0 when this was accepted, 0.67.0 today), and the real-CLI tests run against it. [FINDINGS.md](../FINDINGS.md#prompt-enhancement-direct-requests-or-the-cli): direct requests carrying the CLI's headers answered 12 of 12 on a real account, in 2.8 s at the median against 4.8 s through the CLI.
 
 ## Amendment
 

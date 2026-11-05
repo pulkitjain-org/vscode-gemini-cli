@@ -565,6 +565,10 @@ function renderPermission(item: ItemOf<'permission'>): HTMLElement {
 		header.append(el('span', 'permission-pill', strings.confirmClass));
 	}
 	card.append(header);
+	// Which MCP server asks, as the CLI names it; a team tool's logo already says whose it is.
+	if (item.mcpServer && !team && !item.answer) {
+		card.append(el('div', 'permission-server', format(strings.permission.mcpServer, item.mcpServer)));
+	}
 	if (!item.answer) {
 		// A confirm-class action shows its effect as the tool will record it; a comment or reply, the text it would post.
 		if (team?.effect) {

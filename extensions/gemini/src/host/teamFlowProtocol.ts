@@ -362,6 +362,8 @@ export interface ChangesTeamView {
 			/** Open review threads, each ticked to send. */
 			readonly threads?: readonly { readonly id: string; readonly author: string; readonly text: string }[];
 			readonly note?: string;
+			/** The merge check this row repeats: with the checklist shown, its jobs or threads go under that check instead. */
+			readonly covers?: 'pipeline' | 'threads';
 		}[];
 		/** "Fix Pipeline and 2 Comments" */
 		readonly fixAll?: { readonly label: string; readonly one: string; readonly pipelineOnly: string; readonly commentsOnly: string };
@@ -374,7 +376,7 @@ export interface ChangesTeamView {
 			 * pending: waiting on GitLab, such as a pipeline still running. `retry`, the button's label, when
 			 * GitLab didn't answer for the check: it counts as pending until read again.
 			 */
-			readonly checks: readonly { readonly name: string; readonly state: 'ok' | 'missing' | 'pending'; readonly detail: string; readonly source: string; readonly retry?: string }[];
+			readonly checks: readonly { readonly name: string; readonly state: 'ok' | 'missing' | 'pending'; readonly detail: string; readonly source: string; readonly retry?: string; readonly kind?: 'pipeline' | 'threads' }[];
 			readonly ready: boolean;
 			readonly squash: { readonly label: string; readonly on: boolean };
 			readonly removeSourceBranch: { readonly label: string; readonly on: boolean };

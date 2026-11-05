@@ -203,7 +203,10 @@ export class AgentHome implements vscode.Disposable {
 		void this.agents.workspaces().then(workspaces => {
 			const folder = workspaces[0]?.folder;
 			const branch = this.layout().qualityBranch;
-			return force ? data.refresh(folder, branch) : data.refreshIfOlder(maxAgeMs, folder, branch);
+			const running = force ? data.refresh(folder, branch) : data.refreshIfOlder(maxAgeMs, folder, branch);
+			// Home's refresh button spins from now until the refresh ends.
+			this.schedule();
+			return running;
 		}).finally(() => this.schedule());
 		this.schedule();
 	}
@@ -330,7 +333,7 @@ export class AgentHome implements vscode.Disposable {
 			// Startup timings are a developer's card.
 			...this.options?.startup && developerToolsOn() ? { startup: this.options.startup() } : {},
 			projectsOn: projectsEnabled(),
-			refreshing: !!this.teamData && Date.now() - this.teamData.refreshedAt < 3000,
+			refreshing: !!this.teamData?.busy,
 			hideUnconnected: !!firstConnected && Date.now() - firstConnected > weekMs,
 			gitlabUrl: team?.connectors.gitlab?.url,
 			jiraUrl: team?.connectors.jira?.site,
@@ -762,7 +765,7 @@ export class AgentHome implements vscode.Disposable {
 	<main class="home dash">
 		<header class="dash-head">
 			<h1 id="title"></h1><p id="subtitle" class="muted"></p><span id="stale" class="dash-pill" hidden></span>
-			<div class="dash-tools"><span class="dash-customize"><button type="button" id="customize" class="icon-button" aria-haspopup="menu" aria-expanded="false"><i class="codicon codicon-settings-gear" aria-hidden="true"></i></button><div id="customize-menu" class="home-menu" hidden></div></span></div>
+			<div class="dash-tools"><button type="button" id="refresh" class="icon-button" hidden><i class="codicon codicon-refresh" aria-hidden="true"></i></button><span class="dash-customize"><button type="button" id="customize" class="icon-button" aria-haspopup="menu" aria-expanded="false"><i class="codicon codicon-settings-gear" aria-hidden="true"></i></button><div id="customize-menu" class="home-menu" hidden></div></span></div>
 		</header>
 		<div id="banners" class="dash-banners" hidden></div>
 		<section class="home-start">

@@ -14,6 +14,7 @@ import './geminiModes.js';
 import './geminiBrowser.js';
 import './geminiNewAgentDialog.js';
 import './geminiAgentGroups.js';
+import './geminiMarkdownComments.js';
 import './geminiContextMenu.js';
 import { mainWindow } from '../../../../base/browser/window.js';
 import { CancellationTokenSource } from '../../../../base/common/cancellation.js';

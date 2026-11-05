@@ -82,6 +82,7 @@ export class MrPanel implements vscode.Disposable {
 					pill: { text: state.jobs?.total ? vscode.l10n.t("{0} · {1} of {2} jobs", mr.pipeline.status, state.jobs.done, state.jobs.total) : mr.pipeline.status, tone: pipelineTone(mr.pipeline.status) },
 					jobs: state.failed.map(j => ({ id: j.id, name: `${j.stage} · ${j.name}`, fix: vscode.l10n.t("Fix") })),
 					...state.passedJobs.length ? { note: state.passedJobs.join(', ') } : {},
+					covers: 'pipeline',
 				});
 			}
 			if (state.gate) {
@@ -96,6 +97,7 @@ export class MrPanel implements vscode.Disposable {
 				tool: 'review', label: vscode.l10n.t("Review threads"),
 				pill: open.length ? { text: vscode.l10n.t("{0} unresolved", open.length), tone: 'warn' } : { text: vscode.l10n.t("0 unresolved"), tone: 'ok' },
 				threads: open.map(d => ({ id: d.id, author: d.notes[0].author, text: d.notes[d.notes.length - 1].body.replace(/\s+/g, ' ').slice(0, 160) })),
+				covers: 'threads',
 			});
 			if (state.ticket) {
 				rows.push({ tool: 'jira', label: state.ticket.key, detail: state.ticket.summary, pill: { text: state.ticket.status, tone: state.ticket.statusCategory === 'done' ? 'ok' : 'info' } });
@@ -109,7 +111,7 @@ export class MrPanel implements vscode.Disposable {
 						heading: vscode.l10n.t("Merge !{0}", mr.iid),
 						readAt: Date.now() - state.at < 60_000 ? vscode.l10n.t("read live {0} s ago", Math.round((Date.now() - state.at) / 1000)) : vscode.l10n.t("read live {0} ago", relativeTime(state.at, Date.now())),
 						// A check GitLab didn't answer for is pending, never passed, with Retry.
-						checks: readiness.checks.map(c => ({ name: c.name, state: c.ok && !c.unreadable ? 'ok' : c.pending || c.unreadable ? 'pending' : 'missing', detail: c.unreadable ? vscode.l10n.t("couldn't read, counted as pending") : c.detail, source: c.source, ...c.unreadable ? { retry: vscode.l10n.t("Retry") } : {} })),
+						checks: readiness.checks.map(c => ({ name: c.name, state: c.ok && !c.unreadable ? 'ok' : c.pending || c.unreadable ? 'pending' : 'missing', detail: c.unreadable ? vscode.l10n.t("couldn't read, counted as pending") : c.detail, source: c.source, ...c.unreadable ? { retry: vscode.l10n.t("Retry") } : {}, ...c.kind ? { kind: c.kind } : {} })),
 						ready: readiness.ready,
 						squash: { label: vscode.l10n.t("Squash commits (project default)"), on: readiness.squash },
 						removeSourceBranch: { label: vscode.l10n.t("Delete source branch"), on: readiness.removeSourceBranch },

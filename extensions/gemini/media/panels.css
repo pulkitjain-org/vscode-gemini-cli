@@ -239,8 +239,12 @@ button.icon-button:hover:not(:disabled) {
 	transform: rotate(-90deg);
 }
 
+/* In a narrow panel the name gives way, cut with an ellipsis, so the new tag and the counts never overlap. */
 .file-name .name {
+	min-width: 0;
+	overflow: hidden;
 	white-space: nowrap;
+	text-overflow: ellipsis;
 }
 
 .file-name .dir {

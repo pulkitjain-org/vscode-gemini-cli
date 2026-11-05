@@ -122,6 +122,16 @@ When a Plan mode turn writes a plan file, **Review Plan** beside **Approve Plan*
 
 **Open as Text** opens the plan file in the editor. A plan stays with its session: when you reopen the session, after a restart for example, the plan is still there and **Review Plan** still opens it.
 
+### Markdown files Gemini writes
+
+When Gemini writes a new Markdown file, such as a report, it opens beside the chat, rendered, once it's written. Its chip, its link in the reply and its row in **Changes** open it there too.
+
+- **Edit in place.** Click the pencil at the top right to unlock the file and type in it; the lock takes you back to reading.
+- **Comment.** While it's locked, select text and type in **Add comment**. Comments stay on the file, and with the file when you close it.
+- **Send Comments to Gemini**, the send button in the file's title bar, sends them all in one message, and Gemini revises the file. Your unsaved edits are saved first, and Gemini keeps them. If the message doesn't reach Gemini, your comments come back on the file.
+
+Edits to Markdown files that were already there open as diffs, like other files. A plan from Plan mode opens in **Review Plan**.
+
 ## Watching the agent work
 
 While the agent works, its thoughts and steps show under a **Working** line. Several steps of one kind in a row (nine searches, five commands) show as one line that opens to each step.
@@ -231,9 +241,9 @@ To react from the keyboard, send `+` and one emoji, such as `+👍`. It reacts t
 
 Gemini reads any other emoji as intent: it says in one line how it read it before doing anything, so a misreading shows before any tool runs. Its edits and commands still ask for permission as usual.
 
-A reaction goes straight away. It shows as a chip on the reply and as a line in the conversation; click the line to go back to the reply. While the agent works, reactions other than 👎 wait in the queue with your other messages, and a second reaction to the same reply replaces one that is still waiting.
+A reaction goes straight away. It shows as a pill on the reply, which stays in view, and as a line in the conversation; click the line to go back to the reply. While the agent works, reactions other than 👎 wait in the queue with your other messages, and a second reaction to the same reply replaces one that is still waiting.
 
-Gemini may react to your message too, with a small emoji on its corner, when it has something to add. Most messages get none.
+Gemini may react to your message too, with a pill on the message's lower edge marked with Gemini's sparkle, when it has something to add. Point at it to see the emoji's name, such as "party popper". Most messages get none.
 
 To change what an emoji asks for, or to give another emoji a meaning, set `gemini.chat.reactions.meanings`, such as `{ "🚀": "Go ahead, then commit with a short message." }`. Set in a workspace's settings, it is shared with everyone who opens the folder. `gemini.chat.reactions.enabled` turns reactions off, Gemini's own included.
 

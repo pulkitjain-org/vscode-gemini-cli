@@ -233,6 +233,8 @@ export interface ReactionStrings {
 	readonly chip: string;
 	/** `{0}` is the emoji: the agent's reaction to a prompt, as its badge's tooltip. */
 	readonly agentReacted: string;
+	/** `{0}` is the emoji and `{1}` its name, such as "thought balloon": the badge's tooltip once the name is known. */
+	readonly agentReactedNamed: string;
 	/** `{0}` is the emoji, in the queue strip. */
 	readonly queued: string;
 	/** Jumps to the reply a reaction line points at. */
@@ -365,6 +367,8 @@ export interface ChatStrings {
 	readonly permission: {
 		readonly once: string; readonly session: string; readonly reject: string;
 		readonly hint: string; readonly hintNoSession: string;
+		/** Under an MCP tool's title: `{0}` is the server's name. */
+		readonly mcpServer: string;
 		/** On another agent's unreviewed changes in the file: `{0}` is the agent's name. */
 		readonly othersChanging: string; readonly othersDetail: string; readonly showTheirChanges: string;
 	};

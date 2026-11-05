@@ -610,6 +610,8 @@ export interface MergeCheck {
 	readonly source: string;
 	/** GitLab didn't answer for this check, so it counts as pending: "couldn't read". */
 	readonly unreadable?: boolean;
+	/** The pipeline's and the review threads' checks, which the Changes panel shows their jobs and threads under. */
+	readonly kind?: 'pipeline' | 'threads';
 }
 
 export interface MergeReadiness {
@@ -638,6 +640,7 @@ export function mergeReadiness(mr: Pick<RawMr, 'state' | 'detailed_merge_status'
 		...settings.pipelineMustSucceed && pipelineRunning ? { pending: true } : {},
 		detail: pipeline ? `head pipeline ${pipeline}` : 'no pipeline',
 		source: settings.pipelineMustSucceed ? 'only_allow_merge_if_pipeline_succeeds' : 'head_pipeline.status',
+		kind: 'pipeline',
 	});
 	for (const rule of rules ?? []) {
 		checks.push({ name: `Approvals: ${rule.name}`, ok: rule.met, detail: `${rule.approvedBy.length} of ${rule.required}${rule.approvedBy.length ? ` (${rule.approvedBy.join(', ')})` : ''}${!rule.met && rule.eligible.length ? `; eligible: ${rule.eligible.slice(0, 6).join(', ')}` : ''}`, source: 'approval_state' });
@@ -650,8 +653,8 @@ export function mergeReadiness(mr: Pick<RawMr, 'state' | 'detailed_merge_status'
 	const threadsName = settings.threadsMustBeResolved ? 'All threads resolved' : 'Review threads';
 	const threadsSource = settings.threadsMustBeResolved ? 'only_allow_merge_if_all_discussions_are_resolved' : 'discussions';
 	checks.push(unresolvedThreads === undefined
-		? { name: threadsName, ok: !settings.threadsMustBeResolved, ...settings.threadsMustBeResolved ? { pending: true } : {}, unreadable: true, detail: 'couldn\'t read', source: threadsSource }
-		: { name: threadsName, ok: !settings.threadsMustBeResolved || unresolvedThreads === 0, detail: unresolvedThreads ? `${unresolvedThreads} unresolved` : 'none open', source: threadsSource });
+		? { name: threadsName, ok: !settings.threadsMustBeResolved, ...settings.threadsMustBeResolved ? { pending: true } : {}, unreadable: true, detail: 'couldn\'t read', source: threadsSource, kind: 'threads' }
+		: { name: threadsName, ok: !settings.threadsMustBeResolved || unresolvedThreads === 0, detail: unresolvedThreads ? `${unresolvedThreads} unresolved` : 'none open', source: threadsSource, kind: 'threads' });
 	checks.push({ name: 'No conflicts with the target', ok: !mr.has_conflicts && status !== 'conflict', detail: mr.has_conflicts || status === 'conflict' ? 'conflicts' : 'clean', source: 'has_conflicts' });
 	const gitlabSaysNo = status && status !== 'mergeable' && status !== 'ci_still_running' && status !== 'ci_must_pass';
 	checks.push({ name: 'GitLab says mergeable', ok: status === 'mergeable', ...status === 'ci_still_running' || status === 'ci_must_pass' || status === 'checking' ? { pending: true } : {}, detail: status || 'unknown', source: 'detailed_merge_status' });

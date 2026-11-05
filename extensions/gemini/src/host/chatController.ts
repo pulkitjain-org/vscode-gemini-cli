@@ -167,11 +167,11 @@ export class ChatController implements vscode.Disposable {
 		const client = service.client;
 		// A project's chat never asks its coordinator to react.
 		this.transcript.liftReactions = !options.project;
-		this.files = new ChatFileLinks(diffPreview, () => options.git?.folder() ?? client.cwd, options, file => this.plan.reviewPlanFile(file), file => this.plan.rebuildPlan(file));
+		this.files = new ChatFileLinks(diffPreview, () => options.git?.folder() ?? client.cwd, options, file => this.plan.reviewPlanFile(file), file => this.plan.rebuildPlan(file), () => client.settings.mode?.currentId === 'plan');
 		// A long tool output is kept whole here for Show All; the transcript, and every reset, carries its first and last lines.
 		this.transcript.trimOutput = (itemId, part, text) => this.files.outputs.put(itemId, part, text);
 		this.permissions = new ChatPermissions(service.permissions, this.transcript, this.files, options);
-		this.follow = new ChatFollow(client.cwd, options, post);
+		this.follow = new ChatFollow(client.cwd, options, post, file => this.files.opensItself(file));
 		this.git = new ChatGitControls(options, isBusy, isAttached, post);
 		this.usage = new ChatUsage(client, options, () => this.transcript.items.length > 0, isAttached, post, (used, limit) => this.compacting.contextChanged(used, limit));
 		this.attachments = new ChatAttachments(fileIndex, options, () => options.git?.folder() ?? client.cwd, isAttached, isViewReady, post);

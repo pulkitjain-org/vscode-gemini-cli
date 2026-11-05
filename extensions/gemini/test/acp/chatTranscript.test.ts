@@ -255,6 +255,15 @@ describe('ChatTranscript permissions', () => {
 		expect(item.kind === 'permission' && [item.prefixes, item.others]).toEqual([['npx vitest'], [{ agent: 'a2', title: 'Login fix' }]]);
 	});
 
+	it('names the MCP server when gemini-cli 0.67 says which one asks, and nothing for a placeholder', () => {
+		const transcript = new ChatTranscript();
+		const mcp = (server_name: string) => ({ ...request, toolCall: { ...request.toolCall, _meta: { 'gemini-cli': { mcp: { server_name, tool_name: 'create_issue' } } } } });
+		transcript.addPermission({ id: 'permission-0', request: mcp('github') });
+		transcript.addPermission({ id: 'permission-1', request: mcp('generic_server') });
+		transcript.addPermission({ id: 'permission-2', request });
+		expect(transcript.items.map(item => item.kind === 'permission' ? item.mcpServer : 'other')).toEqual(['github', undefined, undefined]);
+	});
+
 	it('records the answer in place', () => {
 		const transcript = new ChatTranscript();
 		transcript.addPermission({ id: 'permission-0', request });
@@ -344,6 +353,22 @@ describe('ChatTranscript.updateTurnEnd', () => {
 		expect(transcript.items.at(-1)).toEqual({ id, kind: 'turnEnd', durationMs: 1200, at: 5000, retry: true, undo: 'available', files: 2 });
 		transcript.updateTurnEnd(id, { retry: undefined, undo: 'undone' });
 		expect(transcript.items.at(-1)).toEqual({ id, kind: 'turnEnd', durationMs: 1200, at: 5000, undo: 'undone', files: 2 });
+	});
+
+	it('sends no update for a patch that changes nothing, so the view\'s render stats cannot loop', () => {
+		const transcript = new ChatTranscript(() => 5000);
+		transcript.addPrompt('hi');
+		const id = transcript.addTurnEnd(1200);
+		const changed: string[] = [];
+		transcript.onDidChangeItem(item => changed.push(item.id));
+		transcript.updateTurnEnd(id, { renderMs: 40, renderedUpdates: 12 });
+		transcript.updateTurnEnd(id, { renderMs: 40, renderedUpdates: 12 });
+		transcript.updateTurnEnd(id, { retry: undefined });
+		transcript.updateTurnEnd(id, { renderMs: 0, renderedUpdates: 0 });
+		expect({ changed, last: transcript.items.at(-1) }).toEqual({
+			changed: [id, id],
+			last: { id, kind: 'turnEnd', durationMs: 1200, at: 5000, renderMs: 0, renderedUpdates: 0 },
+		});
 	});
 });
 

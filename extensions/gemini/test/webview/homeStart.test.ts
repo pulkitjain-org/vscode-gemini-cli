@@ -9,7 +9,7 @@
 // on its own branch, or a project's coordinator), with a line on the one
 // picked; the project picker; what the folder's trust holds back; themed
 // tooltips in place of native ones; and the menus and popups, chunks loaded on
-// first use: the + menu's Actions, and the gear menu's Refresh and Settings.
+// first use: the + menu's Actions, and the gear menu's Settings; Refresh is a button beside the gear.
 
 import * as path from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -263,8 +263,33 @@ describe('Home\'s tooltips', () => {
 });
 
 describe('Home\'s one place per job', () => {
-	it('has no second agent list, tool logos, refresh button, quick actions, Agent Setup button or index icon', () => {
-		expect(['#active', '#earlier', '#projects', '#tools', '#refresh', '#quick', '#helpers', '#index-state'].filter(id => document.querySelector(id))).toEqual([]);
+	it('has no second agent list, tool logos, quick actions, Agent Setup button or index icon', () => {
+		expect(['#active', '#earlier', '#projects', '#tools', '#quick', '#helpers', '#index-state'].filter(id => document.querySelector(id))).toEqual([]);
+	});
+
+	it('refreshes from the button beside the gear, which spins and takes no second click until the refresh ends', () => {
+		const refresh = byId('refresh');
+		const spinning = () => !!refresh.querySelector('.codicon-modifier-spin');
+		const dashboard = view().dashboard!;
+		sendToPage({ type: 'view', view: { ...view(), dashboard: { ...dashboard, refreshTip: 'Refresh the cards · updated 14:31' } } });
+		const before = { hidden: refresh.hidden, spinning: spinning(), tip: refresh.dataset.tip };
+		posted.length = 0;
+		refresh.click();
+		refresh.click();
+		const clicked = { posted: [...posted], spinning: spinning() };
+		sendToPage({ type: 'view', view: { ...view(), dashboard: { ...dashboard, refreshing: true, refreshTip: 'Refreshing the cards...' } } });
+		const running = { spinning: spinning(), tip: refresh.dataset.tip };
+		sendToPage({ type: 'view', view: { ...view(), dashboard: { ...dashboard, refreshTip: 'Refresh the cards · updated 14:32' } } });
+		const done = { spinning: spinning(), tip: refresh.dataset.tip };
+		sendToPage({ type: 'view', view: { ...view(), dashboard: { ...dashboard, setup: [] } } });
+		expect({ before, clicked, running, done, nothingConnected: refresh.hidden }).toEqual({
+			before: { hidden: false, spinning: false, tip: 'Refresh the cards · updated 14:31' },
+			clicked: { posted: [{ type: 'refresh' }], spinning: true },
+			running: { spinning: true, tip: 'Refreshing the cards...' },
+			done: { spinning: false, tip: 'Refresh the cards · updated 14:32' },
+			nothingConnected: true,
+		});
+		sendToPage({ type: 'view', view: view() });
 	});
 
 	it('offers Review and Run checks... under Actions in the + menu, with Files and no Mode section', async () => {
@@ -283,7 +308,7 @@ describe('Home\'s one place per job', () => {
 		});
 	});
 
-	it('offers Refresh and Settings in the gear menu, above the cards\' switches', async () => {
+	it('offers Settings in the gear menu, above the cards\' switches, and leaves Refresh to its own button', async () => {
 		byId('customize').click();
 		const menu = byId('customize-menu');
 		await expect.poll(() => menu.hidden).toBe(false);
@@ -291,12 +316,9 @@ describe('Home\'s one place per job', () => {
 		const names = rows.map(row => row.querySelector('.menu-name')?.textContent);
 		posted.length = 0;
 		rows[0].click();
-		byId('customize').click();
-		await expect.poll(() => menu.hidden).toBe(false);
-		([...menu.querySelectorAll('.menu-row')][1] as HTMLElement).click();
-		expect({ names: names.slice(0, 4), ran: posted, switches: rows.filter(row => row.getAttribute('role') === 'menuitemcheckbox').length }).toEqual({
-			names: ['Refresh', 'Settings', 'Your tickets', 'Gemini'],
-			ran: [{ type: 'refresh' }, { type: 'action', action: { kind: 'command', command: 'gemini.projectSettings' } }],
+		expect({ names: names.slice(0, 3), ran: posted, switches: rows.filter(row => row.getAttribute('role') === 'menuitemcheckbox').length }).toEqual({
+			names: ['Settings', 'Your tickets', 'Gemini'],
+			ran: [{ type: 'action', action: { kind: 'command', command: 'gemini.projectSettings' } }],
 			switches: 2,
 		});
 	});

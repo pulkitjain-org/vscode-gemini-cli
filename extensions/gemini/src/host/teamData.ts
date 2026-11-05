@@ -106,6 +106,11 @@ export class TeamData implements vscode.Disposable {
 		return times.length ? Math.max(...times) : undefined;
 	}
 
+	/** Whether a refresh is running. */
+	get busy(): boolean {
+		return this.running !== undefined;
+	}
+
 	/** When the last refresh started, in ms since the epoch; 0 before the first. */
 	get refreshedAt(): number {
 		return this.lastRefresh;

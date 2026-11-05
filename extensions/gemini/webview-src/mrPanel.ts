@@ -4,10 +4,11 @@
  *--------------------------------------------------------------------------------------------*/
 
 // The team part of the Changes panel (src/host/mrPanel.ts): Open Merge Request
-// and Run Checks, then the agent's merge request as two cards: its pipeline,
-// quality gate, Snyk, review threads and ticket; and the merge checklist read
-// live from GitLab, the options, the exact request, and Merge, on only when
-// every line is green.
+// and Run Checks, then the agent's merge request as one card: its quality gate,
+// Snyk and ticket, then the merge checklist read live from GitLab, with the
+// pipeline's failed jobs and the open review threads under their own checks,
+// the options, the exact request, and Merge, on only when every line is green.
+// Without the checklist, the pipeline and threads are rows of their own.
 
 import type { ChangesTeamView, FromChangesTeam } from '../src/host/teamFlowProtocol';
 import { button, el, format, icon } from './panelDom';
@@ -44,29 +45,19 @@ export function renderTeam(view: ChangesTeamView, post: (message: FromChangesTea
 	card.append(head);
 	const threadIds: string[] = [];
 	let failedJobs = 0;
-	for (const row of mr.rows) {
-		const block = el('div', 'mr-row');
-		const line = el('div', 'mr-row-line');
-		const label = el('span', 'mr-row-label');
-		label.append(row.tool === 'review' ? icon('comment-discussion') : toolLogo(row.tool, 14), el('span', 'mr-row-text', row.label));
-		if (row.detail) {
-			label.append(el('span', 'muted', row.detail));
-		}
-		line.append(label);
-		if (row.pill) {
-			line.append(el('span', `pill ${row.pill.tone}`, row.pill.text));
-		}
-		block.append(line);
+	/** A row's failed jobs with Fix, its note and its threads with their ticks, under its line or under the merge check it repeats. */
+	const extras = (row: NonNullable<ChangesTeamView['mr']>['rows'][number]): HTMLElement[] => {
+		const nodes: HTMLElement[] = [];
 		for (const job of row.jobs ?? []) {
 			failedJobs++;
 			const jobLine = el('div', 'mr-sub');
 			jobLine.append(el('span', 'mr-sub-text', job.name), button('secondary small', job.fix, () => post({ type: 'team', action: 'fixJob', job: job.id })));
-			block.append(jobLine);
+			nodes.push(jobLine);
 		}
 		if (row.note) {
 			const note = el('div', 'mr-sub muted');
 			note.append(el('span', 'mr-sub-text', row.note), icon('check'));
-			block.append(note);
+			nodes.push(note);
 		}
 		for (const thread of row.threads ?? []) {
 			threadIds.push(thread.id);
@@ -86,15 +77,36 @@ export function renderTeam(view: ChangesTeamView, post: (message: FromChangesTea
 			text.append(el('strong', undefined, thread.author), document.createTextNode(` · ${thread.text}`));
 			text.title = thread.text;
 			item.append(box, text);
-			block.append(item);
+			nodes.push(item);
 		}
+		return nodes;
+	};
+	// With the checklist, a row it repeats (pipeline, review threads) is shown once: as its check.
+	const checkKinds = new Set(mr.merge?.checks.flatMap(check => check.kind ? [check.kind] : []));
+	const underChecks = new Map<'pipeline' | 'threads', HTMLElement[]>();
+	for (const row of mr.rows) {
+		if (row.covers && checkKinds.has(row.covers)) {
+			underChecks.set(row.covers, extras(row));
+			continue;
+		}
+		const block = el('div', 'mr-row');
+		const line = el('div', 'mr-row-line');
+		const label = el('span', 'mr-row-label');
+		label.append(row.tool === 'review' ? icon('comment-discussion') : toolLogo(row.tool, 14), el('span', 'mr-row-text', row.label));
+		if (row.detail) {
+			label.append(el('span', 'muted', row.detail));
+		}
+		line.append(label);
+		if (row.pill) {
+			line.append(el('span', `pill ${row.pill.tone}`, row.pill.text));
+		}
+		block.append(line, ...extras(row));
 		card.append(block);
 	}
-	section.append(card);
-
 	if (mr.merge) {
-		section.append(renderMerge(mr.merge, post));
+		renderMerge(card, mr.merge, underChecks, post);
 	}
+	section.append(card);
 
 	// Open in GitLab, Run Checks and Fix Pipeline and Comments, under the cards.
 	const actions = el('div', 'team-actions');
@@ -127,10 +139,14 @@ function checksButton(label: string, post: (message: FromChangesTeam) => void): 
 	return checks;
 }
 
-/** The merge card: each check as GitLab reports it, the options, the request, and the button. */
-function renderMerge(merge: NonNullable<NonNullable<ChangesTeamView['mr']>['merge']>, post: (message: FromChangesTeam) => void): HTMLElement {
-	const card = el('div', 'mr-card mr-merge');
-	const head = el('div', 'mr-head');
+/**
+ * The merge part of the merge request's card: each check as GitLab reports it,
+ * with `underChecks`, the pipeline's jobs or the open threads, under their
+ * check; the options, the request, and the button.
+ */
+function renderMerge(card: HTMLElement, merge: NonNullable<NonNullable<ChangesTeamView['mr']>['merge']>, underChecks: ReadonlyMap<'pipeline' | 'threads', readonly HTMLElement[]>, post: (message: FromChangesTeam) => void): void {
+	card.classList.add('mr-merge');
+	const head = el('div', 'mr-head mr-merge-head');
 	head.append(icon('git-merge'), el('strong', 'mr-title', merge.heading), el('span', 'mr-target mono', merge.readAt));
 	card.append(head);
 	for (const check of merge.checks) {
@@ -144,6 +160,12 @@ function renderMerge(merge: NonNullable<NonNullable<ChangesTeamView['mr']>['merg
 			row.append(button('link', check.retry, () => post({ type: 'team', action: 'retry' }), 'refresh'));
 		}
 		card.append(row);
+		const under = check.kind ? underChecks.get(check.kind) : undefined;
+		if (under?.length) {
+			const block = el('div', 'mr-check-under');
+			block.append(...under);
+			card.append(block);
+		}
 	}
 
 	const options = el('div', 'mr-options');
@@ -180,5 +202,4 @@ function renderMerge(merge: NonNullable<NonNullable<ChangesTeamView['mr']>['merg
 	mergeButton.disabled = !merge.ready;
 	foot.append(mergeButton, el('span', 'mr-merge-note', merge.note));
 	card.append(foot);
-	return card;
 }

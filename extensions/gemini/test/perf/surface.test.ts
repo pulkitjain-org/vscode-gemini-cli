@@ -37,8 +37,8 @@ export const surfaceBudgets = {
 	agentRowMenu: 6,
 	// Right-click entries on a workspace row: 7 as of 1.7; 5 in 1.8, the index's under Index.
 	workspaceRowMenu: 5,
-	// Buttons in Home's own markup, its cards' and menus' aside: 13 as of 1.7; 10 in 1.8, when the tool logos, refresh, the index icon and the button row went.
-	homeControls: 10,
+	// Buttons in Home's own markup, its cards' and menus' aside: 13 as of 1.7; 10 in 1.8, when the tool logos, refresh, the index icon and the button row went; 11 when Refresh came back beside the gear, out of its menu.
+	homeControls: 11,
 } as const;
 
 function paletteWhen(command: string): string | undefined {

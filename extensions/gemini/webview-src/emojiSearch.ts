@@ -21,6 +21,18 @@ export interface IndexedEmoji {
 }
 
 /** Every emoji the system can draw (`maxVersion`), in the picker's order. */
+/** `emoji`'s name, such as "thought balloon", ignoring the variation selector the model may or may not write. */
+export function emojiNameIn(groups: readonly (readonly EmojiEntry[])[], emoji: string): string | undefined {
+	const plain = emoji.replace(/\u{FE0F}/gu, '');
+	for (const group of groups) {
+		const found = group.find(([candidate]) => candidate.replace(/\u{FE0F}/gu, '') === plain);
+		if (found) {
+			return found[1];
+		}
+	}
+	return undefined;
+}
+
 export function buildIndex(groups: readonly (readonly EmojiEntry[])[], maxVersion: number): IndexedEmoji[] {
 	return groups.flatMap((entries, group) => entries
 		.filter(([, , , version]) => version <= maxVersion)

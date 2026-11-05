@@ -1570,6 +1570,14 @@ body.vscode-high-contrast-light {
 	font-weight: var(--gc-weight-semibold);
 }
 
+.permission-server {
+	margin-top: 2px;
+	padding-left: 20px;
+	font-size: var(--gc-text-sm);
+	color: var(--gemini-muted);
+	overflow-wrap: anywhere;
+}
+
 .permission.answered .permission-title {
 	font-weight: normal;
 	color: var(--gemini-muted);
@@ -2049,18 +2057,44 @@ body:not(.developer) .first-token + .turn-dot {
 .reaction-chip {
 	display: inline-flex;
 	align-items: center;
-	height: 20px;
+	height: 26px;
 	margin-left: 4px;
-	padding: 0 8px;
-	border: 1px solid color-mix(in srgb, var(--gemini-accent) 55%, transparent);
-	border-radius: var(--gc-radius-lg);
-	background: color-mix(in srgb, var(--gemini-accent) 14%, transparent);
-	font-size: var(--gc-text-sm);
+	padding: 0 9px;
+	border: 1px solid color-mix(in srgb, var(--gemini-accent) 60%, transparent);
+	border-radius: var(--gc-radius-pill);
+	background: color-mix(in srgb, var(--gemini-accent) 16%, transparent);
+	font-size: var(--gc-text-emoji);
 	line-height: 1;
+	cursor: default;
 }
 
 .turn-action.reaction-add {
 	padding: 0 4px;
+}
+
+/* Beside a reply's reactions, the reaction button is a pill of the same height. */
+.reaction-chip + .turn-action.reaction-add {
+	height: 26px;
+	margin-left: 2px;
+	padding: 0 9px;
+	border: 1px solid var(--gemini-border-strong);
+	border-radius: var(--gc-radius-pill);
+}
+
+/* A reply's reactions stay in view; the rest of its row still shows only when the reply is pointed at or holds focus. */
+.turn-end:has(> .reaction-chip) {
+	opacity: 1;
+}
+
+.turn-end:has(> .reaction-chip) > :not(.reaction-chip) {
+	opacity: 0;
+	transition: opacity var(--gc-motion);
+}
+
+.turn-end:has(> .reaction-chip):is(:hover, :focus-within, :last-child) > *,
+.message:hover + .turn-end > *,
+.work-fold:hover + .turn-end > * {
+	opacity: 1;
 }
 
 .reaction-icon {
@@ -2154,26 +2188,42 @@ body:not(.developer) .first-token + .turn-dot {
 	outline-offset: -1px;
 }
 
+/* Room under the bubble for the part of the agent's pill that hangs below it, above the time and Copy. */
 .message.user.has-reaction {
 	position: relative;
-	margin-bottom: 8px;
+	margin-bottom: 18px;
 }
 
+/*
+ * On the bubble's lower edge, ringed in the chat's background so it stands apart from the bubble in every theme.
+ * Sized to the prompt's text: legible, without outweighing the message it marks.
+ */
 .agent-reaction {
 	position: absolute;
-	right: -8px;
-	bottom: -11px;
-	display: flex;
+	right: 10px;
+	/* Only the bubble's bottom padding is under the pill, so it never covers the prompt's last line. */
+	bottom: -16px;
+	display: inline-flex;
 	align-items: center;
-	justify-content: center;
-	width: 22px;
-	height: 22px;
+	gap: 4px;
+	height: 24px;
+	box-sizing: border-box;
+	padding: 0 8px 0 6px;
 	border: 1px solid var(--gemini-border-strong);
-	border-radius: 50%;
+	border-radius: var(--gc-radius-pill);
 	background: var(--gemini-popover);
-	font-size: var(--gc-text-sm);
+	outline: 2px solid var(--vscode-editor-background);
 	line-height: 1;
 	animation: reaction-pop 0.25s ease-out;
+}
+
+.agent-reaction-mark.codicon {
+	font-size: var(--gc-text-xs);
+	color: var(--gemini-accent);
+}
+
+.agent-reaction-emoji {
+	font-size: var(--gc-text-lg);
 }
 
 @keyframes reaction-pop {

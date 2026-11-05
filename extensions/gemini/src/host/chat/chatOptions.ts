@@ -63,6 +63,10 @@ export interface ChatControllerOptions {
 	sendTriedEdits?(): Promise<boolean>;
 	/** Opens the plan file a Plan mode turn wrote in Plan Review. */
 	reviewPlan?(file: string): void;
+	/** Opens a Markdown file the agent created in the rich Markdown editor, where the user edits it and comments for the agent; false when it can't. */
+	openMarkdown?(file: string, preserveFocus: boolean): Promise<boolean>;
+	/** Whether the agent created `file`, from its changes, which outlast a reload. */
+	created?(file: string): boolean;
 	/** Where Plan Review keeps its state: a plan rebuilt from the session's history prefers its copy there. */
 	readonly planReviewFolder?: string;
 	/** A context key kept equal to whether a turn runs, for menus. */

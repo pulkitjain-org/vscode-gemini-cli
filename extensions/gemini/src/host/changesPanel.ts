@@ -233,9 +233,15 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 			case 'undoFile':
 				await vscode.commands.executeCommand('gemini.review.undoFile', vscode.Uri.file(message.path).toString(), source?.agentId);
 				return;
-			case 'openFile':
+			case 'openFile': {
+				// A Markdown file the agent created opens as the chat opens it: rendered, to edit and comment on.
+				const created = source?.changes.files.some(file => file.path === message.path && file.created);
+				if (created && /\.(md|markdown|mdown|mkd|mkdn)$/i.test(message.path) && await source?.openMarkdown?.(message.path)) {
+					return;
+				}
 				await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(message.path), { viewColumn: await source?.editorColumn(), preview: true });
 				return;
+			}
 			case 'openAll':
 				await vscode.commands.executeCommand('gemini.changes.openAll');
 				return;

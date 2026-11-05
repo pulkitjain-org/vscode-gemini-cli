@@ -6,9 +6,8 @@
 // Home's Show all popup and gear menu, a chunk of its own that Home loads
 // the first time either opens, so Home's startup script stays small. Show all
 // shows a card's whole list, which the extension keeps current while it is
-// open; the gear menu refreshes the tools' data, opens Settings (Agent
-// Setup), turns cards on and off, orders them and picks the branch the
-// Quality card reads.
+// open; the gear menu opens Settings (Agent Setup), turns cards on and off,
+// orders them and picks the branch the Quality card reads.
 
 import type { FromHome, HomeCard, HomeCardId, HomeDashboard, HomeList, HomeRow } from '../src/host/panelProtocol';
 import type { HomeStrings } from '../src/host/panelStrings';
@@ -124,7 +123,7 @@ export function createHomePopups(host: HomePopupsHost): HomePopups {
 		}
 	});
 
-	/** The gear menu: Refresh and Settings, then the cards' switches and order, then the Quality card's branch. */
+	/** The gear menu: Settings, then the cards' switches and order, then the Quality card's branch. */
 	const customizeMenu: Menu = new host.Menu({
 		element: host.customizeElement,
 		anchor: host.customizeButton,
@@ -137,7 +136,6 @@ export function createHomePopups(host: HomePopupsHost): HomePopups {
 			return [
 				{
 					rows: [
-						{ icon: 'refresh', name: strings.refresh, run: () => { customizeMenu.close(); host.post({ type: 'refresh' }); } },
 						{ icon: 'server-environment', name: strings.settings, detail: strings.settingsDetail, run: () => { customizeMenu.close(); host.post({ type: 'action', action: { kind: 'command', command: 'gemini.projectSettings' } }); } },
 					],
 				},

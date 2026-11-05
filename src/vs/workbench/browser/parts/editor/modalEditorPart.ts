@@ -950,6 +950,14 @@ class ModalEditorPartImpl extends EditorPart implements IModalEditorPart {
 	private _maximized: boolean;
 	get maximized(): boolean { return this._maximized; }
 
+	/**
+	 * GEMINI-FORK: set while the modal holds a page expanded from an agent's side
+	 * group (geminiAgentGroups.ts). Closing the modal then puts the page back
+	 * beside its agent, and returns true, instead of closing it, so a half-written
+	 * review comment or form is not lost to Escape or a click outside.
+	 */
+	geminiOnClose: (() => boolean) | undefined;
+
 	private _size: IDimension | undefined;
 	get size(): IDimension | undefined { return this._size; }
 	set size(value: IDimension | undefined) { this._size = value; }
@@ -1166,6 +1174,11 @@ class ModalEditorPartImpl extends EditorPart implements IModalEditorPart {
 	}
 
 	async close(options?: { mergeAllEditorsToMainPart?: boolean }): Promise<boolean> {
+
+		// GEMINI-FORK: an expanded agent page goes back beside its agent (geminiOnClose).
+		if (this.geminiOnClose?.()) {
+			return true;
+		}
 
 		// Merge all editors to main part (editors stay open, no confirmation needed)
 		if (options?.mergeAllEditorsToMainPart) {

@@ -12,7 +12,7 @@
 
 import type { ReactionStrings } from '../src/host/chatStrings';
 import data from './emojiData.json';
-import { buildIndex, moveInGrid, recentEmoji, searchEmoji, type EmojiEntry, type GridPosition, type IndexedEmoji } from './emojiSearch';
+import { buildIndex, emojiNameIn, moveInGrid, recentEmoji, searchEmoji, type EmojiEntry, type GridPosition, type IndexedEmoji } from './emojiSearch';
 
 export interface PickerOptions {
 	/** The reaction button: the picker opens beside it, and focus goes back to it. */
@@ -40,6 +40,11 @@ interface Section {
 const groups = data.groups as unknown as readonly (readonly EmojiEntry[])[];
 let index: IndexedEmoji[] | undefined;
 let current: Picker | undefined;
+
+/** `emoji`'s name, such as "thought balloon", for the tooltip of the agent's reaction. */
+export function emojiName(emoji: string): string | undefined {
+	return emojiNameIn(groups, emoji);
+}
 
 /** Opens the picker by `options.anchor`, closing one already open. */
 export function openPicker(options: PickerOptions): void {

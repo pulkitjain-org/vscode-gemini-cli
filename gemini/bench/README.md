@@ -49,7 +49,7 @@ Cancel it from its notification. A cancelled run writes nothing.
 The same run as a script takes any CLI, here the one the app bundles:
 
 ```sh
-node --experimental-transform-types extensions/gemini/scripts/bench-run.mts --cli /Applications/GeminiCode.app/Contents/Resources/app/extensions/gemini/cli/0.66.0/bundle/gemini.js \
+node --experimental-transform-types extensions/gemini/scripts/bench-run.mts --cli /Applications/GeminiCode.app/Contents/Resources/app/extensions/gemini/cli/0.67.0/bundle/gemini.js \
   --model gemini-3.8-flash --version <GeminiCode version>
 ```
 

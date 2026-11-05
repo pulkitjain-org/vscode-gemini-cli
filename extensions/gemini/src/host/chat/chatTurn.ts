@@ -232,6 +232,8 @@ export class ChatTurn {
 					edited = diffs;
 					// The plan a Plan mode turn writes, for its Review Plan.
 					plan.noteEdits(diffs);
+					// A Markdown file the agent created shows rendered beside the chat, in place of its proposed diff.
+					void files.openWritten(diffs);
 				}
 			}
 			if (this.timing?.sent !== undefined) {

@@ -24,7 +24,7 @@ import type { DebugAction, DebugBarView } from './debug/debugProtocol';
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 54;
+export const chatProtocolVersion = 55;
 /** The hash of the messages below (sourceHash.ts); test/acp/chatProtocolHash.test.ts fails when they change without a bump, and names the new value. */
 export const chatProtocolHash = 'b33406811d90';
 

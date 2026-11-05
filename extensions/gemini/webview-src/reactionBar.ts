@@ -11,13 +11,13 @@
 // loaded the first time a reaction button is hovered or focused.
 
 import { format, type ItemOf } from './chatLogic';
-import { button, el, onIntent, setLabel, setTip } from './dom';
+import { button, el, icon, onIntent, setLabel, setTip } from './dom';
 import { heart, question, thumbsDown, thumbsUp, type ReactionRef } from '../src/acp/reactions';
 import type { PickerOptions } from './emojiPicker';
 import { elements, state, strings, ui, vscode } from './view';
 
 const pickerUrl = document.querySelector<HTMLScriptElement>('script[data-strings]')?.dataset.emojiPicker;
-let picker: Promise<{ openPicker(options: PickerOptions): void } | undefined> | undefined;
+let picker: Promise<{ openPicker(options: PickerOptions): void; emojiName(emoji: string): string | undefined } | undefined> | undefined;
 
 /** The quick reactions and their names, as the picker names them. */
 const quick: readonly (readonly [string, string])[] = [[thumbsUp, 'thumbs up'], [thumbsDown, 'thumbs down'], [question, 'red question mark'], [heart, 'red heart']];
@@ -204,13 +204,25 @@ export function initReactionBar(): void {
 	node.addEventListener('focusout', hideBarSoon);
 }
 
-/** The agent's reaction to a prompt, as a badge on its bubble. */
+/** The agent's reaction to a prompt: a pill on its bubble's lower edge, with Gemini's mark so it never reads as the user's own. */
 export function agentBadge(emoji: string): HTMLElement {
-	const badge = el('span', 'agent-reaction', emoji);
-	const label = strings.reactions ? format(strings.reactions.agentReacted, emoji) : emoji;
+	const badge = el('span', 'agent-reaction');
+	badge.append(icon('sparkle', 'agent-reaction-mark'), el('span', 'agent-reaction-emoji', emoji));
+	const labels = strings.reactions;
+	const label = labels ? format(labels.agentReacted, emoji) : emoji;
 	badge.setAttribute('role', 'img');
 	badge.setAttribute('aria-label', label);
 	setTip(badge, label);
+	// Gemini may react with any emoji and says nothing of why, so the tooltip names the emoji. Its
+	// name comes with the picker's data, a chunk of its own: loaded on the first hover, before the tip shows.
+	badge.addEventListener('pointerenter', () => void loadPicker().then(module => {
+		const name = module?.emojiName(emoji);
+		if (labels && name) {
+			const named = format(labels.agentReactedNamed, emoji, name);
+			badge.setAttribute('aria-label', named);
+			setTip(badge, named);
+		}
+	}), { once: true });
 	return badge;
 }
 
