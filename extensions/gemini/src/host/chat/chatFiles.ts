@@ -6,7 +6,10 @@
 // The files a chat opens: a proposed edit's diff, a file and line a tool call
 // or a reply names, and a turn's trace file. Proposed edits are kept in memory
 // only, by transcript item id, so their diffs can be opened after the turn:
-// the latest 200, and no more than 20 MB of text before and after.
+// the latest 200, and no more than 20 MB of text before and after. A Markdown
+// file the agent created opens in the rich Markdown editor instead, where the
+// user edits it and comments for the agent: from its chip, from a reply's link,
+// and by itself once the agent has written it. Plan mode's plan opens in Plan Review.
 
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -27,6 +30,8 @@ import { showError } from '../errorNotice';
 const maxDiffBytes = 20 * 1024 * 1024;
 /** How much of tools' long output a chat keeps whole, for Show All. */
 const maxOutputBytes = 16 * 1024 * 1024;
+/** How many Markdown files the agent created a chat remembers, to open in the rich Markdown editor. */
+const maxCreated = 200;
 
 export type FileLinkMessage = Extract<FromWebview, { readonly type: 'openDiff' | 'openLocation' | 'openPath' | 'openTrace' }>;
 
@@ -40,16 +45,20 @@ export class ChatFileLinks {
 	 * trimmed text (`ToolOutputStore.put` returns it) and this the whole.
 	 */
 	readonly outputs = new ToolOutputStore(maxOutputBytes);
+	/** The Markdown files the agent created in this chat, which open in the rich Markdown editor; the latest {@link maxCreated}. */
+	private readonly createdMarkdown = new Set<string>();
 
 	constructor(
 		private readonly diffPreview: DiffPreview,
 		/** Where a file a reply names is looked for: the agent's folder. */
 		private readonly folder: () => string,
-		private readonly options: Pick<ChatControllerOptions, 'editorColumn'>,
+		private readonly options: Pick<ChatControllerOptions, 'editorColumn' | 'openMarkdown' | 'created'>,
 		/** Opens a Markdown file in Plan Review when it is the chat's plan; false when it isn't. */
 		private readonly openPlan?: (file: string) => boolean,
 		/** Writes a plan the CLI deleted again, from the session's saved calls. */
 		private readonly rebuildPlan?: (file: string) => Promise<void>,
+		/** The session is in Plan mode, whose plan opens from Review Plan rather than by itself. */
+		private readonly inPlanMode?: () => boolean,
 	) { }
 
 	onMessage(message: FileLinkMessage): void {
@@ -78,12 +87,45 @@ export class ChatFileLinks {
 			// Setting again keeps the most recent edits when old ones are dropped.
 			this.diffs.set(itemId, diffs);
 		}
+		for (const diff of diffs) {
+			if (isMarkdown(diff.path) && !diff.oldText) {
+				this.createdMarkdown.delete(diff.path);
+				this.createdMarkdown.add(diff.path);
+				if (this.createdMarkdown.size > maxCreated) {
+					this.createdMarkdown.delete(this.createdMarkdown.values().next().value!);
+				}
+			}
+		}
+	}
+
+	/** Whether `file` is a Markdown file the agent created here, which the chat opens itself; Follow the agent leaves it alone. */
+	opensItself(file: string): boolean {
+		return !!this.options.openMarkdown && this.createdHere(file);
+	}
+
+	/** A Markdown file the agent created: seen in this chat's edits, or in its changes after a reload. */
+	private createdHere(file: string): boolean {
+		return isMarkdown(file) && (this.createdMarkdown.has(file) || !!this.options.created?.(file));
+	}
+
+	/**
+	 * A turn's edits completed: a Markdown file the agent created opens in the
+	 * rich Markdown editor beside the chat, in place of its proposed diff, with
+	 * focus left in the chat. Not Plan mode's plan, which has Review Plan.
+	 */
+	async openWritten(diffs: readonly acp.Diff[]): Promise<void> {
+		const created = diffs.filter(diff => isMarkdown(diff.path) && !diff.oldText).at(-1);
+		if (!created || this.inPlanMode?.() || !await isFile(created.path)) {
+			return;
+		}
+		await this.options.openMarkdown?.(created.path, true);
 	}
 
 	/** Forgets every proposed edit and tool output, as the conversation is cleared. */
 	clear(): void {
 		this.diffs.clear();
 		this.outputs.clear();
+		this.createdMarkdown.clear();
 	}
 
 	async openDiff(itemId: string, filePath: string, preserveFocus: boolean): Promise<void> {
@@ -91,8 +133,8 @@ export class ChatFileLinks {
 		if (isMarkdown(filePath)) {
 			await this.rebuildPlan?.(filePath);
 		}
-		// A Markdown file the agent wrote from scratch reads better rendered than as a diff of new lines; Plan mode's plan opens in Plan Review.
-		if (isMarkdown(filePath) && (!diff || !diff.oldText) && await isFile(filePath) && (this.openPlan?.(filePath) || await this.openPreview(filePath, preserveFocus))) {
+		// A Markdown file the agent wrote from scratch reads better rendered than as a diff of new lines, and can be edited and commented there; Plan mode's plan opens in Plan Review.
+		if (isMarkdown(filePath) && (!diff || !diff.oldText) && await isFile(filePath) && (this.openPlan?.(filePath) || await this.openMarkdown(filePath, preserveFocus))) {
 			return;
 		}
 		if (diff) {
@@ -103,6 +145,11 @@ export class ChatFileLinks {
 		// none: show the file as it is now instead.
 		void vscode.window.showInformationMessage(vscode.l10n.t("The proposed change is no longer available, so the file is shown as it is now."));
 		await this.openLocation(filePath, undefined);
+	}
+
+	/** Opens a Markdown file in the rich Markdown editor, else in the preview; false when neither opens. */
+	private async openMarkdown(filePath: string, preserveFocus: boolean): Promise<boolean> {
+		return await this.options.openMarkdown?.(filePath, preserveFocus) || this.openPreview(filePath, preserveFocus);
 	}
 
 	/** Opens `filePath` in the Markdown preview, beside the chat like its diffs; false when the preview can't open. */
@@ -123,6 +170,10 @@ export class ChatFileLinks {
 		const folder = this.folder();
 		const direct = path.resolve(folder, name);
 		if (await isFile(direct)) {
+			// A Markdown file the agent created opens where it was shown, unless the link names a line.
+			if (line === undefined && this.createdHere(direct) && await this.openMarkdown(direct, false)) {
+				return;
+			}
 			return this.openLocation(direct, line);
 		}
 		const matches = await vscode.workspace.findFiles(new vscode.RelativePattern(folder, fileNamePattern(name)), '**/{node_modules,.git}/**', 20);

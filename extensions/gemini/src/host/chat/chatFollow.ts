@@ -37,6 +37,8 @@ export class ChatFollow implements vscode.Disposable {
 		private readonly cwd: string,
 		private readonly options: Pick<ChatControllerOptions, 'editorColumn'>,
 		private readonly post: (message: ToWebview) => void,
+		/** A file the chat opens itself, in another editor (a Markdown file the agent created): following it would replace that editor with the text. */
+		private readonly opensItself: (file: string) => boolean = () => false,
 	) {
 		this.tabsListener = vscode.window.tabGroups.onDidChangeTabs(() => {
 			if (this.followed && !followedTabs(this.followed).length) {
@@ -124,7 +126,7 @@ export class ChatFollow implements vscode.Disposable {
 	 */
 	private async show(target: FollowTarget): Promise<void> {
 		const file = followablePath(this.cwd, target);
-		if (!file || !await isFile(file)) {
+		if (!file || this.opensItself(file) || !await isFile(file)) {
 			return;
 		}
 		const position = new vscode.Position(Math.max((target.line ?? 1) - 1, 0), 0);

@@ -95,7 +95,7 @@ Edits for specific features (tab rows, agent groups, spell check, menus, the bro
 
 The stylesheet is static apart from one transform, which slides the mode switch's lens, so it costs nothing at runtime. Profiled with an agent streaming a long reply while the chat scrolls, a menu open over it and a mode switch, three runs with the stylesheet and three without, no measure (paint, raster, composite, layout, dropped frames) moved beyond the spread between runs, under 0.01 ms per frame.
 
-Its siblings in the same folder are `geminiModes.ts` (the window modes), `geminiTitleTabs.ts` (Agents layout's title bar tabs), `geminiAgentGroups.ts` (each agent's side group), `geminiContextMenu.ts` (themed menus), `geminiNewAgentDialog.ts` and `geminiBrowser.ts` (the agents' browser), all described below. The i18n list in `build/lib/i18n.resources.json` names the folder.
+Its siblings in the same folder are `geminiModes.ts` (the window modes), `geminiTitleTabs.ts` (Agents layout's title bar tabs), `geminiAgentGroups.ts` (each agent's side group), `geminiMarkdownComments.ts` (comments on an agent's Markdown files), `geminiContextMenu.ts` (themed menus), `geminiNewAgentDialog.ts` and `geminiBrowser.ts` (the agents' browser), all described below. The i18n list in `build/lib/i18n.resources.json` names the folder.
 
 ## How a prompt flows
 
@@ -327,6 +327,14 @@ From two prompts on, the chat draws a tick per prompt down its left edge, centre
 #### The side column
 
 An agent's or thread's chat has a column in its right margin (`webview-src/sideLinks.ts`, fed by `chat/chatSideLinks.ts`): where the agent works, **Changes** with the lines added and removed, **Browser**, **Terminal** and **Files**. It sits outside the centred transcript, so it never moves the chat. `chat.css` turns it into icons below 1128px and hides it below 856px. A project's coordinator has none, since its folder is empty. The host's `sideLinks` option gives the view and opens each link in the agent's side group: Browser shows the agent's page, or opens a blank one of the user's there (`_gemini.browser.openBlank`); Terminal is the agent's terminal; Files is the Files page.
+
+#### Markdown files the agent writes
+
+A Markdown file the agent created opens in upstream's rich Markdown editor (`vscode.markdown.editor`) beside the chat, where the user reads it, edits it in place (the pencil unlocks it) and comments on it for the agent. `ChatFileLinks` routes every way in to `AgentFeatures.openMarkdown`: the file's chip, a reply's link to it, the Changes panel's open button, and, once a turn has written a new one, the file opening by itself in a preview tab where its proposed diff was, with focus left in the chat (`openWritten`; not in Plan mode, whose plan has Review Plan). A file counts as created when the chat saw it written from nothing, or its agent's changes say so after a reload (`created`). Follow the agent leaves such a file alone (`opensItself`), or it would replace the editor with the text. An edit to an existing Markdown file still opens its diff, and Plan mode's plan still opens in Plan Review.
+
+Comments: the rich editor shows its comment box only for files a provider registered with upstream's `IAgentEditorCommentsBridge` accepts, and upstream registers one only in its own agent sessions. `geminiMarkdownComments.ts` (fork-only, in `contrib/gemini`) is GeminiCode's provider: it accepts files the extension marks with `_gemini.markdownComments.allow` (when `openMarkdown` opens one), and keeps their comments in workspace storage (`common/geminiMarkdownCommentStore.ts`, tested with upstream's runner) until they're sent. **Send Comments to Gemini** shows in the title bar of a file with comments, beside the chat and in Expand's overlay (`resource in geminiMarkdownCommentedFiles`, on `EditorTitle` and `ModalEditorEditorTitle`). It takes the comments out and hands them to `_gemini.sendFileComments`; the extension saves the user's unsaved edits, writes one message quoting each comment's text and line (`fileCommentsMessage` in `src/acp/fileComments.ts`) and queues it as Plan Review does, resolving once that turn is over. A message that never reaches the agent puts the comments back, and the extension says why.
+
+The editor comments while locked (reading) and types while unlocked (editing). It keeps Escape for itself, so in Expand's overlay Escape doesn't close the overlay while the editor has focus; Back Beside the Chat and a click outside do.
 
 #### The Files page
 

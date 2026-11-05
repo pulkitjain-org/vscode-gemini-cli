@@ -122,6 +122,16 @@ When a Plan mode turn writes a plan file, **Review Plan** beside **Approve Plan*
 
 **Open as Text** opens the plan file in the editor. A plan stays with its session: when you reopen the session, after a restart for example, the plan is still there and **Review Plan** still opens it.
 
+### Markdown files Gemini writes
+
+When Gemini writes a new Markdown file, such as a report, it opens beside the chat, rendered, once it's written. Its chip, its link in the reply and its row in **Changes** open it there too.
+
+- **Edit in place.** Click the pencil at the top right to unlock the file and type in it; the lock takes you back to reading.
+- **Comment.** While it's locked, select text and type in **Add comment**. Comments stay on the file, and with the file when you close it.
+- **Send Comments to Gemini**, the send button in the file's title bar, sends them all in one message, and Gemini revises the file. Your unsaved edits are saved first, and Gemini keeps them. If the message doesn't reach Gemini, your comments come back on the file.
+
+Edits to Markdown files that were already there open as diffs, like other files. A plan from Plan mode opens in **Review Plan**.
+
 ## Watching the agent work
 
 While the agent works, its thoughts and steps show under a **Working** line. Several steps of one kind in a row (nine searches, five commands) show as one line that opens to each step.

@@ -71,7 +71,7 @@ export interface AgentTabsHost {
 	readonly indicators: Pick<AgentIndicators, 'tabIcon' | 'restingTabIcon' | 'tabClosed'>;
 	readonly changesView: Pick<ChangesView, 'show' | 'openAll'>;
 	/** The pane's own surface the tabs call back into: the Try button of an agent's changes. */
-	readonly view: Pick<AgentsView, 'mergeBack' | 'tryChoiceOf' | 'chooseTry' | 'mergeRequests' | 'tryAction'>;
+	readonly view: Pick<AgentsView, 'mergeBack' | 'tryChoiceOf' | 'chooseTry' | 'mergeRequests' | 'tryAction' | 'openMarkdown'>;
 	/** The agent whose changes show changed; Agents mode's Changes panel follows it. */
 	focusChanged(source: ChangesSource | undefined): void;
 	/** Redraws the list, or agent `id`'s row. */
@@ -431,6 +431,7 @@ export class AgentTabs implements vscode.Disposable {
 		return live && workspace ? {
 			agentId: id, title: record.title, folder: agentFolder(record, workspace.folder), changes: live.changes,
 			editorColumn: () => agentColumn(id, live.panel),
+			openMarkdown: file => host.view.openMarkdown(id, file, false),
 			focusEditors: async () => { await agentColumn(id, live.panel, true); },
 			busy: () => live.activity.busy,
 			...(record.worktree ? {

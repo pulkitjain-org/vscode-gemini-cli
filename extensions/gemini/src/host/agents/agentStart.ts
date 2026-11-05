@@ -93,7 +93,7 @@ export interface AgentStartHost {
 	/** The pane's own surface the chat reaches: what activate sets on it (the browser, the team tools, the index, usage), reviews, the spare session and its tabs. */
 	readonly view: Pick<AgentsView, 'browser' | 'teamTools' | 'index' | 'debug' | 'usage' | 'contextCost' | 'reviewChip' | 'openReview' | 'direct' | 'review' | 'cliDefaultMode' | 'prepareStart' | 'open' | 'openChanges'>;
 	/** Try in Workspace, Plan Review and the design-system note, loaded once first needed. */
-	readonly features: Pick<AgentFeatures, 'tries' | 'planReviews' | 'onDemand'>;
+	readonly features: Pick<AgentFeatures, 'tries' | 'planReviews' | 'onDemand' | 'openMarkdown'>;
 	readonly tabs: Pick<AgentTabs, 'reveal'>;
 	/** The side column's links, and Run on the agent's replies. */
 	readonly sideLinks: Pick<AgentSideLinks, 'openSideLink' | 'chatTerminal'>;
@@ -192,6 +192,8 @@ export class AgentStarter {
 				onDidPickModel: modelId => host.model.setCoordinatorModel(record.id, modelId),
 				sendTriedEdits: () => host.features.tries.sendEdits(record.id, true),
 				reviewPlan: file => void host.features.planReviews.open(record.id, file).catch(err => showError(errorMessage(err))),
+				openMarkdown: (file, preserveFocus) => host.features.openMarkdown(record.id, file, preserveFocus),
+				created: file => !!host.live.get(record.id)?.changes.files.some(each => each.path === file && each.created),
 				planReviewFolder: host.planReviewFolder,
 				editorColumn: () => agentColumn(record.id, host.live.get(record.id)?.panel),
 				enhancer: host.enhancer,

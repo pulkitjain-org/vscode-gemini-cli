@@ -20,6 +20,8 @@ export interface ChangesSource {
 	readonly changes: AgentChanges;
 	/** Where the agent's files and diffs open: beside its tab, so its chat stays in view. */
 	editorColumn(): Promise<vscode.ViewColumn>;
+	/** Opens a Markdown file the agent created in the rich Markdown editor, where the user edits it and comments for the agent; false when it can't. */
+	openMarkdown?(file: string): Promise<boolean>;
 	/** Makes the agent's editor group the active one, for editors that open only there. */
 	focusEditors(): Promise<void>;
 	/** A turn is running. */

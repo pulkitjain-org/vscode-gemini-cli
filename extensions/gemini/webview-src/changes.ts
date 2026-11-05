@@ -122,7 +122,10 @@ function renderFile(file: ChangedFileView): HTMLElement {
 	// Only the header itself: Enter on one of its buttons should press that button.
 	header.addEventListener('keydown', e => e.target === header && (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), toggle()));
 	const name = el('span', 'file-name');
-	name.append(icon('chevron-down'), el('span', 'name', file.name));
+	const label = el('span', 'name', file.name);
+	// The name may be cut in a narrow panel.
+	setTip(label, file.name);
+	name.append(icon('chevron-down'), label);
 	if (file.dir) {
 		const dir = el('span', 'dir', file.dir);
 		setTip(dir, file.dir);
