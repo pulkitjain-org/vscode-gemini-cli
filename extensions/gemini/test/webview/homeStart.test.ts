@@ -9,7 +9,7 @@
 // on its own branch, or a project's coordinator), with a line on the one
 // picked; the project picker; what the folder's trust holds back; themed
 // tooltips in place of native ones; and the menus and popups, chunks loaded on
-// first use: the + menu's Actions, and the gear menu's Refresh and Settings.
+// first use: the + menu's Actions, and the gear menu's Settings; Refresh is a button beside the gear.
 
 import * as path from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';

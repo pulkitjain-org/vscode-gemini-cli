@@ -88,4 +88,42 @@ describe('the merge card in the Changes panel', () => {
 		retry?.click();
 		expect({ pending: !!card.querySelector('.mr-check.pending'), sent }).toEqual({ pending: true, sent: [{ type: 'team', action: 'retry' }] });
 	});
+	it('is one card: the pipeline and review threads show once, as their checks, with the failed job and open thread under them', async () => {
+		const { renderTeam } = await startScript('mrPanel') as { renderTeam: (view: unknown, post: (message: unknown) => void) => HTMLElement };
+		const sent: unknown[] = [];
+		const section = renderTeam({
+			mr: {
+				iid: 14, heading: '!14 Guest checkout', target: '→ develop', url: 'https://gitlab.example.com/x', openIn: 'Open in GitLab',
+				rows: [
+					{ tool: 'gitlab', label: 'Pipeline for a79d1f6', pill: { text: 'failed', tone: 'error' }, jobs: [{ id: 7, name: 'test · semgrep-sast', fix: 'Fix' }], covers: 'pipeline' },
+					{ tool: 'review', label: 'Review threads', pill: { text: '1 unresolved', tone: 'warn' }, threads: [{ id: 't1', author: 'Ana', text: 'Rename this step' }], covers: 'threads' },
+					{ tool: 'jira', label: 'VCAAUTO-13', detail: 'AU guest checkout', pill: { text: 'In Review', tone: 'info' } },
+				],
+				fixAll: { label: 'Fix Pipeline and {0} Comments', one: 'Fix Pipeline and 1 Comment', pipelineOnly: 'Fix Pipeline', commentsOnly: 'Fix {0} Comments' },
+				merge: {
+					heading: 'Merge !14', readAt: 'read live 2 s ago', ready: false, button: 'Merge...', note: '',
+					squash: { label: 'Squash', on: false }, removeSourceBranch: { label: 'Delete', on: true }, request: { path: '/merge_requests/14/merge', sha: 'a79d1f6' },
+					checks: [
+						{ name: 'Pipeline', state: 'missing', detail: 'head pipeline failed', source: 'head_pipeline.status', kind: 'pipeline' },
+						{ name: 'Review threads', state: 'ok', detail: '1 unresolved', source: 'discussions', kind: 'threads' },
+						{ name: 'No conflicts with the target', state: 'ok', detail: 'clean', source: 'has_conflicts' },
+					],
+				},
+			},
+		}, message => sent.push(message));
+		const checks = [...section.querySelectorAll('.mr-check')].map(check => [check.querySelector('.mr-check-text > div')?.textContent, [...(check.nextElementSibling?.classList.contains('mr-check-under') ? check.nextElementSibling.querySelectorAll('.mr-sub-text') : [])].map(node => node.textContent)]);
+		[...section.querySelectorAll('button')].find(button => button.textContent?.trim() === 'Fix')?.click();
+		[...section.querySelectorAll('button')].find(button => button.textContent?.trim() === 'Fix Pipeline and 1 Comment')?.click();
+		expect({
+			cards: section.querySelectorAll('.mr-card').length,
+			rows: [...section.querySelectorAll('.mr-row-text')].map(node => node.textContent),
+			checks,
+			sent,
+		}).toEqual({
+			cards: 1,
+			rows: ['VCAAUTO-13'],
+			checks: [['Pipeline', ['test · semgrep-sast']], ['Review threads', ['Ana · Rename this step']], ['No conflicts with the target', []]],
+			sent: [{ type: 'team', action: 'fixJob', job: 7 }, { type: 'team', action: 'fixMr', jobs: true, threads: ['t1'] }],
+		});
+	});
 });

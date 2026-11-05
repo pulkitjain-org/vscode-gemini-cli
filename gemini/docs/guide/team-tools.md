@@ -156,9 +156,9 @@ An agent that is reviewing someone else's merge request works on a local copy of
 
 ### The merge request panel
 
-The panel in Changes shows the pipeline, with **Fix** on each failed job, the SonarQube gate, Snyk and the open review threads.
+The panel in Changes is one card for the merge request: the SonarQube gate, Snyk and the Jira ticket, then the checks GitLab applies before a merge, read live. The pipeline's check has **Fix** on each failed job under it, and the review threads' check lists the open threads, so each shows once.
 
-It also lists the checks GitLab applies before a merge, read live: the merge request is open and not a draft, the pipeline, each approval rule by name with who approved, resolved threads, no conflicts, and GitLab's own verdict. A check GitLab didn't answer for counts as pending ("couldn't read, counted as pending"), never as passed, with **Retry** to read it again; the review page's Approvals row and the merge dialog say the same. **Merge...** is on only when every line holds.
+The checks are: the merge request is open and not a draft, the pipeline, each approval rule by name with who approved, resolved threads, no conflicts, and GitLab's own verdict. A check GitLab didn't answer for counts as pending ("couldn't read, counted as pending"), never as passed, with **Retry** to read it again; the review page's Approvals row and the merge dialog say the same. **Merge...** is on only when every line holds.
 
 Merge asks once more, naming the commit it read and whether the commits are squashed and the branch deleted, as the project's settings say. GitLab checks again as it merges, so if someone pushes in between, GitLab refuses rather than merging something you didn't see. Afterwards it offers to move the ticket.
 

@@ -835,6 +835,22 @@ button.flow-file:hover {
 	border-top: 1px solid var(--gemini-border);
 }
 
+/* The checklist inside the merge request's card, below its own rows. */
+.mr-row + .mr-merge-head,
+.mr-head + .mr-merge-head {
+	margin-top: 8px;
+	padding-top: 8px;
+	border-top: 1px solid var(--gemini-border);
+}
+
+/* A check's failed jobs or open threads, under it and in line with its text. */
+.mr-check-under {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	padding: 0 0 4px 24px;
+}
+
 .mr-check-mark {
 	display: inline-flex;
 	flex: none;

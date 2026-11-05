@@ -171,6 +171,12 @@ export async function showHomePage(): Promise<void> {
 	showPage(home.prototype.html(fakeWebview, 'media'));
 }
 
+/** Agents layout's Changes panel, as `ChangesPanel` draws it; start `webview-src/changes` after it. */
+export async function showChangesPage(): Promise<void> {
+	const panel = await hostExport<{ prototype: { html(webview: unknown, media: string): string } }>('src/host/changesPanel.ts', 'ChangesPanel');
+	showPage(panel.prototype.html(fakeWebview, 'media'));
+}
+
 /** A team flow's page, as `TeamFlowPanel` draws it; start `webview-src/teamFlow` after it. */
 export async function showTeamFlowPage(): Promise<void> {
 	const TeamFlowPanel = await hostExport<new (extensionUri: string, title: string, icon: string, loading: string, onAction: () => void) => { panel: { webview: { html: string } } }>('src/host/teamFlowPanel.ts', 'TeamFlowPanel');
