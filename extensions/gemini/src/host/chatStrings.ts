@@ -233,6 +233,8 @@ export interface ReactionStrings {
 	readonly chip: string;
 	/** `{0}` is the emoji: the agent's reaction to a prompt, as its badge's tooltip. */
 	readonly agentReacted: string;
+	/** `{0}` is the emoji and `{1}` its name, such as "thought balloon": the badge's tooltip once the name is known. */
+	readonly agentReactedNamed: string;
 	/** `{0}` is the emoji, in the queue strip. */
 	readonly queued: string;
 	/** Jumps to the reply a reaction line points at. */

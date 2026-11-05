@@ -149,6 +149,7 @@ export function buildDashboard(input: DashboardInput): HomeDashboard {
 		releaseBranches: data.releases?.data?.branches ?? [],
 		...input.layout?.qualityBranch ? { qualityBranch: input.layout.qualityBranch } : {},
 		refreshing: input.refreshing,
+		refreshTip: input.refreshing ? vscode.l10n.t("Refreshing the cards...") : input.dataFrom ? vscode.l10n.t("Refresh the cards · updated {0}", clockTime(input.dataFrom)) : vscode.l10n.t("Refresh the cards"),
 		...list ? { list } : {},
 	};
 }

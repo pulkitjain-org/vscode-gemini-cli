@@ -234,6 +234,8 @@ export interface HomeDashboard {
 	readonly releaseBranches: readonly string[];
 	readonly qualityBranch?: string;
 	readonly refreshing: boolean;
+	/** The refresh button's tooltip, with when the cards' data last came: "Refresh the cards · updated 14:31". */
+	readonly refreshTip?: string;
 	/** The card whose whole list is open in a popup, kept current while it is open. */
 	readonly list?: HomeList;
 }

@@ -587,6 +587,7 @@ function reactionStrings(): ReactionStrings {
 		reacted: vscode.l10n.t("You reacted {0} to Gemini's reply"),
 		chip: vscode.l10n.t("Reaction: {0}"),
 		agentReacted: vscode.l10n.t("Gemini reacted {0}"),
+		agentReactedNamed: vscode.l10n.t("Gemini reacted {0} · {1}"),
 		queued: vscode.l10n.t("{0} on Gemini's reply"),
 		showReply: vscode.l10n.t("Show the reply"),
 		picker: vscode.l10n.t("Emoji"),

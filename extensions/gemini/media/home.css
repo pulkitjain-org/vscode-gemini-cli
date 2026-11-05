@@ -13,7 +13,7 @@
 	padding: 24px 32px 48px;
 }
 
-/* The greeting, the day and sprint beside it, the gear at the end of the line. */
+/* The greeting, the day and sprint beside it, Refresh and the gear at the end of the line. */
 .dash-head {
 	display: flex;
 	flex-wrap: wrap;
@@ -42,6 +42,13 @@
 
 .dash-customize {
 	position: relative;
+}
+
+/* Refresh, beside the gear: hidden with nothing connected, spinning while the cards' data is read again. */
+.dash-tools #refresh[hidden] { display: none; }
+
+.dash-tools #refresh[aria-disabled="true"] {
+	cursor: default;
 }
 
 .dash-customize .home-menu {

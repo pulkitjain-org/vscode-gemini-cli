@@ -17,10 +17,22 @@
 // group of its own right of the side group, its tree beside the file
 // (`_gemini.agentFilesBeside`); it hides and comes back with the side group,
 // and takes its place, at its width, when the side group's last file closes.
+// The page in front of a side group can be expanded into upstream's modal
+// editor overlay, almost the whole window, from the group's title bar; closing
+// the overlay (Escape, its buttons, a click outside) puts the page back in its
+// agent's side group rather than closing it.
 
+import { isHTMLElement } from '../../../../base/browser/dom.js';
+import { Codicon } from '../../../../base/common/codicons.js';
+import { Event } from '../../../../base/common/event.js';
 import { Disposable, DisposableMap } from '../../../../base/common/lifecycle.js';
 import { ThemeIcon } from '../../../../base/common/themables.js';
+import { localize2 } from '../../../../nls.js';
+import { Action2, MenuId, registerAction2 } from '../../../../platform/actions/common/actions.js';
 import { CommandsRegistry } from '../../../../platform/commands/common/commands.js';
+import { IContextKey, IContextKeyService, RawContextKey } from '../../../../platform/contextkey/common/contextkey.js';
+import { ServicesAccessor } from '../../../../platform/instantiation/common/instantiation.js';
+import { IListService } from '../../../../platform/list/browser/listService.js';
 import { ILogService } from '../../../../platform/log/common/log.js';
 import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js';
 import { IWorkbenchContribution, registerWorkbenchContribution2, WorkbenchPhase } from '../../../common/contributions.js';
@@ -29,7 +41,9 @@ import { EditorInput } from '../../../common/editor/editorInput.js';
 import { IReadonlyEditorGroupModel } from '../../../common/editor/editorGroupModel.js';
 import { refreshGeminiTabRows } from '../../../browser/parts/editor/geminiTabRows.js';
 import { EditorActivation } from '../../../../platform/editor/common/editor.js';
-import { GroupDirection, GroupsOrder, IEditorGroup, IEditorGroupsService, IEditorPart } from '../../../services/editor/common/editorGroupsService.js';
+import { resolveCommandsContext } from '../../../browser/parts/editor/editorCommandsContext.js';
+import { GroupDirection, GroupsOrder, IEditorGroup, IEditorGroupsService, IEditorPart, IModalEditorPart } from '../../../services/editor/common/editorGroupsService.js';
+import { IEditorService } from '../../../services/editor/common/editorService.js';
 import { ILifecycleService, LifecyclePhase } from '../../../services/lifecycle/common/lifecycle.js';
 import { WebviewInput } from '../../webviewPanel/browser/webviewEditorInput.js';
 
@@ -78,6 +92,16 @@ function isAgentsTab(editor: EditorInput): boolean {
 	return editor instanceof WebviewInput && editor.viewType.startsWith(geminiViewTypePrefix) && !sidePageViewTypes.has(editor.viewType);
 }
 
+/** True in the scoped context of an agent's side group, whose title bar then offers Expand. */
+const sideGroupContext = new RawContextKey<boolean>('geminiAgentSideGroup', false);
+/** True while the modal overlay holds a page expanded from an agent's side group. */
+const pageExpandedContext = new RawContextKey<boolean>('geminiAgentPageExpanded', false);
+
+/** The hook the fork adds to the modal editor part (modalEditorPart.ts). */
+interface GeminiModal {
+	geminiOnClose: (() => boolean) | undefined;
+}
+
 /** Whether a group holds agents (or Agent Home), so its tabs are the title bar's in Agents mode. */
 export function holdsAgents(model: IReadonlyEditorGroupModel): boolean {
 	return model.getEditors(EditorsOrder.SEQUENTIAL).some(isAgentsTab);
@@ -124,15 +148,22 @@ class GeminiAgentGroups extends Disposable implements IWorkbenchContribution {
 	/** Each group's model listener, until the group goes. */
 	private readonly groupListeners = this._register(new DisposableMap<GroupIdentifier>());
 	private reportedMissingVisibility = false;
+	/** Each group's `geminiAgentSideGroup` key, bound in its own scoped context. */
+	private readonly sideGroupKeys = new Map<GroupIdentifier, IContextKey<boolean>>();
+	/** The page in the modal overlay and the agent it goes back to. */
+	private expanded: { readonly agent: string; readonly modal: IModalEditorPart } | undefined;
+	private readonly pageExpanded: IContextKey<boolean>;
 
 	constructor(
 		@IEditorGroupsService private readonly editorGroupsService: IEditorGroupsService,
 		@IStorageService private readonly storageService: IStorageService,
 		@ILifecycleService lifecycleService: ILifecycleService,
 		@ILogService private readonly logService: ILogService,
+		@IContextKeyService contextKeyService: IContextKeyService,
 	) {
 		super();
 		agentGroups = this;
+		this.pageExpanded = pageExpandedContext.bindTo(contextKeyService);
 		try {
 			const saved: unknown = JSON.parse(storageService.get(groupsKey, StorageScope.WORKSPACE) ?? '{}');
 			for (const [id, group] of Object.entries(saved ?? {})) {
@@ -154,8 +185,16 @@ class GeminiAgentGroups extends Disposable implements IWorkbenchContribution {
 			this.restored = true;
 			const part = this.part;
 			for (const [id, group] of [...this.groups]) {
-				if (!part.getGroup(group)) {
+				const restored = part.getGroup(group);
+				if (!restored) {
 					this.groups.delete(id);
+				} else if (restored.isEmpty && part.count > 1) {
+					// Its pages (Files, Plan Review, ...) are not restored with the window, nor is its
+					// agent's tab: kept, the empty group would take Home, which opens in the active
+					// group, and leave the agents' group empty beside it. The agent's next file makes
+					// a side group again.
+					this.groups.delete(id);
+					part.removeGroup(restored);
 				}
 			}
 			for (const [id, tree] of [...this.trees]) {
@@ -171,6 +210,7 @@ class GeminiAgentGroups extends Disposable implements IWorkbenchContribution {
 			this.save();
 			this._register(part.onDidRemoveGroup(group => {
 				this.groupListeners.deleteAndDispose(group.id);
+				this.sideGroupKeys.delete(group.id);
 				this.forgetGroup(group.id);
 			}));
 			this._register(part.onDidChangeActiveGroup(group => this.onDidActivateGroup(group)));
@@ -188,6 +228,8 @@ class GeminiAgentGroups extends Disposable implements IWorkbenchContribution {
 	}
 
 	private watch(group: IEditorGroup): void {
+		this.sideGroupKeys.set(group.id, sideGroupContext.bindTo(group.scopedContextKeyService));
+		this.updateSideGroupKeys();
 		this.groupListeners.set(group.id, group.onDidModelChange(e => {
 			if (e.kind === GroupModelChangeKind.EDITOR_ACTIVE) {
 				if (agentIdOf(group.activeEditor) !== undefined || group.activeEditor && isGeminiTab(group.activeEditor)) {
@@ -338,7 +380,16 @@ class GeminiAgentGroups extends Disposable implements IWorkbenchContribution {
 		}
 	}
 
+	/** Marks the agents' side groups, whose title bars offer Expand. */
+	private updateSideGroupKeys(): void {
+		const sides = new Set(this.groups.values());
+		for (const [group, key] of this.sideGroupKeys) {
+			key.set(sides.has(group));
+		}
+	}
+
 	private save(): void {
+		this.updateSideGroupKeys();
 		this.storageService.store(groupsKey, JSON.stringify(Object.fromEntries(this.groups)), StorageScope.WORKSPACE, StorageTarget.MACHINE);
 		this.storageService.store(treesKey, JSON.stringify(Object.fromEntries(this.trees)), StorageScope.WORKSPACE, StorageTarget.MACHINE);
 	}
@@ -373,6 +424,69 @@ class GeminiAgentGroups extends Disposable implements IWorkbenchContribution {
 		this.trees.set(agent, { group: tree.id, span });
 		this.save();
 		this.apply();
+		return true;
+	}
+
+	/** Whether `group` is an agent's side group or the group of its Files page. */
+	claims(group: GroupIdentifier): boolean {
+		return [...this.groups.values()].includes(group) || [...this.trees.values()].some(tree => tree.group === group);
+	}
+
+	/** Moves the page in front of side group `groupId` into the modal overlay, almost the whole window. */
+	async expand(groupId: GroupIdentifier): Promise<void> {
+		const agent = [...this.groups].find(([, id]) => id === groupId)?.[0];
+		const group = this.part.getGroup(groupId);
+		const editor = group?.activeEditor;
+		if (agent === undefined || !group || !editor || this.expanded) {
+			return;
+		}
+		const modal = await this.editorGroupsService.createModalEditorPart({ maximized: true });
+		// A webview is mounted once, at the end of the window, and drawn over its editor with
+		// CSS anchors, which only resolve to an anchor earlier in the document. A page that
+		// already exists comes before the overlay, so it would draw as a small box in the
+		// corner: the overlay moves ahead of the webviews instead, which cannot move without
+		// reloading. Its stacking comes from its z-index, not its place in the document.
+		const element = modal.modalElement;
+		if (isHTMLElement(element) && element.parentElement && element.parentElement.firstElementChild !== element) {
+			element.parentElement.insertBefore(element, element.parentElement.firstElementChild);
+		}
+		this.expanded = { agent, modal };
+		this.pageExpanded.set(true);
+		(modal as unknown as GeminiModal).geminiOnClose = () => this.collapse();
+		Event.once(modal.onWillClose)(() => {
+			(modal as unknown as GeminiModal).geminiOnClose = undefined;
+			this.expanded = undefined;
+			this.pageExpanded.set(false);
+		});
+		// A webview moves rather than reloads, so the page keeps what was typed in it.
+		group.moveEditor(editor, modal.activeGroup, { activation: EditorActivation.ACTIVATE });
+	}
+
+	/**
+	 * Puts the expanded page back in its agent's side group, made again if the
+	 * page was its last tab, or in the active group when the agent's tab has
+	 * closed meanwhile. True when there was a page to put back.
+	 */
+	collapse(): boolean {
+		const page = this.expanded;
+		if (!page) {
+			return false;
+		}
+		const { agent, modal } = page;
+		(modal as unknown as GeminiModal).geminiOnClose = undefined;
+		this.expanded = undefined;
+		this.pageExpanded.set(false);
+		const column = this.columnFor(agent, false);
+		const target = column === undefined ? this.part.activeGroup : this.part.getGroups(GroupsOrder.GRID_APPEARANCE)[column - 1] ?? this.part.activeGroup;
+		for (const group of modal.groups) {
+			for (const editor of group.editors) {
+				group.moveEditor(editor, target, { activation: EditorActivation.ACTIVATE });
+			}
+		}
+		// The modal closes itself once its last tab leaves; this covers it staying open, and closes nothing.
+		if (this.editorGroupsService.activeModalEditorPart === modal) {
+			void modal.close();
+		}
 		return true;
 	}
 
@@ -445,9 +559,47 @@ CommandsRegistry.registerCommand('_gemini.closeAgentGroup', (_accessor, agent: u
 CommandsRegistry.registerCommand('_gemini.agentFilesBeside', (_accessor, agent: unknown) =>
 	typeof agent === 'string' ? agentGroups?.filesBeside(agent) ?? false : false);
 
-/** The 1-based column of the group holding the agents, where a new agent or Agent Home opens; undefined when there is none. */
+registerAction2(class ExpandAgentPageAction extends Action2 {
+	constructor() {
+		super({
+			id: 'workbench.action.gemini.expandAgentPage',
+			title: localize2('gemini.expandAgentPage', "Expand"),
+			icon: Codicon.screenFull,
+			precondition: pageExpandedContext.negate(),
+			menu: { id: MenuId.EditorTitle, group: 'navigation', order: -10, when: sideGroupContext },
+		});
+	}
+	async run(accessor: ServicesAccessor, ...args: unknown[]): Promise<void> {
+		const context = resolveCommandsContext(args, accessor.get(IEditorService), accessor.get(IEditorGroupsService), accessor.get(IListService));
+		const group = context.groupedEditors[0]?.group ?? accessor.get(IEditorGroupsService).activeGroup;
+		await agentGroups?.expand(group.id);
+	}
+});
+
+registerAction2(class CollapseAgentPageAction extends Action2 {
+	constructor() {
+		super({
+			id: 'workbench.action.gemini.collapseAgentPage',
+			title: localize2('gemini.collapseAgentPage', "Back Beside the Chat"),
+			icon: Codicon.screenNormal,
+			precondition: pageExpandedContext,
+			menu: { id: MenuId.ModalEditorTitle, group: 'navigation', order: -10, when: pageExpandedContext },
+		});
+	}
+	run(): void {
+		agentGroups?.collapse();
+	}
+});
+
+/**
+ * The 1-based column where a new agent or Agent Home opens: the group holding
+ * the agents or, with none, an empty group no agent claims, such as the agents'
+ * group after a reload, whose tabs are not restored. Undefined when there is
+ * neither, and the extension uses the active group.
+ */
 CommandsRegistry.registerCommand('_gemini.agentsColumn', accessor => {
 	const part = accessor.get(IEditorGroupsService).mainPart;
-	const group = agentsGroupOf(part);
-	return group ? part.getGroups(GroupsOrder.GRID_APPEARANCE).indexOf(group) + 1 : undefined;
+	const groups = part.getGroups(GroupsOrder.GRID_APPEARANCE);
+	const group = agentsGroupOf(part) ?? groups.find(g => g.isEmpty && !agentGroups?.claims(g.id));
+	return group ? groups.indexOf(group) + 1 : undefined;
 });

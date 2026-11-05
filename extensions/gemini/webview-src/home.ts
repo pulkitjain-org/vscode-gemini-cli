@@ -428,6 +428,22 @@ const cardsSection = document.getElementById('cards')!;
 setTip(customizeButton, strings.customize);
 customizeButton.setAttribute('aria-label', strings.customize);
 
+// Refresh, beside the gear: it spins from the click until a view says the refresh has ended.
+const refreshButton = document.getElementById('refresh') as HTMLButtonElement;
+refreshButton.setAttribute('aria-label', strings.refresh);
+setTip(refreshButton, strings.refresh);
+refreshButton.addEventListener('click', () => {
+	if (refreshButton.getAttribute('aria-disabled') !== 'true') {
+		showRefreshing(true);
+		vscode.postMessage({ type: 'refresh' });
+	}
+});
+
+function showRefreshing(on: boolean): void {
+	refreshButton.firstElementChild?.classList.toggle('codicon-modifier-spin', on);
+	refreshButton.setAttribute('aria-disabled', String(on));
+}
+
 type HomePopupsModule = typeof import('./homePopups');
 const homePopupsUrl = document.querySelector<HTMLScriptElement>('script[data-home-popups]')?.dataset.homePopups;
 let homePopups: Promise<HomePopups> | undefined;
@@ -510,6 +526,12 @@ function renderDashboard(dash: HomeDashboard): void {
 	subtitle.textContent = dash.context;
 	stale.hidden = !dash.stale;
 	stale.textContent = dash.stale ?? '';
+	// With nothing connected there is nothing to refresh.
+	refreshButton.hidden = !!dash.setup;
+	showRefreshing(dash.refreshing);
+	if (dash.refreshTip) {
+		setTip(refreshButton, dash.refreshTip);
+	}
 	// Each part is drawn again only when what it shows changed: Home gets a new view every moment while agents work.
 	// One banner per server down or refusing its token; the extension drops each once its server answers.
 	banners.hidden = !dash.banners?.length;
