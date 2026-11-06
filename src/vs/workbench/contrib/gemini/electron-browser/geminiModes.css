@@ -391,8 +391,9 @@
  * Agents mode's side bar: the agent list with no "Gemini" title and no "Agents" header. It has
  * two sections (the extension's agentsView.ts): Projects, while Projects are on, and Agents,
  * each a heading with its + always showing. Under Projects are the projects, with their threads
- * indented below; a blank row with a rule keeps the sections apart; under Agents, workspaces are small uppercase labels (with their + on hover) over
- * their agents. Agent rows have a status icon, the title and a right-aligned meta ("0:42",
+ * indented below; under Agents, workspaces are small uppercase labels (with their + on hover) over
+ * their agents. Agent rows have a status icon only when they want the user (the extension leaves
+ * a quiet agent an empty `blank` slot), the title and a right-aligned meta ("0:42",
  * "+38", "waiting") that the Gemini extension provides. An empty section says so in a muted row.
  * The side bar shows only the Gemini view in Agents mode, so its one tree is the agent list.
  */
@@ -440,17 +441,6 @@
 	margin-top: 10px;
 }
 
-/* The gap between the sections: a faint rule across its middle, and nothing on hover. */
-.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row:has(.custom-view-tree-node-item-icon.codicon-blank) {
-	background: linear-gradient(var(--vscode-sideBarSectionHeader-border, var(--vscode-widget-border, rgba(128, 128, 128, 0.25))), var(--vscode-sideBarSectionHeader-border, var(--vscode-widget-border, rgba(128, 128, 128, 0.25)))) center / calc(100% - 12px) 1px no-repeat !important;
-	box-shadow: none !important;
-	pointer-events: none;
-}
-
-.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row:has(.custom-view-tree-node-item-icon.codicon-blank) > * {
-	visibility: hidden;
-}
-
 /*
  * Threads and agents sit a step in from their project or workspace; an agent's forks and archived threads a
  * step further, and forks of forks further still (deeper ones stay at the last step).
@@ -469,6 +459,85 @@
 
 .monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row:is([aria-level="6"], [aria-level="7"], [aria-level="8"]) .monaco-tl-twistie {
 	padding-left: 62px !important;
+}
+
+/* A quiet agent has no icon (the extension gives it `blank`), so its title starts where a heading's does. */
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .custom-view-tree-node-item-icon.codicon-blank {
+	display: none;
+}
+
+/*
+ * A fork or thread hangs from its parent by a rounded elbow: down from under the start of the parent's
+ * title, then across to the child's. A child sits 28px in from its parent, and a line carries on down to
+ * its later siblings. Children start a level below the agents: level 3 when workspaces head the list
+ * (level 1), level 4 under the Projects and Agents sections. --gemini-indent is a child's twistie padding;
+ * its title starts 6px after it, and the parent's 22px before that.
+ */
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree:has(.monaco-list-row[aria-level="1"] .codicon-folder) .monaco-list-row[aria-level="3"] { --gemini-indent: 34px; }
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree:has(.monaco-list-row[aria-level="1"] .codicon-folder) .monaco-list-row[aria-level="4"] { --gemini-indent: 62px; }
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree:has(.monaco-list-row[aria-level="1"] .codicon-folder) .monaco-list-row[aria-level="5"] { --gemini-indent: 90px; }
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree:has(.monaco-list-row[aria-level="1"] .codicon-folder) .monaco-list-row:is([aria-level="6"], [aria-level="7"], [aria-level="8"]) { --gemini-indent: 118px; }
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree:not(:has(.monaco-list-row[aria-level="1"] .codicon-folder)) .monaco-list-row[aria-level="4"] { --gemini-indent: 48px; }
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree:not(:has(.monaco-list-row[aria-level="1"] .codicon-folder)) .monaco-list-row[aria-level="5"] { --gemini-indent: 76px; }
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree:not(:has(.monaco-list-row[aria-level="1"] .codicon-folder)) .monaco-list-row:is([aria-level="6"], [aria-level="7"], [aria-level="8"]) { --gemini-indent: 104px; }
+
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree:has(.monaco-list-row[aria-level="1"] .codicon-folder) .monaco-list-row:not([aria-level="1"], [aria-level="2"]),
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree:not(:has(.monaco-list-row[aria-level="1"] .codicon-folder)) .monaco-list-row:not([aria-level="1"], [aria-level="2"], [aria-level="3"]) {
+	--gemini-elbow-display: block;
+	/* The lines reach across the 1px gaps between rows. */
+	overflow: visible;
+}
+
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree:has(.monaco-list-row[aria-level="1"] .codicon-folder) .monaco-list-row:not([aria-level="1"], [aria-level="2"]) .monaco-tl-twistie,
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree:not(:has(.monaco-list-row[aria-level="1"] .codicon-folder)) .monaco-list-row:not([aria-level="1"], [aria-level="2"], [aria-level="3"]) .monaco-tl-twistie {
+	padding-left: var(--gemini-indent) !important;
+}
+
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row .monaco-tl-row {
+	position: relative;
+}
+
+/* The corner. */
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row .monaco-tl-row::before {
+	content: '';
+	display: var(--gemini-elbow-display, none);
+	position: absolute;
+	top: -1px;
+	left: calc(var(--gemini-indent) - 14px);
+	width: 12px;
+	height: calc(50% + 1px);
+	box-sizing: border-box;
+	border-left: 1px solid var(--vscode-tree-indentGuidesStroke, var(--vscode-widget-border));
+	border-bottom: 1px solid var(--vscode-tree-indentGuidesStroke, var(--vscode-widget-border));
+	border-bottom-left-radius: 6px;
+	pointer-events: none;
+}
+
+/* The line on down to a later sibling. */
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row .monaco-tl-row::after {
+	content: '';
+	display: var(--gemini-elbow-display, none);
+	position: absolute;
+	top: 0;
+	bottom: -1px;
+	left: calc(var(--gemini-indent) - 14px);
+	border-left: 1px solid var(--vscode-tree-indentGuidesStroke, var(--vscode-widget-border));
+	pointer-events: none;
+}
+
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row[aria-setsize="1"][aria-posinset="1"] .monaco-tl-row::after,
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row[aria-setsize="2"][aria-posinset="2"] .monaco-tl-row::after,
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row[aria-setsize="3"][aria-posinset="3"] .monaco-tl-row::after,
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row[aria-setsize="4"][aria-posinset="4"] .monaco-tl-row::after,
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row[aria-setsize="5"][aria-posinset="5"] .monaco-tl-row::after,
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row[aria-setsize="6"][aria-posinset="6"] .monaco-tl-row::after,
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row[aria-setsize="7"][aria-posinset="7"] .monaco-tl-row::after,
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row[aria-setsize="8"][aria-posinset="8"] .monaco-tl-row::after,
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row[aria-setsize="9"][aria-posinset="9"] .monaco-tl-row::after,
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row[aria-setsize="10"][aria-posinset="10"] .monaco-tl-row::after,
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row[aria-setsize="11"][aria-posinset="11"] .monaco-tl-row::after,
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row[aria-setsize="12"][aria-posinset="12"] .monaco-tl-row::after {
+	display: none;
 }
 
 /* Section headings: Projects and Agents. */
