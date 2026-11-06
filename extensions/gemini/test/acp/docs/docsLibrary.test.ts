@@ -56,6 +56,17 @@ describe('DocsLibrary', () => {
 		expect((await library.search({ ids: ['html'], query: 'retry number two' })).hits[0]?.url).toBe('https://h.example.com/p2');
 	});
 
+	it('replaces a name that is only a page\'s own title with the site\'s name', async () => {
+		const md = (name: string): DocsPage => ({ url: `https://vitest.dev/api/${name}.md`, body: `# ${name}\n\nAbout ${name}.`, type: 'markdown' });
+		const site: DocsPage = { url: 'https://vitest.dev/api/expect', body: '<html><head><title>expect | Vitest</title></head><body><main><h1>expect</h1><p>Assertions.</p></main></body></html>', type: 'html' };
+		const source = { id: 'named', url: 'https://vitest.dev/api/', run: 1 };
+		await library.ingest({ source, pages: [md('describe')], unchanged: [], complete: false });
+		// A source fetched before site names were read kept its first page's title.
+		(library as unknown as { statement(id: string, sql: string): { run(...args: string[]): unknown } }).statement('named', 'INSERT OR REPLACE INTO meta(key, value) VALUES (\'title\', ?)').run('describe');
+		const status = await library.ingest({ source: { ...source, run: 2 }, pages: [site], unchanged: [md('describe').url], complete: true });
+		expect(status.title).toBe('Vitest');
+	});
+
 	it('deletes a damaged store, and keeps one it can\'t open for another reason', async () => {
 		const docs = path.join(base, 'docs');
 		writeFileSync(path.join(docs, 'damaged.db'), 'this is not a database');

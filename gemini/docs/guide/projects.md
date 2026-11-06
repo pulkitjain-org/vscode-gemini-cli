@@ -132,6 +132,16 @@ When the project chat is at least 1000 px wide, a panel on its right shows the p
 
 A request is one prompt the thread was sent, with its answer; the Gemini CLI doesn't report how many model calls a turn made. Drag the panel's left edge to resize it, and double-click the edge to reset it. The gear at the top opens [Project settings](#project-settings-and-memory).
 
+## Remove a project
+
+Right-click the project's row in the Agents pane and choose **Remove Project**. It lists how many threads go with it, then:
+
+- **Remove and Delete Branches** deletes the project chat, its settings and memory, and each thread with its folder and branch.
+- **Remove, Keep Branches** does the same but leaves each thread's branch in its repository.
+- **Archive** puts the project and its threads under **Archived** instead, with nothing deleted.
+
+A thread whose work you're trying in your workspace asks first whether to keep the changes or take them back.
+
 ## Turn Projects off
 
 Projects are on by default. To hide them, turn off `gemini.projects.enabled` in Settings. **Gemini: New Project** in the Command Palette then offers to turn them back on.

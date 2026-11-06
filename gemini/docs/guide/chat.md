@@ -103,6 +103,8 @@ The chevron beside **Approve Plan** offers the CLI's own approval choices, in it
 
 A choice shows only when its mode is on offer, so with Auto Edit turned off the first one is missing.
 
+Some models end a Plan mode turn by asking the Gemini CLI to approve the plan themselves. GeminiCode leaves the approving to **Approve Plan**: the request is declined for you, the step reads **Plan ready for review** with the plan's file name, and the chat stays in Plan mode.
+
 If you switch to another model after planning, a line under the button names both: "Builds with ...; planned with ...". With the model on Auto there is no such line, because the Gemini CLI doesn't say ahead which model Auto will pick.
 
 ![An agent in Plan mode writing a plan that ends with Approve Plan and Review Plan](../../site/media/showcase-plan-dark.webp "clip")

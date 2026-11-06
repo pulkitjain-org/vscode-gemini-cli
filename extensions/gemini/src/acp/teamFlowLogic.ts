@@ -239,6 +239,7 @@ export function reviewPrompt(mr: { readonly iid: number; readonly title: string;
 		`2. Start from \`git diff --stat ${range}\`, then read the diff a few files at a time with \`git diff ${range} -- <files>\`. Never print the whole diff, or a log with patches, in one command: it can be bigger than you can read.`,
 		ticket?.text ? `3. Check the change does what ${ticket.key} asks.` : ticket ? `3. It links the Jira ticket ${ticket.key}, which couldn't be read: judge the change by its title and description.` : '3. Check the change does what its title and description say.',
 		'4. Look for bugs, missing tests, security and performance problems. Don\'t edit any file, and don\'t post anything to GitLab: I choose what to post.',
+		'5. This checkout has no dependencies installed and is never built, so don\'t run tests, builds, type checks or package managers (`npm`, `npx`, `pip` and the like): they would hang or fail. Read the code instead.',
 		...shown.length ? [
 			'',
 			`GitLab lists ${files.length === 1 ? '1 changed file' : `${files.length} changed files`}${files.length > shown.length ? `, the first ${shown.length} here` : ''}:`,

@@ -91,6 +91,9 @@ const aliases: Readonly<Record<string, string>> = { 'prisma': '@prisma/client', 
 /** Docs to suggest for `folder`, leaving out addresses it has (`have`) or the user dismissed. */
 export async function suggestDocs(folder: string, have: ReadonlySet<string>): Promise<DocsSuggestion[]> {
 	const dependencies = await readDependencies(folder);
+	// An attached source and a suggestion are the same docs whatever the trailing slash, query or fragment.
+	const bare = (url: string) => url.replace(/[#?].*$/, '').replace(/\/+$/, '').toLowerCase();
+	const had = new Set([...have].map(bare));
 	const seen = new Set<string>();
 	const suggestions: DocsSuggestion[] = [];
 	for (const dependency of dependencies) {
@@ -101,7 +104,7 @@ export async function suggestDocs(folder: string, have: ReadonlySet<string>): Pr
 		}
 		const version = parseVersion(dependency.version);
 		const url = typeof docs.url === 'string' ? docs.url : version ? docs.url(version) : undefined;
-		if (!url || have.has(url)) {
+		if (!url || had.has(bare(url))) {
 			continue;
 		}
 		seen.add(docs.title);

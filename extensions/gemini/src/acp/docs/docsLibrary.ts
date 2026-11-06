@@ -85,7 +85,9 @@ export class DocsLibrary {
 				run('INSERT INTO sections_fts(rowid, text, heading, title) VALUES (?, ?, ?, ?)', id, section.text, section.heading, title);
 			}
 			const site = siteTitleOf(title, page.type === 'html', page.url, source.url);
-			if (site && (!this.meta(source.id, 'title') || site.start)) {
+			const named = this.meta(source.id, 'title');
+			// A name that is only some page's own title, as sources fetched before 1.7 kept ("describe"), gives way to the site's name.
+			if (site && (!named || site.start || (named !== site.title && !!this.statement(source.id, 'SELECT 1 FROM pages WHERE title = ? LIMIT 1').get(named)))) {
 				run('INSERT OR REPLACE INTO meta(key, value) VALUES (\'title\', ?)', site.title);
 			}
 		});
