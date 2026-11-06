@@ -117,10 +117,11 @@ if printf '%s\n' "$changed" | grep -vE '^(extensions/gemini/|gemini/|\.github/wo
 	# CI runs `npm run hygiene` on a clean checkout. Locally that globs ignored
 	# files too (the bundled CLI in extensions/gemini/cli, build output), so check
 	# the changed files instead: unchanged ones passed on the base already.
+	# product.json goes along so a change of only Markdown still has a file to check.
 	upstream=$(printf '%s\n' "$changed" | grep -vE '^(extensions/gemini/|gemini/|\.github/workflows/gemini-)' | while read -r file; do [ -f "$file" ] && printf '%s\n' "$file"; done || true)
 	if [ -n "$upstream" ]; then
 		# shellcheck disable=SC2086
-		step 'Hygiene' node build/hygiene.ts $upstream
+		step 'Hygiene' node build/hygiene.ts product.json $upstream
 	fi
 fi
 
