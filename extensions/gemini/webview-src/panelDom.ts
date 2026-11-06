@@ -28,7 +28,17 @@ export function icon(name: string, extra = ''): HTMLElement {
 	return node;
 }
 
-/** A button with an optional icon and label; an icon-only one gets `tooltip` as its name. */
+/**
+ * Marks `node` for the page's themed tooltip (tooltip.ts), which shows the
+ * `data-tip` of any control, in place of a native `title`. For a chunk loaded
+ * into a page that has the tooltip module; a page uses `setTip`, which also
+ * updates a tip while it shows.
+ */
+export function markTip(node: HTMLElement, tip: string): void {
+	node.dataset.tip = tip;
+}
+
+/** A button with an optional icon and label; `tooltip` is its themed tip and, for an icon-only one, its name. */
 export function button(className: string, label: string, onClick: () => void, iconName?: string, tooltip?: string): HTMLButtonElement {
 	const node = el('button', className);
 	node.type = 'button';
@@ -39,7 +49,7 @@ export function button(className: string, label: string, onClick: () => void, ic
 		node.append(el('span', undefined, label));
 	}
 	if (tooltip) {
-		node.title = tooltip;
+		markTip(node, tooltip);
 		node.setAttribute('aria-label', tooltip);
 	}
 	node.addEventListener('click', event => {

@@ -9,7 +9,7 @@
 // the side index and on the page, the search, Reset, the messages a control
 // sends, and rows patched in place.
 
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import type { HTMLButtonElement, HTMLElement, HTMLInputElement } from 'happy-dom';
 import type { SettingRowView, SettingSectionView, SettingsPageView } from '../../src/host/panelProtocol';
 import type { SettingsPageStrings } from '../../src/host/panelStrings';
@@ -206,5 +206,25 @@ describe('the Settings page', () => {
 			note: 'Runs 5 test prompts.',
 			bar: null,
 		});
+	});
+});
+
+describe('the Settings page\'s controls', () => {
+	it('let a picker row\'s menu go with the row, and set no native title', () => {
+		// The document listeners a view's arrival removes: the Loads sections draw their own menus again each time; a row gone removes its own on top.
+		const removals = (next: SettingsPageView) => {
+			const removed = vi.spyOn(page.document, 'removeEventListener');
+			sendToPage({ type: 'view', view: next });
+			const types = removed.mock.calls.map(([type]) => type);
+			removed.mockRestore();
+			return { mousedown: types.filter(type => type === 'mousedown').length, scroll: types.filter(type => type === 'scroll').length };
+		};
+		sendToPage({ type: 'view', view: view() });
+		const same = removals(view());
+		const fewer = removals(view(sections.filter(section => section.id !== 'chat')));
+		const titled = main().querySelectorAll('[title]').length;
+		sendToPage({ type: 'view', view: view() });
+		const picker = main().querySelector('[data-key="gemini.chat.sendWith"] .select-menu-button') as HTMLElement;
+		expect({ gone: { mousedown: fewer.mousedown - same.mousedown, scroll: fewer.scroll - same.scroll }, titled, picker: picker.dataset.tip }).toEqual({ gone: { mousedown: 1, scroll: 1 }, titled: 0, picker: 'Enter sends.' });
 	});
 });

@@ -13,6 +13,7 @@
 import type { ChangesTeamView, FromChangesTeam } from '../src/host/teamFlowProtocol';
 import { button, el, format, icon } from './panelDom';
 import { toolLogo } from './toolLogos';
+import { setTip } from './tooltip';
 
 /** Threads the user unticked, by id; kept across updates. */
 const unticked = new Set<string>();
@@ -75,7 +76,7 @@ export function renderTeam(view: ChangesTeamView, post: (message: FromChangesTea
 			});
 			const text = el('span', 'mr-sub-text');
 			text.append(el('strong', undefined, thread.author), document.createTextNode(` · ${thread.text}`));
-			text.title = thread.text;
+			setTip(text, thread.text);
 			item.append(box, text);
 			nodes.push(item);
 		}

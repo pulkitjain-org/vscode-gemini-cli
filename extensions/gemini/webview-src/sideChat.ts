@@ -45,6 +45,10 @@ let position: HTMLElement;
 /** Every answer this chat got on the side, oldest first, and the one shown. */
 const shown: Shown[] = [];
 let at = -1;
+/** How often a streamed answer is drawn again: the chat's own long-tail interval. Each draw parses the whole answer. */
+const streamEveryMs = 150;
+let drawTimer: ReturnType<typeof setTimeout> | undefined;
+let drawnAt = 0;
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
 	const node = document.createElement(tag);
@@ -89,7 +93,25 @@ export function onSide(message: SideMessage, from: SideHost): void {
 		}
 	}
 	if (entry && shown[at] === entry) {
+		scheduleDraw(message.state === 'text');
+	}
+}
+
+/** Draws now, or for a streamed chunk at most every `streamEveryMs`; the answer's end is drawn at once and announced once (`onSide`). */
+function scheduleDraw(streaming: boolean): void {
+	if (!streaming) {
+		clearTimeout(drawTimer);
+		drawTimer = undefined;
+		drawnAt = Date.now();
 		draw();
+		return;
+	}
+	if (drawTimer === undefined) {
+		drawTimer = setTimeout(() => {
+			drawTimer = undefined;
+			drawnAt = Date.now();
+			draw();
+		}, Math.max(0, streamEveryMs - (Date.now() - drawnAt)));
 	}
 }
 
@@ -114,7 +136,6 @@ function build(): void {
 	const close = button('icon-button side-chat-close', '×', () => closePanel(), text.close);
 	head.append(el('span', 'side-chat-title', text.title), el('span', 'side-chat-note', text.note), position, earlier, later, close);
 	body = el('div', 'side-chat-body');
-	body.setAttribute('aria-live', 'polite');
 	actions = el('div', 'side-chat-actions');
 	const form = el('form', 'side-chat-form');
 	input = el('textarea', 'side-chat-input');
@@ -131,7 +152,6 @@ function build(): void {
 		readCode = el('input');
 		readCode.type = 'checkbox';
 		label.append(readCode, el('span', undefined, text.readCode));
-		label.title = '';
 		host.setLabel(label, text.readCodeTip);
 		form.append(label);
 	}
@@ -210,6 +230,8 @@ function closePanel(): void {
 	if (shown[at]?.state === 'asking') {
 		host.post({ type: 'sideCancel' });
 	}
+	clearTimeout(drawTimer);
+	drawTimer = undefined;
 	panel?.remove();
 	panel = undefined;
 }

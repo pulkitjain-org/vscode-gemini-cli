@@ -8,6 +8,8 @@
 // place and at its height, so nothing below jumps; typing goes back to Write.
 // The draft is rendered only while Preview is shown.
 
+import { setTip } from './tooltip';
+
 export interface PreviewParts {
 	readonly input: HTMLTextAreaElement;
 	/** What Preview hides: the input, or the box around it. */
@@ -45,7 +47,7 @@ export function createPreviewTabs(parts: PreviewParts): PreviewTabs {
 
 	writeTab.textContent = strings.writeLabel;
 	previewTab.textContent = strings.previewLabel;
-	previewTab.title = strings.previewMarkdown.replace('{0}', mac ? '⇧⌘V' : 'Ctrl+Shift+V');
+	setTip(previewTab, strings.previewMarkdown.replace('{0}', mac ? '⇧⌘V' : 'Ctrl+Shift+V'));
 	writeTab.addEventListener('click', () => show(false));
 	previewTab.addEventListener('click', () => show(true));
 	// Arrow keys move between the tabs, as in any tab list.

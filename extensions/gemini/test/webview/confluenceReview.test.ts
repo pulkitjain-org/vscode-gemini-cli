@@ -8,8 +8,8 @@
 // The Review Page: Publish waits until each of the draft's changes is kept or
 // undone and sends only the kept ones; saving never rebuilds the editor.
 
-import { beforeAll, describe, expect, it } from 'vitest';
-import type { HTMLButtonElement } from 'happy-dom';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
+import type { HTMLButtonElement, HTMLElement } from 'happy-dom';
 import type { AdfDocument, AdfNode } from '../../src/acp/confluence';
 import { blockChanges } from '../../src/acp/blockMerge';
 import { publishBlocks } from '../../src/acp/draftReview';
@@ -103,5 +103,27 @@ describe('confluenceReview', () => {
 			published.push(publishBlocks(blockChanges([bob], sent.document.content), new Set(sent.review.kept)));
 		}
 		expect(published).toEqual([[bob], [p('Hi @Bob, welcome')]]);
+	});
+
+	it('places the toolbar once per frame, however many times the selection changes meanwhile', async () => {
+		const latest: AdfDocument = { type: 'doc', version: 1, content: [p('Select some of this.')] };
+		sendToPage({ type: 'error', message: '' });
+		sendToPage({ type: 'view', view: { id: 'd3', title: 'Notes', kind: 'edit', where: [], baseVersion: 1, base: latest, saved: latest, createdAt: '2026-10-26T10:00:00Z' } });
+		await tick();
+		if (!document.querySelector('.review-content[contenteditable="true"]')) {
+			buttonFor('Edit').click();
+		}
+		const text = document.querySelector('.review-content[contenteditable="true"] p')!.firstChild!;
+		document.getSelection()!.setBaseAndExtent(text, 0, text, 6);
+		await new Promise<void>(resolve => page.requestAnimationFrame(() => resolve()));
+		const reads = vi.spyOn(document, 'getSelection');
+		for (let i = 0; i < 20; i++) {
+			document.dispatchEvent(new page.Event('selectionchange'));
+		}
+		const atOnce = reads.mock.calls.length;
+		await new Promise<void>(resolve => page.requestAnimationFrame(() => resolve()));
+		const placed = reads.mock.calls.length;
+		reads.mockRestore();
+		expect({ atOnce, placed, shown: !(document.querySelector('.review-toolbar') as HTMLElement).hidden }).toEqual({ atOnce: 0, placed: 1, shown: true });
 	});
 });

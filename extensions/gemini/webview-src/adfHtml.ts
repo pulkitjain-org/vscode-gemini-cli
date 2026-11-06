@@ -17,6 +17,7 @@
 import type { AdfDocument, AdfNode } from '../src/acp/confluence';
 import { bold, codeMarks } from '../src/acp/draftReview';
 import type { OpaqueLabels } from '../src/host/confluenceReviewProtocol';
+import { isSafeLink } from './linkPolicy';
 
 type Mark = NonNullable<AdfNode['marks']>[number];
 
@@ -85,7 +86,12 @@ function inline(document: Document, node: AdfNode, view: AdfView): Node {
 		const tag = mark.type === 'link' ? 'a' : markTags[mark.type];
 		const element = document.createElement(tag ?? 'span');
 		if (mark.type === 'link') {
-			element.setAttribute('href', String(mark.attrs?.href ?? ''));
+			// Only a web or mail link opens, as in rendered Markdown; any other stays in the mark's kept
+			// attributes, so the page goes back to Confluence as it came.
+			const href = String(mark.attrs?.href ?? '');
+			if (isSafeLink(href)) {
+				element.setAttribute('href', href);
+			}
 			keep(element, mark);
 		} else if (!tag) {
 			// A mark the editor has no control for: kept whole, shown as near as it can be.
@@ -418,9 +424,12 @@ function marksOf(element: HTMLElement, outer: readonly Mark[]): Mark[] {
 			add({ type });
 		}
 	}
-	const href = element.tagName === 'A' && element.getAttribute('href');
-	if (href) {
-		add({ type: 'link', attrs: { ...stored(element.dataset.adfAttrs, isAttrs), href } });
+	if (element.tagName === 'A') {
+		const kept = stored(element.dataset.adfAttrs, isAttrs);
+		const href = element.getAttribute('href') ?? (typeof kept?.href === 'string' ? kept.href : undefined);
+		if (href) {
+			add({ type: 'link', attrs: { ...kept, href } });
+		}
 	}
 	// A mark the editor has no control for, as it came; inline comments may come more than once, each its own.
 	const mark = element.dataset.adfMark;

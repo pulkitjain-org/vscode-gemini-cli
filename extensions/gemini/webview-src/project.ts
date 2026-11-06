@@ -11,7 +11,7 @@
 import { branchNameFrom } from '../src/acp/branchNames';
 import type { ParentProject, ProjectPanel } from '../src/host/chatProtocol';
 import { format } from './chatLogic';
-import { button, el, icon, onIntent, setLabel } from './dom';
+import { button, el, icon, onIntent, setLabel, setTip } from './dom';
 import { setRepoOrder, toneOf } from './repoTones';
 import { selectMenu } from './selectMenu';
 import { state, strings, vscode } from './view';
@@ -232,7 +232,7 @@ export function showProjectPanel(next: ProjectPanel): void {
 		for (const thread of next.threads) {
 			const row = el('button', 'panel-thread');
 			row.type = 'button';
-			row.title = thread.title;
+			setTip(row, thread.title);
 			const name = el('span', 'panel-thread-name');
 			name.append(el('span', 'panel-thread-title', thread.title));
 			if (thread.detail) {

@@ -363,4 +363,19 @@ describe('Home\'s menus', () => {
 		await expect.poll(() => menu.hidden).toBe(true);
 		expect(opened).toEqual({ inRow: true, rows: ['Log Time'] });
 	});
+
+	it('close a row\'s "..." menu from its button on a real click, whose mousedown comes first, and mark the button expanded', async () => {
+		const more = document.querySelector('.dash-row-more .icon-button') as HTMLElement;
+		const press = () => {
+			more.dispatchEvent(new page.MouseEvent('mousedown', { bubbles: true }));
+			more.click();
+		};
+		press();
+		const menu = byId('row-menu');
+		await expect.poll(() => menu.hidden).toBe(false);
+		const opened = { popup: more.getAttribute('aria-haspopup'), expanded: more.getAttribute('aria-expanded') };
+		press();
+		await expect.poll(() => menu.hidden).toBe(true);
+		expect({ opened, closed: more.getAttribute('aria-expanded') }).toEqual({ opened: { popup: 'menu', expanded: 'true' }, closed: 'false' });
+	});
 });

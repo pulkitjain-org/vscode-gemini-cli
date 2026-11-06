@@ -592,11 +592,21 @@ function buildToolbar(): void {
 	);
 }
 
+let placingToolbar: ReturnType<typeof requestAnimationFrame> | undefined;
+
+/** Places the toolbar once per frame: the selection changes with every key and every step of a drag, and placing it reads the layout. */
 function placeToolbar(): void {
+	placingToolbar ??= requestAnimationFrame(() => {
+		placingToolbar = undefined;
+		placeToolbarNow();
+	});
+}
+
+function placeToolbarNow(): void {
 	const selection = document.getSelection();
 	const range = selection?.rangeCount ? selection.getRangeAt(0) : undefined;
-	const inside = range && editor?.contains(range.commonAncestorContainer);
-	if (!inside || !range || (range.collapsed && document.activeElement !== toolbar.querySelector('input'))) {
+	// Nothing selected, as after a keystroke: the toolbar is left alone unless it is to go, before anything of it is read.
+	if (!range || (range.collapsed && document.activeElement !== toolbar.querySelector('input')) || !editor?.contains(range.commonAncestorContainer)) {
 		if (!toolbar.contains(document.activeElement)) {
 			toolbar.hidden = true;
 		}

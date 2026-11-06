@@ -8,8 +8,8 @@
 // webview's <select> opens on macOS. The <select> stays, hidden, as the value:
 // code reads and sets `value` and listens for `change` as before.
 
-import { Menu } from './menu';
-import { el, icon } from './panelDom';
+import { Menu, type MenuRow, type MenuSection } from './menu';
+import { el, icon, markTip } from './panelDom';
 
 export interface SelectMenu {
 	/** The button and its menu, to put where the <select> would go. */
@@ -21,8 +21,13 @@ export interface SelectMenu {
 
 let count = 0;
 
-/** Wraps `select`, which must hold its options and value already; the button takes its id, so a label still points at it. */
-export function selectMenu(select: HTMLSelectElement, label: string): SelectMenu {
+/**
+ * Wraps `select`, which must hold its options and value already; the button
+ * takes its id, so a label still points at it. The button's tooltip is `tip`,
+ * else the chosen option's `data-tip`, else its text; an option's `data-tip`
+ * is its row's tooltip too, and each optgroup heads a section.
+ */
+export function selectMenu(select: HTMLSelectElement, label: string, tip?: string): SelectMenu {
 	const element = el('div', 'select-menu');
 	const button = el('button', `select-menu-button ${select.className}`.trim());
 	button.type = 'button';
@@ -42,8 +47,33 @@ export function selectMenu(select: HTMLSelectElement, label: string): SelectMenu
 	const sync = () => {
 		const current = select.selectedOptions[0];
 		text.textContent = current?.text ?? '';
-		button.title = current?.text ?? '';
+		markTip(button, tip ?? current?.dataset.tip ?? text.textContent!);
 		button.disabled = select.disabled;
+	};
+	const rowOf = (option: HTMLOptionElement): MenuRow => ({
+		name: option.text,
+		checked: option.selected,
+		tooltip: option.dataset.tip,
+		run: () => {
+			menu.close();
+			if (select.value !== option.value) {
+				select.value = option.value;
+				sync();
+				select.dispatchEvent(new Event('change', { bubbles: true }));
+			}
+		},
+	});
+	const sections = (): MenuSection[] => {
+		const result: { heading?: string; rows: MenuRow[] }[] = [];
+		for (const child of select.children) {
+			if (child instanceof HTMLOptGroupElement) {
+				result.push({ heading: child.label, rows: [...child.children as HTMLCollectionOf<HTMLOptionElement>].map(rowOf) });
+			} else if (child instanceof HTMLOptionElement) {
+				const last = result.at(-1);
+				(last && !last.heading ? last : result[result.push({ rows: [] }) - 1]).rows.push(rowOf(child));
+			}
+		}
+		return result;
 	};
 	// Fixed, so a scrolling popup doesn't clip it; below the button, or above when there is more room there.
 	const place = () => {
@@ -62,20 +92,7 @@ export function selectMenu(select: HTMLSelectElement, label: string): SelectMenu
 		element: list,
 		anchor: button,
 		label,
-		sections: () => [{
-			rows: [...select.options].map(option => ({
-				name: option.text,
-				checked: option.selected,
-				run: () => {
-					menu.close();
-					if (select.value !== option.value) {
-						select.value = option.value;
-						sync();
-						select.dispatchEvent(new Event('change', { bubbles: true }));
-					}
-				},
-			})),
-		}],
+		sections,
 		empty: () => '',
 		onOpen: place,
 	});

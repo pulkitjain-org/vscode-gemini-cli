@@ -17,6 +17,7 @@ import { attachmentIcon, carriesFiles, fileUris } from './chatLogic';
 import { continueList, insertBlock, insertLink, mentionAt, toggleLinePrefix, toggleWrap, type TextEdit } from './markdownEdit';
 import { createPreviewTabs, isPreviewShortcut } from './markdownPreview';
 import { applyTextEdit, button, el, format, icon, readFileBase64 } from './panelDom';
+import { selectMenu } from './selectMenu';
 import { toolLogo } from './toolLogos';
 import { setTip } from './tooltip';
 
@@ -82,8 +83,10 @@ export function createCommentBox(host: CommentBoxHost): CommentBox {
 	commentError.setAttribute('role', 'alert');
 	const commentVisibility = el('select', 'dash-comment-visibility');
 	commentVisibility.setAttribute('aria-label', strings.commentVisibleTo);
+	// Drawn as one of our menus: a bare <select> would open the system's.
+	const commentVisibilityMenu = selectMenu(commentVisibility, strings.commentVisibleTo, strings.commentTipVisibility);
 	const commentVisibilityLabel = el('label', 'dash-comment-visible');
-	commentVisibilityLabel.append(icon('lock'), el('span', undefined, strings.commentVisibleTo), commentVisibility);
+	commentVisibilityLabel.append(icon('lock'), el('span', undefined, strings.commentVisibleTo), commentVisibilityMenu.element);
 	const commentCancel = button('secondary', strings.cancel, () => commentDialog.close());
 	const commentPost = el('button', 'primary', strings.commentPost);
 	commentPost.type = 'submit';
@@ -196,7 +199,6 @@ export function createCommentBox(host: CommentBoxHost): CommentBox {
 	// The tabs' own tooltips: what Write is for, and Preview with its keys.
 	tip(commentWriteTab, strings.writeLabel, strings.commentTipWrite);
 	tip(commentPreviewTab, strings.previewLabel, format(strings.commentShortcut, strings.previewLabel, mac ? '⇧⌘V' : 'Ctrl+Shift+V'));
-	tip(commentVisibility, strings.commentVisibleTo, strings.commentTipVisibility);
 	tip(commentCancel, strings.cancel, strings.commentTipCancel);
 	tip(commentPost, strings.commentPost, withKeys(strings.commentPost, mac ? '↩' : 'Enter'));
 
@@ -245,6 +247,7 @@ export function createCommentBox(host: CommentBoxHost): CommentBox {
 		}
 		commentVisibility.replaceChildren(...nodes);
 		commentVisibility.value = draft?.visibility ?? (commentDefaultRole ? `role:${commentDefaultRole}` : 'everyone');
+		commentVisibilityMenu.sync();
 	}
 
 	commentVisibility.addEventListener('change', () => {
