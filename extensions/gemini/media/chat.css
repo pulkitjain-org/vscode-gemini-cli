@@ -510,7 +510,7 @@ kbd {
 	word-wrap: break-word;
 }
 
-/* The user's message, a graphite bubble on the right (#2b2b2b on #1f1f1f, and the same step in light), and under it its time and Copy. */
+/* The user's message, a graphite bubble on the right (#252525 on #181818, and the same step in light), and under it its time and Copy. */
 .user-turn {
 	margin: 32px 0 12px;
 }

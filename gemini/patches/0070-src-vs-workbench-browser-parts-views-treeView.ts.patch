@@ -1,0 +1,32 @@
+diff --git a/src/vs/workbench/browser/parts/views/treeView.ts b/src/vs/workbench/browser/parts/views/treeView.ts
+index ffe46acce2e3f286c60146d7f180402cfdeb5672..179b1e2cdd2c71e35675e646a1a89857cf9744dc 100644
+--- a/src/vs/workbench/browser/parts/views/treeView.ts
++++ b/src/vs/workbench/browser/parts/views/treeView.ts
+@@ -700,7 +700,7 @@ abstract class AbstractTreeView extends Disposable implements ITreeView {
+ 
+ 		const widgetAriaLabel = this._title;
+ 
+-		this.tree = this.treeDisposables.add(this.instantiationService.createInstance(Tree, this.id, this.treeContainer!, new TreeViewDelegate(), [renderer],
++		this.tree = this.treeDisposables.add(this.instantiationService.createInstance(Tree, this.id, this.treeContainer!, new TreeViewDelegate(this.id), [renderer],
+ 			dataSource, {
+ 			identityProvider: new TreeViewIdentityProvider(),
+ 			accessibilityProvider: {
+@@ -1164,10 +1164,17 @@ class TreeViewIdentityProvider implements IIdentityProvider<ITreeItem> {
+ 	}
+ }
+ 
++// GEMINI-FORK: GeminiCode's agent list has roomier rows than other trees (geminiModes.css draws them).
++const geminiAgentListId = 'gemini.agents';
++const geminiAgentListItemHeight = 30;
++
+ class TreeViewDelegate implements IListVirtualDelegate<ITreeItem> {
+ 
++	// GEMINI-FORK: the view, for the agent list's row height.
++	constructor(private readonly viewId?: string) { }
++
+ 	getHeight(element: ITreeItem): number {
+-		return TreeRenderer.ITEM_HEIGHT;
++		return this.viewId === geminiAgentListId ? geminiAgentListItemHeight : TreeRenderer.ITEM_HEIGHT;
+ 	}
+ 
+ 	getTemplateId(element: ITreeItem): string {

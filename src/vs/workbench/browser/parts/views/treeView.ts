@@ -700,7 +700,7 @@ abstract class AbstractTreeView extends Disposable implements ITreeView {
 
 		const widgetAriaLabel = this._title;
 
-		this.tree = this.treeDisposables.add(this.instantiationService.createInstance(Tree, this.id, this.treeContainer!, new TreeViewDelegate(), [renderer],
+		this.tree = this.treeDisposables.add(this.instantiationService.createInstance(Tree, this.id, this.treeContainer!, new TreeViewDelegate(this.id), [renderer],
 			dataSource, {
 			identityProvider: new TreeViewIdentityProvider(),
 			accessibilityProvider: {
@@ -1164,10 +1164,17 @@ class TreeViewIdentityProvider implements IIdentityProvider<ITreeItem> {
 	}
 }
 
+// GEMINI-FORK: GeminiCode's agent list has roomier rows than other trees (geminiModes.css draws them).
+const geminiAgentListId = 'gemini.agents';
+const geminiAgentListItemHeight = 30;
+
 class TreeViewDelegate implements IListVirtualDelegate<ITreeItem> {
 
+	// GEMINI-FORK: the view, for the agent list's row height.
+	constructor(private readonly viewId?: string) { }
+
 	getHeight(element: ITreeItem): number {
-		return TreeRenderer.ITEM_HEIGHT;
+		return this.viewId === geminiAgentListId ? geminiAgentListItemHeight : TreeRenderer.ITEM_HEIGHT;
 	}
 
 	getTemplateId(element: ITreeItem): string {

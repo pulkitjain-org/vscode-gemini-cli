@@ -221,7 +221,7 @@ h2 { margin: 24px 0 8px; font-size: 11px; font-weight: 500; letter-spacing: .05e
 .preview .side { width: 30%; }
 .preview .main { flex: 1; padding: 12px; display: grid; gap: 7px; align-content: start; }
 .preview i { display: block; height: 6px; border-radius: 3px; }
-.theme.dark .side { background: #15161A; } .theme.dark .main { background: #1A1B1F; } .theme.dark i { background: #383A42; } .theme.dark i.on { background: #C2C6CF; }
+.theme.dark .side { background: #1F1F1F; } .theme.dark .main { background: #181818; } .theme.dark i { background: #383A42; } .theme.dark i.on { background: #C2C6CF; }
 .theme.light .side { background: #F5F5F6; } .theme.light .main { background: #FFFFFF; } .theme.light i { background: #D2D4D8; } .theme.light i.on { background: #41454E; }
 .theme .name { padding: 8px 11px; border-top: 1px solid var(--line); }
 .more { margin-top: 10px; background: none; border: none; color: var(--vscode-textLink-foreground); font: inherit; padding: 0; cursor: pointer; }

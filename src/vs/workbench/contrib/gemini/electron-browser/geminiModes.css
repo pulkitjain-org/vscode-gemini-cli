@@ -407,6 +407,24 @@
 	border-radius: 5px;
 }
 
+/*
+ * The agent list's rows, in both modes, are 30px (treeView.ts) rather than a tree's 22: the label and
+ * icon centred, and a transparent pixel above and below so neighbouring highlights stand 2px apart.
+ */
+.monaco-workbench .pane:has(> .pane-header > .icon.view-gemini-agents) .customview-tree .monaco-list-row {
+	border-block: 1px solid transparent;
+	background-clip: padding-box;
+}
+
+.monaco-workbench .pane:has(> .pane-header > .icon.view-gemini-agents) .customview-tree .monaco-list-row .custom-view-tree-node-item {
+	height: 100%;
+	line-height: 28px;
+}
+
+.monaco-workbench .pane:has(> .pane-header > .icon.view-gemini-agents) .customview-tree .monaco-list-row .custom-view-tree-node-item > .custom-view-tree-node-item-resourceLabel > .custom-view-tree-node-item-icon {
+	height: 28px;
+}
+
 .monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-tl-indent {
 	display: none;
 }
