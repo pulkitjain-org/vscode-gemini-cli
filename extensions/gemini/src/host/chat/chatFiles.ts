@@ -17,9 +17,10 @@ import type * as acp from '@agentclientprotocol/sdk';
 import * as vscode from 'vscode';
 import { BoundedStore, diffBytes, ToolOutputStore } from '../../acp/chatMemory';
 import { maxRemembered } from '../../acp/chatTurns';
-import { errorMessage } from '../../acp/errors';
+import { isInside } from '../../acp/fileAccess';
 import { fileNamePattern } from '../../acp/folderFiles';
 import { isTraceFile } from '../../acp/hostAllowlists';
+import { background } from '../background';
 import { traceFolders } from '../traceCommand';
 import type { FromWebview } from '../chatProtocol';
 import type { DiffPreview } from '../diffPreview';
@@ -67,10 +68,10 @@ export class ChatFileLinks {
 				void this.openDiff(message.itemId, message.path, false);
 				break;
 			case 'openLocation':
-				void this.openLocation(message.path, message.line);
+				background('Opening a file from the chat', this.openLocation(message.path, message.line));
 				break;
 			case 'openPath':
-				void this.openPath(message.path, message.line);
+				background('Opening a file a reply names', this.openPath(message.path, message.line));
 				break;
 			case 'openTrace':
 				// Only a trace GeminiCode wrote, never another file the page names.
@@ -169,7 +170,8 @@ export class ChatFileLinks {
 		}
 		const folder = this.folder();
 		const direct = path.resolve(folder, name);
-		if (await isFile(direct)) {
+		// Only a path in the agent's folder opens directly: a name with `..` in it falls through to the search, which the folder scopes.
+		if (isInside(folder, direct) && await isFile(direct)) {
 			// A Markdown file the agent created opens where it was shown, unless the link names a line.
 			if (line === undefined && this.createdHere(direct) && await this.openMarkdown(direct, false)) {
 				return;
@@ -191,11 +193,14 @@ export class ChatFileLinks {
 	}
 
 	private async openLocation(filePath: string, line: number | undefined): Promise<void> {
-		const position = new vscode.Position(Math.max((line ?? 1) - 1, 0), 0);
+		// The line comes from the page: only a finite number is a line.
+		const row = typeof line === 'number' && Number.isFinite(line) ? Math.max(Math.floor(line) - 1, 0) : 0;
 		try {
+			const position = new vscode.Position(row, 0);
 			await vscode.window.showTextDocument(vscode.Uri.file(filePath), { selection: new vscode.Range(position, position), preview: true, viewColumn: await this.options.editorColumn?.() });
-		} catch (err) {
-			void showError(errorMessage(err));
+		} catch {
+			// The editor's own text names the whole URI; the file's name is what the user clicked.
+			void showError(vscode.l10n.t("Could not open {0}.", path.basename(filePath)));
 		}
 	}
 }

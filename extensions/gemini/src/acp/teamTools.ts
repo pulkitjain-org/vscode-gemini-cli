@@ -286,15 +286,20 @@ export const confirmToolNames: readonly string[] = [
 	'jira_transition_issue', 'jira_add_worklog', 'create_merge_request', 'merge_merge_request',
 ];
 
+/** The writes in the servers a team may run beside GeminiCode's (mcp-atlassian and gitlab-mcp) that are not the confirm class: a comment, a reply, an assignment. */
+const childWriteToolNames: readonly string[] = ['jira_add_comment', 'jira_assign_issue', 'create_merge_request_note', 'create_merge_request_discussion_note', 'resolve_merge_request_thread', 'approve_merge_request'];
+
 /**
- * The confirm class by server, for the tool policy: GeminiCode's own tools, and the same actions in
- * the servers a team names `jira` and `gitlab`, as their settings file does.
+ * The tools that ask in every mode, by server, for the tool policy: every write among GeminiCode's
+ * own tools (in YOLO the CLI would otherwise run an MCP tool without asking, and the chat's own
+ * rule for team writes would never be consulted), and the same actions in the servers a team names
+ * `jira` and `gitlab`, as their settings file does.
  */
 export function confirmToolGroups(): { server: string; tools: string[] }[] {
 	return [
-		{ server: teamToolsServerName, tools: teamConfirmTools.map(tool => tool.name) },
-		{ server: 'jira', tools: ['jira_transition_issue', 'jira_add_worklog'] },
-		{ server: 'gitlab', tools: ['create_merge_request', 'merge_merge_request'] },
+		{ server: teamToolsServerName, tools: teamWriteTools.map(tool => tool.name) },
+		{ server: 'jira', tools: ['jira_transition_issue', 'jira_add_worklog', 'jira_add_comment', 'jira_assign_issue'] },
+		{ server: 'gitlab', tools: ['create_merge_request', 'merge_merge_request', 'create_merge_request_note', 'create_merge_request_discussion_note', 'resolve_merge_request_thread', 'approve_merge_request'] },
 	];
 }
 
@@ -303,8 +308,8 @@ export function isConfirmToolCall(request: { readonly toolCall: { readonly title
 	return isCallOf(request, confirmToolNames);
 }
 
-/** Every write among GeminiCode's own team tools, with the confirm class's names from a team's own servers. */
-const writeToolNames: readonly string[] = [...new Set([...teamTools.filter(tool => tool.write).map(tool => tool.name), ...confirmToolNames])];
+/** Every write among GeminiCode's own team tools, with the writes' names from a team's own servers. */
+const writeToolNames: readonly string[] = [...new Set([...teamTools.filter(tool => tool.write).map(tool => tool.name), ...confirmToolNames, ...childWriteToolNames])];
 
 /**
  * Whether a permission request is for a team tool that writes: a comment, a
@@ -819,7 +824,11 @@ async function gitlabCall(gitlab: GitLabClient, via: Through, name: string, args
 				if (!project) {
 					return fail('Give the job\'s link.');
 				}
-				const jobId = Number(link?.[2] ?? job.replace(/\D/g, ''));
+				const number = link?.[2] ?? job.replace(/^#/, '');
+				if (!/^\d+$/.test(number)) {
+					return fail(`"${job}" is not a job number. Give the job's number or its link; a job's name is not enough, since a pipeline can have several jobs by that name.`);
+				}
+				const jobId = Number(number);
 				return ok(external('gitlab', `job ${jobId}`, await gitlab.jobLogTail(project, jobId)));
 			}
 			const { project, iid } = await resolveMr(gitlab, arg(args, 'mr'), folder, defaults);

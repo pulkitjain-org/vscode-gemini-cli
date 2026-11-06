@@ -124,6 +124,8 @@ export function confirmText(risk: RunRisk | undefined, place: RunPlace, several:
 			return vscode.l10n.t("This downloads a script and runs it, in {0}. Run it?", where);
 		case 'disk':
 			return vscode.l10n.t("This writes to a disk directly, from {0}. Run it?", where);
+		case 'configures':
+			return vscode.l10n.t("This writes {0}, which decides what runs next, in {1}. Run it?", risk.path, where);
 		case 'outside':
 			return vscode.l10n.t("This writes {0}, outside {1}. Run it?", risk.path, where);
 		case 'several':

@@ -36,18 +36,19 @@ On a shell command, **Allow for this session** covers the command's prefix for t
 
 Some commands ask every time, because allowing one would allow far more than you saw:
 
-- a command that reaches the network (`curl`, `ssh`, `gh`, `gcloud` and the like), installs a package by name (`npm install left-pad`, `pip install requests`), or runs code it builds
+- a command that reaches the network (`curl`, `ssh`, `gh`, `gcloud` and the like, and `git push`, `git fetch`, `git pull`, `git clone` and `git remote add` or `set-url`), installs a package by name (`npm install left-pad`, `pip install requests`), or runs code it builds
 - a redirect into a file outside the agent's folder
 - a command that runs another program or code it is given, such as `env`, `xargs`, `sudo`, `python -c`, `npx`, `npm exec`, `yarn dlx`, `make -f`, `awk -f`, `sed -f`, `find -exec`, `git -c`, `git grep -O`, `git fetch --upload-pack`, `git config` that sets a value, `git rebase -x` or `rg --pre`
 - `docker` and the like, since `docker inspect` shows a container's settings
 - a script the agent could have written, by relative or absolute path, and a program named by a variable or a pattern, such as `$EDITOR`
-- a command that writes a build file, a git hook, anything under `.git`, `.gemini/settings.json`, a `.gemini/*.sh` script, or `.vscode/settings.json` or `tasks.json`, whether through `>`, `tee`, `cp`, `mv` or `sed -i`
+- a command with a variable in an argument, such as `echo $GEMINI_API_KEY` or `cat "$FILE"`, since what it reads or prints is only known when it runs; `$HOME`, `$PWD`, `$?` and the locale variables are fine
+- a command that writes a build file, a git hook, anything under `.git`, `.gemini/settings.json`, a `.gemini/policies/` file, a `.gemini/*.sh` script, or `.vscode/settings.json`, `tasks.json` or `launch.json`, whether through `>`, `tee`, `cp`, `mv` or `sed -i`
 
 A few test and read-only commands can still be allowed for the session even though their programs otherwise always ask: `npx vitest`, `npx tsc --noEmit`, `npx eslint`, `python -m pytest` and `./gradlew test`.
 
-An allowed command asks again once the agent changes what it would run. After the agent edits a build file, such as `package.json`, a `Makefile` or `build.gradle`, the task runners you allowed (`npm`, `make`, `gradle` and the like) and the git commands that run hooks (`git commit`, `git push`) ask again. After it edits a git hook or a hook manager's settings (`.husky/`, `.pre-commit-config.yaml`, `.lintstagedrc`), every git command asks again.
+An allowed command asks again once the agent changes what it would run. After the agent edits a build file, such as `package.json`, a `Makefile` or `build.gradle`, the task runners you allowed (`npm`, `make`, `gradle` and the like) and the git commands that run hooks (`git commit`, `git merge`) ask again. After it edits a git hook or a hook manager's settings (`.husky/`, `.pre-commit-config.yaml`, `.lintstagedrc`), every git command asks again.
 
-In Auto Edit, an edit to a file that decides what runs next still shows a card first. These are git hooks and hook managers' settings, build files such as `package.json`, the worktree setup script (`.gemini/*.sh`), the Gemini CLI's project settings (`.gemini/settings.json`), the folder's `.vscode/settings.json` and `.vscode/tasks.json`, and the ignore files (`.gitignore`, `.geminiignore`), which decide what the agent may read. The commits GeminiCode makes for an agent (Try in Workspace, Merge Back, Open Merge Request) run none of the checkout's hooks.
+In Auto Edit, an edit to a file that decides what runs next still shows a card first. These are git hooks and hook managers' settings, build files such as `package.json`, the worktree setup script (`.gemini/*.sh`), the Gemini CLI's project settings and policies (`.gemini/settings.json`, `.gemini/policies/`), the folder's `.vscode/settings.json`, `.vscode/tasks.json` and `.vscode/launch.json`, and the ignore files (`.gitignore`, `.geminiignore`), which decide what the agent may read. The commits GeminiCode makes for an agent (Try in Workspace, Merge Back, Open Merge Request) run none of the checkout's hooks.
 
 **Gemini: Commands Allowed for This Session...** lists the prefixes the chat in front has allowed, and lets you forget any of them.
 

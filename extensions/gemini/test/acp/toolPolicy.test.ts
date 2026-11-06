@@ -7,7 +7,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { buildToolPolicy, isModeAllowed, policyFileName, prepareToolPolicy, takesAway } from '../../src/acp/toolPolicy';
+import { buildToolPolicy, cliVariableRegex, environmentObjectRegex, isModeAllowed, policyFileName, prepareToolPolicy, takesAway } from '../../src/acp/toolPolicy';
 import { filterModes } from '../../src/acp/sessionSettings';
 
 const allowAll = { allowAutoEdit: true, allowYolo: true, allowShell: true };
@@ -52,8 +52,18 @@ describe('buildToolPolicy', () => {
 			'[[rule]]\ntoolName = "run_shell_command"\ncommandPrefix = ["env", "printenv", "declare -x", "declare -p", "typeset -x", "typeset -p", "export -p", "compgen -e", "compgen -v"]\ndecision = "deny"\npriority = 960',
 			'[[rule]]\ntoolName = "run_shell_command"\ncommandRegex = \'(?:set|export|declare|typeset)\\s*"\'\ndecision = "deny"\npriority = 960',
 			'[[rule]]\ntoolName = "run_shell_command"\ncommandRegex = \'ps\\s(?:[a-zA-Z]*e[a-zA-Z]*[\\s"]|-[a-zA-Z]*E|[^"]*\\s-[a-zA-Z]*E)\'\ndecision = "deny"\npriority = 960',
+			'[[rule]]\ntoolName = "run_shell_command"\ncommandRegex = \'([^"]|\\\\")*\\$\\{?(?:GEMINI|GOOGLE)_\'\ndecision = "deny"\npriority = 960',
+			'[[rule]]\ntoolName = "run_shell_command"\ncommandRegex = \'([^"]|\\\\")*(?:process\\.env|os\\.environ|/proc/[a-z0-9]+/environ)\'\ndecision = "deny"\npriority = 960',
 			'[[rule]]\ntoolName = ["mcp_geminicode-tools_jira_transition", "mcp_geminicode-tools_gitlab_merge"]\ndecision = "ask_user"\npriority = 990',
 		]);
+	});
+
+	it('refuses the commands that read the CLI\'s own variables or the environment whole, by the regex the rules carry', () => {
+		const reads = ['echo "$GEMINI_API_KEY"', 'echo ${GOOGLE_APPLICATION_CREDENTIALS}', 'node -p process.env', 'python3 -c \'import os;print(os.environ)\'', 'cat /proc/self/environ', 'cat /proc/1/environ', 'echo "a" "b" "$GEMINI_API_KEY"'];
+		const plain = ['echo GEMINI_API_KEY is set', 'ls $HOME', 'cat src/env.ts', 'node -p process.version'];
+		// As the CLI applies it (`buildArgsPatterns`): from the start of the command, in the call's arguments as JSON.
+		const refused = (command: string) => [cliVariableRegex, environmentObjectRegex].some(regex => new RegExp(`"command":"${regex}`).test(JSON.stringify({ command, description: 'Reads os.environ handling' })));
+		expect({ reads: reads.filter(refused), plain: plain.filter(refused) }).toEqual({ reads, plain: [] });
 	});
 
 	it('never suggests printing a variable instead', async () => {

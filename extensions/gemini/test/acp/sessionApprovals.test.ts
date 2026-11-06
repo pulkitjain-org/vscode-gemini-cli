@@ -211,13 +211,69 @@ describe('SessionApprovals', () => {
 	});
 
 	it('names the settings an agent\'s write always asks for, the ignore files among them', () => {
-		expect(['/w/.gemini/worktree-setup.sh', '/w/.gemini/settings.json', '/w/.vscode/settings.json', '/w/.vscode/tasks.json', '/w/.gitignore', '/w/sub/.gitignore', '/w/.geminiignore', '/w/.git/info/exclude', '/w/.gemini/GEMINI.md', '/w/.vscode/launch.json', '/w/src/settings.json', '/w/gitignore.md'].map(isProtectedSetting))
-			.toEqual([true, true, true, true, true, true, true, true, false, false, false, false]);
+		expect(['/w/.gemini/worktree-setup.sh', '/w/.gemini/settings.json', '/w/.vscode/settings.json', '/w/.vscode/tasks.json', '/w/.vscode/launch.json', '/w/.gemini/policies/allow-all.toml', '/w/.gitignore', '/w/sub/.gitignore', '/w/.geminiignore', '/w/.git/info/exclude', '/w/.gemini/GEMINI.md', '/w/.gemini/policies', '/w/src/settings.json', '/w/gitignore.md'].map(isProtectedSetting))
+			.toEqual([true, true, true, true, true, true, true, true, true, true, false, false, false, false]);
 		expect(['/w/.gitignore', '/w/.geminiignore', '/w/.git/info/exclude', '/w/.gemini/settings.json'].map(isIgnoreFile)).toEqual([true, true, true, false]);
 	});
 
 	it('says which writes decide what runs next: hooks and build files as well as the settings', () => {
 		expect(['/w/.husky/pre-commit', '/w/package.json', '/w/.gemini/settings.json', '/w/.gitignore', '/w/src/cart.ts', '/w/README.md'].map(decidesWhatRuns)).toEqual([true, true, true, true, false, false]);
+	});
+
+	// gemini-cli 0.67 loads `<folder>/.gemini/policies/*.toml` as the workspace tier in a trusted folder at
+	// its next start. A tier outranks any priority (a rule's rank is `tier + priority / 1000`), so the admin
+	// policy GeminiCode passes (the confirm class, the environment commands, a shell turned off, a mode turned
+	// off) stays in force, but a workspace rule `toolName = "*"`, `decision = "allow"` would silence the default
+	// tier's asking for every other tool, the shell in Default mode among them. The file access policy lets the
+	// write through (test/acp/fileAccess.test.ts: writes anywhere in the folder are the agent's), so the card
+	// an Auto Edit write to a file that decides what runs shows (agentClient.ts) is what stands between the
+	// agent and a policy of its own; in Default mode the write asks anyway, and a shell write asks above.
+	it('counts the Gemini CLI\'s workspace policies and the editor\'s launch configurations among the writes that decide what runs', () => {
+		expect(['/w/.gemini/policies/allow-all.toml', '/w/sub/.gemini/policies/x.toml', '/w/.vscode/launch.json'].map(decidesWhatRuns)).toEqual([true, true, true]);
+	});
+});
+
+describe('parseCommand and git commands that reach the network', () => {
+	it.each([
+		'git push origin main', 'git push', 'git push --force origin main', 'git push origin --delete main', 'git fetch', 'git -C src fetch origin', 'git pull --rebase',
+		'git clone . copy', 'git ls-remote .', 'git remote add upstream x', 'git remote set-url origin x', 'git remote rename origin old', 'git remote update',
+		'git submodule update --init', 'git submodule add x', 'git submodule sync', 'git status && git push',
+	])('asks for %s, which reaches the network', command => {
+		expect(parseCommand(command)).toEqual({ kind: 'asks', reason: 'network' });
+	});
+
+	it('still covers the remote and submodule commands that only read', () => {
+		expect(parseCommand('git remote -v && git remote get-url origin && git remote show -n origin && git submodule status && git remote')).toMatchObject({ kind: 'ok', prefixes: ['git remote', 'git remote', 'git remote', 'git submodule', 'git remote'] });
+	});
+
+	it('never lets an approval of a push cover a force push or a deletion', () => {
+		const approvals = new SessionApprovals();
+		expect(approvals.approve('git push origin main')).toBeUndefined();
+		expect(approvals.covers('git push --force origin main')).toEqual({ kind: 'asks', reason: 'network' });
+		expect(approvals.covers('git push origin --delete main')).toEqual({ kind: 'asks', reason: 'network' });
+	});
+});
+
+describe('parseCommand and variables in arguments', () => {
+	it.each([
+		'echo $GEMINI_API_KEY', 'echo "$GEMINI_API_KEY"', 'echo ${GEMINI_API_KEY}', 'echo "${GEMINI_API_KEY:-none}"', 'cat $FILE', 'ls "$DIR/src"', 'grep x $PATH',
+		'printf "%s" "$npm_config_token"', 'echo ${#SECRET}',
+	])('asks for %s, whose argument is only known when it runs', command => {
+		expect(parseCommand(command)).toEqual({ kind: 'asks', reason: 'dynamic' });
+	});
+
+	it('still covers the shell\'s own folders and numbers, a literal in single quotes and an escaped dollar', () => {
+		expect(parseCommand('ls $HOME && cd "$PWD/src" && echo $? && echo \'$GEMINI_API_KEY\' && echo "\\$GEMINI_API_KEY" && echo cost: $5 && echo $TMPDIR')).toMatchObject({
+			kind: 'ok', prefixes: ['ls', 'cd', 'echo', 'echo', 'echo', 'echo', 'echo'],
+		});
+	});
+
+	it('never lets an approval of echo cover a variable it prints', () => {
+		const approvals = new SessionApprovals();
+		expect(approvals.approve('echo hi')).toEqual(['echo']);
+		expect(approvals.covers('echo hi there').kind).toBe('covered');
+		expect(approvals.covers('echo $GEMINI_API_KEY')).toEqual({ kind: 'asks', reason: 'dynamic' });
+		expect(approvals.covers('echo "$GEMINI_API_KEY"')).toEqual({ kind: 'asks', reason: 'dynamic' });
 	});
 });
 

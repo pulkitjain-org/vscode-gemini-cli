@@ -87,7 +87,7 @@ export function containerSpec(docker: string, pin: PinnedImage, env: Readonly<Re
 		: [pinnedReference(pin)];
 	return {
 		command: docker,
-		args: ['run', '-i', '--rm', ...mounts.flatMap(mount => ['-v', mount]), ...Object.keys(passed).flatMap(name => ['-e', name]), ...reader],
+		args: ['run', '-i', '--rm', ...mounts.flatMap(mount => ['--mount', mount]), ...Object.keys(passed).flatMap(name => ['-e', name]), ...reader],
 		// Docker's folders lead the PATH: it runs its credential helper (docker-credential-desktop) from
 		// there, even for a public image, and an app opened from the Dock has a short PATH.
 		env: { PATH: [...dockerFolders(docker), base.PATH].filter(Boolean).join(path.delimiter), HOME: base.HOME, DOCKER_HOST: base.DOCKER_HOST, DOCKER_CONFIG: base.DOCKER_CONFIG, ...passed },
@@ -121,12 +121,22 @@ export function gitlabContainer(docker: string, account: { readonly url: string;
 /** The toolsets the SonarQube server lists; analysis reads the mounted folder, so no file's text passes through a message. */
 const sonarToolsets = 'analysis,issues,quality-gates,security-hotspots,projects';
 
+/**
+ * A `--mount` of `source` at `target` in the container, read-only. Not `-v source:target:ro`, which
+ * reads a `:` in the folder's path (a Windows drive, a folder named with one) as its separators.
+ * `--mount` takes comma-separated fields, so a value with a comma or a quote is quoted the CSV way.
+ */
+export function bindMount(source: string, target: string): string {
+	const field = (name: string, value: string) => /[,"]/.test(value) ? `"${name}=${value.replace(/"/g, '""')}"` : `${name}=${value}`;
+	return ['type=bind', field('source', source), field('target', target), 'readonly'].join(',');
+}
+
 /** The folder a SonarQube server analyses is mounted read-only where the server looks for it. */
 export function sonarContainer(docker: string, account: { readonly url: string; readonly token: string }, folder: string): ChildServer {
 	return new ChildServer('sonar', containerSpec(docker, teamImages.sonar, {
 		SONARQUBE_URL: account.url,
 		SONARQUBE_TOOLSETS: sonarToolsets,
-	}, process.env, [`${folder}:/app/mcp-workspace:ro`], { SONARQUBE_TOKEN: account.token }));
+	}, process.env, [bindMount(folder, '/app/mcp-workspace')], { SONARQUBE_TOKEN: account.token }));
 }
 
 /**

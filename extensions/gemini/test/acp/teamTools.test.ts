@@ -18,7 +18,7 @@ import { locateInLoginShell, parseSnykCode, parseSnykTest, Run, SnykCli } from '
 import { isReleaseBranch, releaseBranchForVersion, sortReleaseBranches } from '../../src/acp/teamDefaults';
 import { normalizeBaseUrl, teamReachability, teamRequest, TeamToolError } from '../../src/acp/teamHttp';
 import { describeSonar, SonarClient } from '../../src/acp/sonar';
-import { callTeamTool, external, isConfirmToolCall, isTeamWriteToolCall, teamConfirmTools, teamReadTools, TeamToolContext, teamToolsFor, teamWriteTools } from '../../src/acp/teamTools';
+import { callTeamTool, confirmToolGroups, external, isConfirmToolCall, isTeamWriteToolCall, teamConfirmTools, teamReadTools, TeamToolContext, teamToolsFor, teamWriteTools } from '../../src/acp/teamTools';
 import { TeamToolsMcpServer } from '../../src/acp/teamToolsMcp';
 
 /** A local HTTP server answering with `handler`; records each request. */
@@ -250,6 +250,13 @@ describe('geminicode-tools server', () => {
 	it('keeps writes apart from reads', () => {
 		expect(teamWriteTools.map(t => t.name)).toEqual(['jira_comment', 'jira_transition', 'jira_log_time', 'jira_assign', 'gitlab_create_mr', 'gitlab_reply', 'gitlab_merge']);
 		expect(teamWriteTools.filter(t => !teamConfirmTools.includes(t)).map(t => t.name)).toEqual(['jira_comment', 'jira_assign', 'gitlab_reply']);
+		// The tool policy names every write, not only the confirm class: in YOLO the CLI runs an MCP tool it has no ask rule for without a request.
+		expect(confirmToolGroups()).toEqual([
+			{ server: 'geminicode-tools', tools: ['jira_comment', 'jira_transition', 'jira_log_time', 'jira_assign', 'gitlab_create_mr', 'gitlab_reply', 'gitlab_merge'] },
+			{ server: 'jira', tools: ['jira_transition_issue', 'jira_add_worklog', 'jira_add_comment', 'jira_assign_issue'] },
+			{ server: 'gitlab', tools: ['create_merge_request', 'merge_merge_request', 'create_merge_request_note', 'create_merge_request_discussion_note', 'resolve_merge_request_thread', 'approve_merge_request'] },
+		]);
+		expect(['jira_add_comment(issue_key=ACME-1)', 'create_merge_request_note(project_id=1)', 'jira_assign_issue', 'approve_merge_request(project_id=1)'].map(title => isTeamWriteToolCall({ toolCall: { title } }))).toEqual([true, true, true, true]);
 		// Confluence's search, read and draft: a draft writes nothing until the user publishes it from the Review Page.
 		expect(teamReadTools).toHaveLength(13);
 		expect(teamReadTools.map(t => t.name)).not.toContain('snyk_test');
@@ -462,5 +469,39 @@ describe('GitLab lists and lookups', () => {
 		await expect(gitlab.commentOnLine(7, 3, 'a.ts', 9, 'Nit', { refs })).rejects.toThrow(/answered 500/);
 		// One general comment, for the 400 only.
 		expect(fake.requests.filter(r => r.url.endsWith('/notes')).length).toBe(1);
+	});
+});
+
+describe('gitlab_job_log', () => {
+	it('asks for the end of the trace only, and reads the whole log when the server refuses the range', async () => {
+		const long = 'x'.repeat(300_000) + '\nFAILED: tests\n';
+		const fake = await serve(req => {
+			if (req.url === '/api/v4/projects/g%2Fr') { return { body: { id: 7 } }; }
+			if (req.url === '/api/v4/projects/7/jobs/5/trace') {
+				const range = /^bytes=-(\d+)$/.exec(req.headers.range ?? '');
+				return range ? { status: 206, text: long.slice(-Number(range[1])) } : { text: long };
+			}
+			if (req.url === '/api/v4/projects/7/jobs/6/trace') {
+				return req.headers.range ? { status: 416, text: '' } : { text: '\u001b[31mshort\u001b[0m log' };
+			}
+			return { status: 404, body: {} };
+		});
+		const gitlab = new GitLabClient({ url: fake.url, token: 't' });
+		const tail = await gitlab.jobLogTail('g/r', 5, 20);
+		const whole = await gitlab.jobLogTail('g/r', 6);
+		expect({ tail, whole, ranges: fake.requests.filter(r => r.url.endsWith('/trace')).map(r => r.headers.range ?? null) }).toEqual({
+			tail: '… (262124 earlier characters cut, and more before them)\nxxxxx\nFAILED: tests\n',
+			whole: 'short log',
+			ranges: ['bytes=-262144', 'bytes=-262144', null],
+		});
+	});
+
+	it('asks for the job\'s number or link when given a name, instead of requesting job NaN', async () => {
+		const fake = await serve(() => ({ status: 404, body: {} }));
+		const folder = await mkdtemp(path.join(tmpdir(), 'gemini-job-log-'));
+		const context: TeamToolContext = { connected: () => new Set(['gitlab']), connectors: () => ({ gitlab: new GitLabClient({ url: fake.url, token: 't' }) }), folder: () => folder, defaults: async () => ({ gitlab: { project: 'g/r' } }) };
+		const result = await callTeamTool(context, 'a1', 'gitlab_job_log', { job: 'build' });
+		expect({ result, requests: fake.requests.length }).toEqual({ result: { isError: true, content: [{ type: 'text', text: expect.stringMatching(/"build" is not a job number/) }] }, requests: 0 });
+		await rm(folder, { recursive: true, force: true });
 	});
 });

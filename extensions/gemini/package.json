@@ -1552,6 +1552,7 @@
           "gemini.agents.allWorkspaceFolders": {
             "type": "boolean",
             "default": false,
+            "scope": "machine",
             "markdownDescription": "%configuration.agents.allWorkspaceFolders%"
           },
           "gemini.projects.enabled": {

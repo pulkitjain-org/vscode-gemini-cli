@@ -17,10 +17,14 @@ export interface RedactOptions {
 }
 
 const email = /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g;
-/** A header, query or assignment that hands over a credential: `Authorization: Bearer x`, `api_key=x`, `"token": "x"`. */
-const credentialPair = /\b(authorization|bearer|api[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|client[_-]?secret|secret|password|passwd|token|cookie|set-cookie)\b(["']?\s*[:=]\s*(?:bearer\s+)?)(["']?)([^\s"',;&]+)\3/gi;
-/** A bare key or token: Google API keys, GitLab and GitHub tokens, JWTs, long base64 or hex runs. */
-const bareSecret = /\b(?:AIza[0-9A-Za-z_-]{30,}|glpat-[0-9A-Za-z_-]{16,}|gh[pousr]_[0-9A-Za-z]{30,}|ya29\.[0-9A-Za-z_-]{20,}|eyJ[0-9A-Za-z_-]{10,}\.[0-9A-Za-z_-]{10,}\.[0-9A-Za-z_-]{10,}|[0-9a-f]{40,}|[0-9A-Za-z+/]{48,}={0,2})\b/g;
+/**
+ * A header, query or assignment that hands over a credential: `Authorization: Bearer x`, `Authorization: Basic x`,
+ * `api_key=x`, `"token": "x"`, and a variable named after one (`JIRA_API_TOKEN=x`, `GITLAB_TOKEN=x`), whose
+ * name runs into the key word with no word boundary.
+ */
+const credentialPair = /([A-Z0-9_-]*(?:authorization|bearer|api[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|client[_-]?secret|secret|password|passwd|token|cookie|set-cookie))\b(["']?\s*[:=]\s*(?:(?:bearer|basic)\s+)?)(["']?)([^\s"',;&]+)\3/gi;
+/** A bare key or token: Google API keys, GitLab, GitHub, Atlassian, SonarQube and Slack tokens, JWTs, long base64 or hex runs. */
+const bareSecret = /\b(?:AIza[0-9A-Za-z_-]{30,}|glpat-[0-9A-Za-z_-]{16,}|gh[pousr]_[0-9A-Za-z]{30,}|ATATT3[0-9A-Za-z_-]{20,}=?[0-9A-F]*|sq[up]_[0-9a-f]{40}|xox[abp]-[0-9A-Za-z-]{10,}|ya29\.[0-9A-Za-z_-]{20,}|eyJ[0-9A-Za-z_-]{10,}\.[0-9A-Za-z_-]{10,}\.[0-9A-Za-z_-]{10,}|[0-9a-f]{40,}|[0-9A-Za-z+/]{48,}={0,2})\b/g;
 
 function escapeRegExp(text: string): string {
 	return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

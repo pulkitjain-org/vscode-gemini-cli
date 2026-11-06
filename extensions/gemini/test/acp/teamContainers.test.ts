@@ -17,7 +17,7 @@ import { JiraSites } from '../../src/acp/jiraSites';
 import { ChildServer, ChildServerOptions, McpCallResult, McpServerUnavailableError } from '../../src/acp/mcpStdio';
 import { changedFiles } from '../../src/acp/checksBranch';
 import { SnykCli } from '../../src/acp/snyk';
-import { analyzeFiles, containerSpec, findDocker, FolderChildren, pinnedReference, teamImages } from '../../src/acp/teamContainers';
+import { analyzeFiles, bindMount, containerSpec, findDocker, FolderChildren, pinnedReference, teamImages } from '../../src/acp/teamContainers';
 import type { TeamDefaults } from '../../src/acp/teamDefaults';
 import { callTeamTool, TeamToolContext, teamWrite } from '../../src/acp/teamTools';
 import { markdownToAdf } from '../../webview-src/commentAdf';
@@ -266,6 +266,11 @@ describe('the team\'s servers as children', () => {
 		});
 		expect(JSON.stringify(spec.args)).not.toContain('secret-token');
 		expect(containerSpec('/d', teamImages.sonar, { A: '1' }, {}).args.slice(-1)).toEqual([pinnedReference(teamImages.sonar)]);
+		// A folder's path with a `:` in it would be read by `-v` as its separators; `--mount` names each field.
+		expect(containerSpec('/d', teamImages.sonar, {}, {}, [bindMount('/Users/me/work/a:b', '/app/mcp-workspace')]).args.slice(0, 5))
+			.toEqual(['run', '-i', '--rm', '--mount', 'type=bind,source=/Users/me/work/a:b,target=/app/mcp-workspace,readonly']);
+		expect(bindMount('C:\\work\\app', '/app/mcp-workspace')).toBe('type=bind,source=C:\\work\\app,target=/app/mcp-workspace,readonly');
+		expect(bindMount('/Users/me/a,b "c"', '/x')).toBe('type=bind,"source=/Users/me/a,b ""c""",target=/x,readonly');
 		expect(pinnedReference(teamImages.gitlab)).toMatch(/^zereight050\/gitlab-mcp:2\.3\.3@sha256:[0-9a-f]{64}$/);
 	});
 
