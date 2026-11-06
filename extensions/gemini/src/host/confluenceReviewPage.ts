@@ -206,7 +206,7 @@ export function reviewStrings(): ReviewStrings {
 		saved: vscode.l10n.t("Saved"),
 		publishNew: vscode.l10n.t("Publish to Confluence"),
 		publishEdit: vscode.l10n.t("Publish Changes"),
-		publishing: vscode.l10n.t("Publishing…"),
+		publishing: vscode.l10n.t("Publishing..."),
 		openInConfluence: vscode.l10n.t("Open in Confluence"),
 		conflictTitle: vscode.l10n.t("The page changed since this draft was made: version {0} is the latest"),
 		conflictText: vscode.l10n.t("Nothing was published. Your draft is now combined with the latest version; where only one side changed a part, that change is kept."),

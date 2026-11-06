@@ -179,7 +179,7 @@ export async function awaitCommitMessage(written: Promise<string | undefined> | 
 	if (quick !== null) {
 		return quick || fallback;
 	}
-	const message = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: vscode.l10n.t("Writing a commit message…"), cancellable: true }, (_progress, token) =>
+	const message = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: vscode.l10n.t("Writing a commit message..."), cancellable: true }, (_progress, token) =>
 		Promise.race([written, new Promise<undefined>(resolve => token.onCancellationRequested(() => resolve(undefined)))]));
 	return message || fallback;
 }

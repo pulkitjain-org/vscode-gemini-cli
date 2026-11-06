@@ -7,6 +7,7 @@
 		"src/onDemand.ts",
 		"src/connection.ts",
 		"src/confluence.ts",
+		"src/debug.ts",
 		"webview-src/chat.ts",
 		"webview-src/changes.ts",
 		"webview-src/home.ts",

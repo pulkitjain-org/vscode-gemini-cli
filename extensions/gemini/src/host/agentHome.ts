@@ -92,8 +92,8 @@ export class AgentHome implements vscode.Disposable {
 	private listCard: HomeCardId | undefined;
 	/** Files the user picked or dropped for the comment box: the only paths a comment may upload. */
 	private readonly commentFilePaths = new Set<string>();
-	/** The command actions sent to the page in a view: the only commands its buttons may run. */
-	private readonly sentActions = new Set<string>();
+	/** The command actions in the view last sent to the page: the only commands its buttons may run; replaced with each view. */
+	private sentActions = new Set<string>();
 
 	/** `onTyping` runs when the user starts typing a task, so the agent can start meanwhile. */
 	constructor(private readonly extensionUri: vscode.Uri, private readonly agents: AgentsView, private readonly onTyping: () => void = () => undefined, private readonly options?: HomeOptions) {
@@ -160,7 +160,7 @@ export class AgentHome implements vscode.Disposable {
 		panel.iconPath = vscode.Uri.joinPath(this.extensionUri, 'media', 'gemini.svg');
 		panel.webview.html = this.html(panel.webview, media);
 		markStartup('home shown');
-		panel.webview.onDidReceiveMessage((message: FromHome) => this.onMessage(message).catch(err => void showError(errorMessage(err))));
+		panel.webview.onDidReceiveMessage((message: FromHome) => this.onMessage(message).catch(err => void showError(vscode.l10n.t("Home couldn't do that: {0}", errorMessage(err)))));
 		panel.onDidChangeViewState(e => {
 			if (e.webviewPanel.visible) {
 				this.schedule(0);
@@ -262,7 +262,7 @@ export class AgentHome implements vscode.Disposable {
 			return;
 		}
 		this.lastView = json;
-		collectCommandActions(view, this.sentActions);
+		this.sentActions = collectCommandActions(view, new Set());
 		void panel.webview.postMessage({ type: 'view', view } satisfies ToHome);
 	}
 
@@ -464,6 +464,12 @@ export class AgentHome implements vscode.Disposable {
 		} finally {
 			if (pasted) {
 				await fs.rm(pasted, { recursive: true, force: true }).catch(() => undefined);
+			}
+		}
+		if (!error) {
+			// Posted, so no longer the comment box's to send; a failed post keeps them for another try.
+			for (const file of message.files) {
+				this.commentFilePaths.delete(file);
 			}
 		}
 		void this.panel?.webview.postMessage({ type: 'commented', key: message.key, ...error ? { error } : {} } satisfies ToHome);

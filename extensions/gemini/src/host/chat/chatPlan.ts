@@ -20,7 +20,7 @@ import type { ModelTokens } from '../../acp/turnUsage';
 import { extensionChunk } from '../lazyFeature';
 import { isFile } from './chatFiles';
 import type { ChatControllerOptions, ChatHost } from './chatOptions';
-import type { ChatSettings } from './chatSettings';
+import { refusalText, type ChatSettings } from './chatSettings';
 
 /** What a turn end's Approve Plan offers. */
 export type TurnEndBuild = NonNullable<Extract<TranscriptItem, { readonly kind: 'turnEnd' }>['build']>;
@@ -88,7 +88,7 @@ export class ChatPlan {
 			return;
 		}
 		if (mode.currentId !== knownModes.plan) {
-			await this.settings.change(() => this.service.client.setMode(knownModes.plan));
+			await this.settings.change(() => this.service.client.setMode(knownModes.plan), err => refusalText('mode', knownModes.plan, err));
 		}
 		if (rest) {
 			await this.host.startPrompt(rest);
@@ -99,7 +99,7 @@ export class ChatPlan {
 	async leavePlanMode(): Promise<void> {
 		const mode = buildModeAfterPlan(this.service.client.settings);
 		if (mode) {
-			await this.settings.change(() => this.service.client.setMode(mode));
+			await this.settings.change(() => this.service.client.setMode(mode), err => refusalText('mode', mode, err));
 		}
 	}
 
@@ -153,7 +153,7 @@ export class ChatPlan {
 			// The agent reads its plan to carry it out.
 			await this.rebuildPlan(item.planFile);
 		}
-		await this.settings.change(() => this.service.client.setMode(mode));
+		await this.settings.change(() => this.service.client.setMode(mode), err => refusalText('mode', mode, err));
 		if (this.service.client.settings.mode?.currentId === mode) {
 			await this.host.send(text);
 			return true;

@@ -16,6 +16,14 @@ import { commandCount, FinishedCommand, OutputTail } from '../acp/runCommands';
 
 /** How long Run waits for a new terminal's shell integration before typing the command in without it. */
 const shellIntegrationWaitMs = 3_000;
+/** How long after a command of a block ends Run waits for the block's next command to start before taking the shell to be at its prompt. */
+export const blockIdleMs = 500;
+
+/** What Run waits on in a terminal: each command that ends there, or the terminal closing (`undefined`), and each command that starts. */
+interface RunWaiter {
+	ended(command: FinishedCommand | undefined): void;
+	started(): void;
+}
 
 interface AgentTerminal {
 	readonly agent: string;
@@ -35,15 +43,15 @@ export class AgentTerminals implements vscode.Disposable {
 	private readonly last = new Map<vscode.Terminal, FinishedCommand>();
 	/** When each terminal's last command finished, so the newest of an agent's terminals can be told. */
 	private readonly endedAt = new Map<vscode.Terminal, number>();
-	private readonly running = new Map<vscode.TerminalShellExecution, { readonly tail: OutputTail; readonly done: Promise<void> }>();
-	/** Called with each command that finishes in a terminal Run is waiting on. */
-	private readonly waiters = new Map<vscode.Terminal, (command: FinishedCommand | undefined) => void>();
+	private readonly running = new Map<vscode.TerminalShellExecution, { readonly terminal: vscode.Terminal; readonly tail: OutputTail; readonly done: Promise<void> }>();
+	/** Run's wait on each terminal it runs a command in. */
+	private readonly waiters = new Map<vscode.Terminal, RunWaiter>();
 	private readonly disposables: vscode.Disposable[] = [];
 
 	/** `columnOf` is the column of the agent's side group, where its terminals open. */
 	constructor(private readonly columnOf: (agent: string) => Promise<vscode.ViewColumn>) {
 		this.disposables.push(
-			vscode.window.onDidStartTerminalShellExecution(({ execution }) => {
+			vscode.window.onDidStartTerminalShellExecution(({ terminal, execution }) => {
 				const tail = new OutputTail();
 				// Read from the start: the stream has only what arrives after it is opened.
 				const stream = execution.read();
@@ -52,7 +60,8 @@ export class AgentTerminals implements vscode.Disposable {
 						tail.push(chunk);
 					}
 				})().catch(() => undefined);
-				this.running.set(execution, { tail, done });
+				this.running.set(execution, { terminal, tail, done });
+				this.waiters.get(terminal)?.started();
 			}),
 			vscode.window.onDidEndTerminalShellExecution(async ({ terminal, execution, exitCode }) => {
 				const run = this.running.get(execution);
@@ -70,12 +79,18 @@ export class AgentTerminals implements vscode.Disposable {
 				};
 				this.last.set(terminal, finished);
 				this.endedAt.set(terminal, Date.now());
-				this.waiters.get(terminal)?.(finished);
+				this.waiters.get(terminal)?.ended(finished);
 			}),
 			vscode.window.onDidCloseTerminal(terminal => {
 				this.last.delete(terminal);
 				this.endedAt.delete(terminal);
-				this.waiters.get(terminal)?.(undefined);
+				// A command still running there never ends now.
+				for (const [execution, run] of this.running) {
+					if (run.terminal === terminal) {
+						this.running.delete(execution);
+					}
+				}
+				this.waiters.get(terminal)?.ended(undefined);
 				const at = this.terminals.findIndex(each => each.terminal === terminal);
 				if (at >= 0) {
 					this.terminals.splice(at, 1);
@@ -150,14 +165,33 @@ export class AgentTerminals implements vscode.Disposable {
 			return {};
 		}
 		const started = Date.now();
-		// A block of several lines runs as several commands; it has ended when the last of them has.
+		// A block of several lines runs as several commands, or as fewer when the shell takes lines together
+		// (zsh often does with a pasted block): it has ended when as many have ended as it has lines, when one
+		// of them fails, or when no further one starts after one ended, the shell being back at its prompt.
 		let left = Math.max(1, commandCount(command));
-		const finished = new Promise<FinishedCommand | undefined>(resolve => this.waiters.set(terminal, each => {
-			if (!each || --left === 0) {
-				this.waiters.delete(terminal);
+		let idle: ReturnType<typeof setTimeout> | undefined;
+		const finished = new Promise<FinishedCommand | undefined>(resolve => {
+			const settle = (each: FinishedCommand | undefined) => {
+				clearTimeout(idle);
+				idle = undefined;
+				if (this.waiters.get(terminal) === waiter) {
+					this.waiters.delete(terminal);
+				}
 				resolve(each);
-			}
-		}));
+			};
+			const waiter: RunWaiter = {
+				ended: each => {
+					clearTimeout(idle);
+					if (!each || --left <= 0 || (each.exitCode !== undefined && each.exitCode !== 0)) {
+						settle(each);
+					} else {
+						idle = setTimeout(() => settle(each), blockIdleMs);
+					}
+				},
+				started: () => clearTimeout(idle),
+			};
+			this.waiters.set(terminal, waiter);
+		});
 		shell.executeCommand(command);
 		const last = await finished;
 		return last ? { ms: Date.now() - started, ...last.exitCode !== undefined ? { exitCode: last.exitCode } : {}, command: last } : {};
@@ -188,6 +222,9 @@ export class AgentTerminals implements vscode.Disposable {
 
 	dispose(): void {
 		vscode.Disposable.from(...this.disposables).dispose();
+		for (const waiter of [...this.waiters.values()]) {
+			waiter.ended(undefined);
+		}
 		this.running.clear();
 		this.last.clear();
 		this.endedAt.clear();

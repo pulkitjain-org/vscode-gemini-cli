@@ -302,12 +302,7 @@ export class ChatSessions implements vscode.Disposable {
 					? vscode.l10n.t("The agent could not reopen \"{0}\": {1}", title, reason)
 					: vscode.l10n.t("The agent could not reopen \"{0}\", so this chat starts afresh.", title), 'error');
 			}
-			const retry = vscode.l10n.t("Try Again");
-			void showError(vscode.l10n.t("Could not restore \"{0}\".", title), retry).then(choice => {
-				if (choice === retry) {
-					void this.restore(id, title, true);
-				}
-			});
+			// The chat's notice is the one word of it: the session is still in the sessions list to try again.
 		}
 	}
 
