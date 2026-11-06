@@ -9,6 +9,7 @@
 // gemini/docs/ARCHITECTURE.md).
 
 import type * as acp from '@agentclientprotocol/sdk';
+import { planApprovalStep } from './planExit';
 
 export interface ToolCallModel {
 	readonly id: string;
@@ -51,6 +52,12 @@ export function contentBlockToText(block: acp.ContentBlock): string {
 /** What gemini-cli writes for an error that is not an Error, such as a refused file request's JSON-RPC error. */
 const objectText = '[object Object]';
 
+/** The CLI's plan approval step (see planExit.ts) as the plan being ready; any other call as it is. */
+function planApproval(call: ToolCallModel): ToolCallModel {
+	const step = planApprovalStep(call.title, call.status);
+	return step ? { ...call, ...step, content: [] } : call;
+}
+
 /** Whether a tool call is over; the agent rarely updates one after that. */
 function isFinished(status: ToolCallModel['status']): boolean {
 	return status === 'completed' || status === 'failed';
@@ -78,27 +85,27 @@ export class SessionUpdateAdapter {
 			case 'agent_thought_chunk':
 				return { kind: 'text', role: 'thought', text: contentBlockToText(update.content), messageId: update.messageId };
 			case 'tool_call': {
-				const call: ToolCallModel = {
+				const call: ToolCallModel = planApproval({
 					id: update.toolCallId,
 					title: update.title,
 					kind: update.kind,
 					status: update.status ?? 'pending',
 					locations: update.locations ?? [],
 					content: update.content ?? [],
-				};
+				});
 				this.remember(call);
 				return { kind: 'toolCall', call };
 			}
 			case 'tool_call_update': {
 				const previous = this.toolCalls.get(update.toolCallId);
-				const call: ToolCallModel = {
+				const call: ToolCallModel = planApproval({
 					id: update.toolCallId,
 					title: update.title ?? previous?.title ?? update.toolCallId,
 					kind: update.kind ?? previous?.kind,
 					status: update.status ?? previous?.status ?? 'pending',
 					locations: update.locations ?? previous?.locations ?? [],
 					content: (update.content ? this.explained(update.content) : undefined) ?? previous?.content ?? [],
-				};
+				});
 				this.remember(call);
 				return { kind: 'toolCall', call };
 			}

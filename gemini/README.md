@@ -11,13 +11,13 @@ This folder holds everything the fork adds besides its product code, which lives
 
 In a sentence each, with the guide page that covers it:
 
-- **Agents.** Several agents side by side, each in its own tab and folder, optionally on a branch of its own whose work you try in your workspace before keeping it, and forkable when the work splits. A column beside each chat opens the agent's changes, browser, terminal and files. [Agents](docs/guide/agents.md)
-- **Chat.** A composer with context, slash commands, Enhance prompt and Plan mode, whose plans you edit and comment on in Plan Review; send or queue messages while an agent works, react to replies with an emoji, and compress long chats with `/compress`. [Chat and prompting](docs/guide/chat.md)
+- **Agents.** Several agents side by side, each in its own tab and folder, optionally on a branch of its own whose work you try in your workspace before keeping it, and forkable when the work splits. A column beside each chat opens the agent's changes, browser, terminal and files, and **Expand** gives any of them the whole window. [Agents](docs/guide/agents.md)
+- **Chat.** A composer with context, slash commands, Enhance prompt and Plan mode. Plans and the Markdown files an agent writes can be edited and commented on before Gemini revises them. Steer or queue messages while an agent works, ask side questions, react to replies with an emoji, and compress long chats. [Chat and prompting](docs/guide/chat.md)
 - **Review.** Approval modes, permission cards, Keep and Undo in the file, Rewind, inline edit, and **Review** for your uncommitted changes, an agent's changes or a merge request. [Review and safety](docs/guide/review.md)
 - **Terminal.** Each agent has a terminal; a reply's shell commands run there with one click, and terminal output goes back to Gemini. [Terminal](docs/guide/terminal.md)
 - **Projects.** A coordinator that splits larger work into threads, each an agent on its own branch, whose work you try in your workspace and keep, or take back. [Projects](docs/guide/projects.md)
 - **Browser.** A browser agents can use, with Add to Gemini and notes on the page. [Browser](docs/guide/browser.md)
-- **Workspace index.** A local index of each workspace, and of attached docs, that agents search in one step. [Workspace index and docs](docs/guide/agents.md#workspace-index-and-docs)
+- **Workspace index.** A local index of each workspace, and of attached docs, that agents search in one step, with the editor's language servers behind it and a `research` tool for broad questions. [Workspace index and docs](docs/guide/agents.md#workspace-index-and-docs)
 - **Team tools.** Jira (one site or several), Confluence, GitLab, SonarQube, Snyk and Figma with your own account, from ticket to merged merge request, merge request reviews, and Confluence pages agents draft for you to review and publish. [Team tools](docs/guide/team-tools.md)
 - **Setup.** A bundled Gemini CLI that offers its own updates, folder trust asked once per repository, and the **Settings** page, which holds every setting and what agents load: MCP servers, skills, rules and trusted folders. [Getting started](docs/guide/getting-started.md), [The Settings page](docs/guide/helpers.md), [Settings](docs/guide/settings.md)
 

@@ -65,7 +65,7 @@ export const featurePages: readonly FeaturePage[] = [
 				title: 'Everything beside the chat',
 				body: [
 					'A column in the margin of each agent\'s chat says where it works and opens what it has made: **Changes** with the lines added and removed, **Browser**, **Terminal** and **Files**. The chat stays where it is.',
-					'What an agent opens, files, diffs, pages and its terminal, goes in a group of its own beside its chat. Switch agents and each one\'s files are where you left them. Turn on **Follow the agent** to watch each file it reads or edits open at its line.',
+					'What an agent opens, files, diffs, pages and its terminal, goes in a group of its own beside its chat. Switch agents and each one\'s files are where you left them. When a diff, a plan or a page needs more room, **Expand** gives it the whole window, and closing it puts it back beside the chat. Turn on **Follow the agent** to watch each file it reads or edits open at its line.',
 				],
 				media: { name: 'agent-links', alt: 'An agent\'s chat with the column in its margin: where it works, Changes with the lines added and removed, Browser, Terminal and Files' },
 			},
@@ -77,7 +77,7 @@ export const featurePages: readonly FeaturePage[] = [
 			{
 				title: 'The workspace index',
 				body: [
-					'Each workspace keeps an index of its code on your Mac, built in a separate process at low priority and kept current as you save, switch branches and as agents edit. Agents ask it in one step: `code_search` for code by words or a description, `find_symbol` for where something is defined and used, `related_files` for imports, tests and files changed together, and `repo_map` for an outline of the repository.',
+					'Each workspace keeps an index of its code on your Mac, built in a separate process at low priority and kept current as you save, switch branches and as agents edit. Agents ask it in one step: `code_search` for code by words or a description, `find_symbol` for where something is defined and used, `related_files` for imports, tests and files changed together, and `repo_map` for an outline of the repository. For a question that spans the whole codebase, `research` sends several read-only readers through it at once and returns one report with the lines it found.',
 					'Attach a library\'s documentation and agents search it with `docs_search` instead of the web. GeminiCode suggests the docs for the dependencies your project names, at the versions you use.',
 				],
 				media: { name: 'index-page', alt: 'The Index page with the workspace indexed and the Vitest docs attached' },
@@ -110,7 +110,7 @@ export const featurePages: readonly FeaturePage[] = [
 	{
 		slug: 'chat-and-review',
 		name: 'Chat and review',
-		summary: 'Prompting, Plan Review, reactions, approvals, and Keep, Undo and Rewind.',
+		summary: 'Prompting, Plan Review, comments on what Gemini writes, approvals, and Keep, Undo and Rewind.',
 		description: 'Prompt Gemini agents in GeminiCode, steer them while they work, run their commands, and keep, undo or rewind every change they make.',
 		headline: ['Ask in plain words.', 'Review every change.'],
 		lead: 'The chat holds everything a prompt needs: files and context, the model, the approval mode and your slash commands. Every command asks before it runs, and every change an agent makes can be kept, undone or rewound.',
@@ -164,6 +164,14 @@ export const featurePages: readonly FeaturePage[] = [
 					'**Send Comments to Gemini** sends them all at once. The agent revises the plan, and the page marks each section that changed.',
 				],
 				media: { name: 'showcase-plan-review', alt: 'Review Plan opened beside the chat, comments sent to Gemini, and the revised plan with the changed sections marked', clip: true },
+			},
+			{
+				title: 'Comment on what it writes',
+				body: [
+					'Ask for a report, a migration guide or a design note and the new Markdown file opens beside the chat as it will read, not as raw text. Unlock it to fix a sentence yourself, or select a passage and leave a comment, as you would on a document a colleague shared.',
+					'**Send Comments to Gemini** sends them all in one message, and the revised file lands in the editor you have open. Your own edits are saved first and kept.',
+				],
+				media: { name: 'markdown-comments', alt: 'A Markdown report Gemini wrote, open beside the chat with comments on two passages and Send Comments to Gemini in the title bar' },
 			},
 			{
 				title: 'Asks first',

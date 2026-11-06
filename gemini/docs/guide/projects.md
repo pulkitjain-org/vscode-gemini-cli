@@ -1,6 +1,6 @@
 # Projects
 
-A project hands a larger piece of work to a team of agents. You talk to a **coordinator**, which splits the work into **threads**. Each thread is an agent on its own branch, in one or more repositories, and you review and take each thread's work when it's right.
+Some work is too big for one agent: a feature that touches the API, the app and the docs, or a list of fixes that can go in parallel. A project hands that kind of work to a team of agents. You talk to a **coordinator**, which splits the work into **threads**. Each thread is an agent on its own branch, in one or more repositories, and you review and take each thread's work when it's right.
 
 ![A project chat where the coordinator has started a thread per repository, each waiting on an approval](../../site/media/project-chat-dark.webp)
 
@@ -112,8 +112,7 @@ Open the project's settings with the gear in the project chat's side panel, or w
 
 **Memory** holds what every thread and the coordinator read:
 
-- **How the repositories connect**: what each repository owns and where they meet, such as APIs, data models, URLs and release order.
-- **Project instructions**: conventions and anything you'd otherwise repeat.
+- **Project instructions**, for a project with one repository: conventions and anything you'd otherwise repeat. With several repositories the same field is **How the repositories connect**: what each repository owns and where they meet, such as APIs, data models, URLs and release order.
 - **Context files**: Markdown files kept in the project's folder. For each one, choose whether the coordinator, the threads or both read it.
 
 Under **Also read**, the page lists each repository's own rules files, which its threads read as they are, and estimates how many tokens the memory adds to each thread's first request.
@@ -132,6 +131,16 @@ When the project chat is at least 1000 px wide, a panel on its right shows the p
 - the quota banner with **Start Anyway**, while new threads are held
 
 A request is one prompt the thread was sent, with its answer; the Gemini CLI doesn't report how many model calls a turn made. Drag the panel's left edge to resize it, and double-click the edge to reset it. The gear at the top opens [Project settings](#project-settings-and-memory).
+
+## Remove a project
+
+Right-click the project's row in the Agents pane and choose **Remove Project**. It lists how many threads go with it, then:
+
+- **Remove and Delete Branches** deletes the project chat, its settings and memory, and each thread with its folder and branch.
+- **Remove, Keep Branches** does the same but leaves each thread's branch in its repository.
+- **Archive** puts the project and its threads under **Archived** instead, with nothing deleted.
+
+A thread whose work you're trying in your workspace asks first whether to keep the changes or take them back.
 
 ## Turn Projects off
 

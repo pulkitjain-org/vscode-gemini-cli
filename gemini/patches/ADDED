@@ -1,6 +1,9 @@
 .agents/skills/geminicode-real-app/SKILL.md
 .claude/CLAUDE.md
 build/lib/test/nodeCompileCache.test.ts
+extensions/markdown-language-features/markdown-editor-src/geminiComments.css
+extensions/markdown-language-features/markdown-editor-src/geminiDollarProse.ts
+extensions/markdown-language-features/markdown-editor-src/geminiDollarText.ts
 resources/darwin/Assets.car
 resources/darwin/dmg-background.tiff
 src/vs/platform/browserView/common/geminiAgentFiles.ts

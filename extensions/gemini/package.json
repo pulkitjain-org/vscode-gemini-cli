@@ -375,6 +375,11 @@
         "category": "%category%"
       },
       {
+        "command": "gemini.projects.remove",
+        "title": "%command.projects.remove%",
+        "category": "%category%"
+      },
+      {
         "command": "gemini.index.open",
         "title": "%command.index.open%",
         "category": "%category%",
@@ -1024,7 +1029,12 @@
         },
         {
           "command": "gemini.agents.remove",
-          "when": "view == gemini.agents && viewItem =~ /^agent/",
+          "when": "view == gemini.agents && viewItem =~ /^agent/ && viewItem =~ /^((?!\\.project).)*$/",
+          "group": "3_remove@1"
+        },
+        {
+          "command": "gemini.projects.remove",
+          "when": "view == gemini.agents && viewItem =~ /^agent.*\\.project/",
           "group": "3_remove@1"
         }
       ],
@@ -1355,6 +1365,10 @@
         },
         {
           "command": "gemini.agents.remove",
+          "when": "false"
+        },
+        {
+          "command": "gemini.projects.remove",
           "when": "false"
         },
         {

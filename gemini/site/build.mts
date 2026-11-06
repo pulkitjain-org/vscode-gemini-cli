@@ -499,16 +499,16 @@ const indexedPages = new Map<string, string | undefined>();
  * with a time zone, so `videoObject` gives each day as midnight India time, where they are taken.
  */
 const clipDates: Readonly<Record<string, string>> = {
-	'showcase-console': '2026-10-15',
-	'showcase-enhance': '2026-11-03',
-	'showcase-mr-review': '2026-11-03',
-	'showcase-notes': '2026-11-03',
-	'showcase-plan': '2026-11-03',
-	'showcase-plan-review': '2026-11-03',
-	'showcase-projects': '2026-11-03',
-	'showcase-review': '2026-11-03',
-	'showcase-wait': '2026-11-03',
-	'showcase-work': '2026-11-03',
+	'showcase-console': '2026-11-06',
+	'showcase-enhance': '2026-11-06',
+	'showcase-mr-review': '2026-11-06',
+	'showcase-notes': '2026-11-06',
+	'showcase-plan': '2026-11-06',
+	'showcase-plan-review': '2026-11-06',
+	'showcase-projects': '2026-11-06',
+	'showcase-review': '2026-11-06',
+	'showcase-wait': '2026-11-06',
+	'showcase-work': '2026-11-06',
 };
 
 /** A clip's length in whole seconds, from its MP4's movie header (the mvhd box). */
@@ -624,7 +624,7 @@ function layout(title: string, body: string, c: Context, current: PageKind, root
 	// The site's own drop-down, drawn in its theme: a disclosure button and a panel (page.mts opens it).
 	const featureMenu = `<div class="fmenu"><button type="button" class="fm-btn" aria-expanded="false" aria-controls="fm-panel"${current === 'feature' ? ' data-current' : ''}>Features${icon('chevron-down')}</button><div class="fm-panel" id="fm-panel" hidden>${features('fm-item')}</div></div>`;
 	const news = current === 'home' ? `
-		<div class="news"><div class="wrap"><span class="k">New</span><a href="docs/agents.html#agents-on-their-own-branch">Try an agent's work in your checkout before you keep it, and review its plan section by section →</a></div></div>` : '';
+		<div class="news"><div class="wrap"><span class="k">New</span><a href="docs/chat.html#markdown-files-gemini-writes">Comment on the reports Gemini writes, and give any page beside the chat the whole window →</a></div></div>` : '';
 	const search = current === 'docs' ? `
 				<button type="button" class="search-btn" aria-label="Search the docs">${icon('search')}<span>Search docs</span><kbd>⌘K</kbd></button>` : '';
 	const brandTail = current === 'docs' ? `<span class="sep">/</span><span class="sub">Docs</span>` : '';
@@ -811,6 +811,7 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 	const strip = [
 		'<b>Plan mode</b> read first, then build',
 		'<b>Review Plan</b> section by section',
+		'<b>Comment</b> on what Gemini writes',
 		'<b>@file</b> attach context',
 		'<b>Enhance</b> <kbd>⌥⌘E</kbd>',
 		'<b>Keep</b> · <b>Undo</b> in place',
@@ -825,6 +826,7 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 		'<b>Review My Changes</b>',
 		'<b>Follow the agent</b>',
 		'<b>Files</b> beside each agent',
+		'<b>Expand</b> any page beside the chat',
 		'<b>Prompt outline</b> to jump back',
 		'<kbd>⌥⌘M</kbd> Agents ⇄ Editor',
 		'<b>Ticket → MR</b> Jira · GitLab',
@@ -899,17 +901,17 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 			<div class="reveal" data-reveal>
 				<span class="label">01</span>
 				<h2 class="serif">Agents that ask first.</h2>
-				<p>Default mode asks before every edit and command. Proposed changes open in a diff. Nothing runs or lands until you say so.</p>
+				<p>An agent asks before it runs a command or edits a file, and shows you the diff. Loosen that when you trust the task; every change can still be undone.</p>
 			</div>
 			<div class="reveal" data-reveal>
 				<span class="label">02</span>
 				<h2 class="serif">Several at once, each in its own tab.</h2>
-				<p>Every agent has its own chat, files and changes, and can work on a branch of its own. Status dots tell you which one needs you. Merge Back when it is done.</p>
+				<p>Every agent has its own chat, files and changes, and can work on a branch of its own. The agent list marks only the ones that need you, so you can leave the rest to it.</p>
 			</div>
 			<div class="reveal" data-reveal>
 				<span class="label">03</span>
 				<h2 class="serif">The editor you already know.</h2>
-				<p>Built on Code - OSS as a patch series over one pinned release, with the Gemini CLI running inside over the Agent Client Protocol.</p>
+				<p>It is VS Code underneath, with the official Gemini CLI inside. Your terminal's <code>gemini</code> shares its sign-in, settings and saved sessions.</p>
 			</div>
 		</div>
 	</section>

@@ -1,6 +1,6 @@
 # Browser
 
-You and your agents share GeminiCode's browser. Point at an element or pin notes where something should change, and an agent can open your app, check its own work and read the page's console and network.
+GeminiCode has a browser built in, and your agents can use it too. An agent can open the app you are working on, click through it, read its console and network, and check that its fix works. You can point at the element you mean, or pin notes on the page where something should change, instead of describing it in words.
 
 ![A cart page open in GeminiCode's browser beside the chat, with Add to Gemini in the toolbar](../../site/media/browser-page-dark.webp)
 

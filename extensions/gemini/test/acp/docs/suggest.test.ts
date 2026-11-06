@@ -31,6 +31,15 @@ describe('suggestDocs', () => {
 		expect((await suggestDocs(dir, new Set(['https://react.dev/reference']))).map(s => s.title)).toEqual(['Express', 'Vitest']);
 	});
 
+	it('leaves out docs already attached under the same address, whatever its trailing slash', async () => {
+		const dir = project('attached', { 'package.json': JSON.stringify({ devDependencies: { vitest: '^3.2.4' } }) });
+		expect([
+			(await suggestDocs(dir, new Set(['https://vitest.dev/api']))).length,
+			(await suggestDocs(dir, new Set(['https://vitest.dev/api/#top']))).length,
+			(await suggestDocs(dir, new Set(['https://vitest.dev/guide/']))).length,
+		]).toEqual([0, 0, 1]);
+	});
+
 	it('reads Python, Go, Rust and Gradle manifests', async () => {
 		const dir = project('mixed', {
 			'requirements.txt': 'Django==4.2.7\nrequests>=2.31  # http\n',

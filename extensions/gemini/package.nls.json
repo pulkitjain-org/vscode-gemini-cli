@@ -89,6 +89,7 @@
 	"command.agents.toggleYolo": "Toggle YOLO",
 	"command.agents.switchModel": "Switch Model...",
 	"command.agents.remove": "Remove Agent",
+	"command.projects.remove": "Remove Project",
 	"command.agents.removeWorkspace": "Remove Workspace from List",
 	"command.index.open": "Manage Index",
 	"command.index.rebuild": "Rebuild Index",

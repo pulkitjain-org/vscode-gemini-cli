@@ -13,6 +13,7 @@ import '@vscode/markdown-editor/themes/vscode-default.css';
 import '@vscode/markdown-editor/commentInput.css';
 import '@vscode/markdown-editor/commentWidget.css';
 import './markdownEditor.css';
+import './geminiComments.css'; // GEMINI-FORK: a margin for comment cards
 import { WebviewSyntaxHighlighter } from './syntaxHighlighter';
 import { WebviewLinkPresentationProvider } from './linkPresentationProvider';
 import { markdownEditorHost, markdownEditorRenderer, type CodeBlockEditorProviderDefinition, type MarkdownEditorHost } from '../src/preview/markdownEditorProtocol';
@@ -25,6 +26,7 @@ import { ImagePasteController } from './imagePasteController';
 import { createTaskProgressProvider, isTaskProgressLabels } from './taskProgress/taskProgressProvider';
 import { codeBlockEditorTheme } from './codeBlockEditorTheme';
 import { mermaidProvider } from './mermaid/mermaidProvider';
+import { renderDollarProse } from './geminiDollarText'; // GEMINI-FORK: prices in prose are not math
 import type { MarkdownEditorInitialState } from '../src/preview/webviewInitialState';
 
 interface VsCodeApi {
@@ -397,6 +399,7 @@ class Editor extends Disposable {
 			highlightActiveBlock,
 			presentation: model.readonlyMode.get() ? 'reading' : 'editing',
 			syntaxHighlighter: this.#syntaxHighlighter,
+			renderMath: renderDollarProse, // GEMINI-FORK: "$5 off ... $0" draws as text, not as KaTeX
 			linkPresentationProvider: this.#linkPresentationProvider,
 			embeddedCodeEditorFactory,
 			onEmbeddedCodeEditorEdit: (block: CodeBlockAstNode, contentEdit: StringEdit) => {
@@ -463,6 +466,10 @@ class Editor extends Disposable {
 
 		// Render comments as the VS Code V2 markdown cards. The card colours come
 		this.#commentsView = this._register(new CommentsView(this.#comments, view));
+		// GEMINI-FORK: while there are comments, the cards get a margin of their own (geminiComments.css).
+		this._register(autorun(reader => {
+			view.element.classList.toggle('gemini-has-comments', reader.readObservable(this.#comments.comments).length > 0);
+		}));
 		// The comment input (the gdocs-style "add a comment" affordance) is only
 		// useful when the workbench feedback store will actually accept the comment;
 		// otherwise submitting is a no-op. Mount the controller only while the

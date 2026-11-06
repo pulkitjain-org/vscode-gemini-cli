@@ -1,6 +1,6 @@
 # Review and safety
 
-Agents ask before they act, and you can keep, undo or rewind every change they make.
+An agent works in your code with your permissions, so GeminiCode puts you in the loop at two points: before it acts, when it asks to run a command or make an edit, and after, when you keep or undo what it changed. How often it asks is up to you, and every change it makes can be undone, one file, one reply or one message at a time.
 
 ![An agent asking to run npm test, the test run after Allow once, and its summary](../../site/media/showcase-wait-dark.webp "clip")
 

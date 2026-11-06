@@ -90,6 +90,8 @@ export function registerAgentCommands(view: AgentCommandsHost): vscode.Disposabl
 		vscode.commands.registerCommand('gemini.agents.sideQuestion', () => view.tabs.chatInFront()?.openSide()),
 		vscode.commands.registerCommand('gemini.agents.switchModel', () => view.tabs.chatInFront()?.pickModel()),
 		vscode.commands.registerCommand('gemini.agents.remove', (node?: AgentTreeNode) => view.removal.removeAgent(node)),
+		// A project's row: the same command, which removes the project with its threads.
+		vscode.commands.registerCommand('gemini.projects.remove', (node?: AgentTreeNode) => view.removal.removeAgent(node)),
 		vscode.commands.registerCommand('gemini.agents.removeWorkspace', (node?: AgentTreeNode) => view.removal.removeWorkspace(node)),
 		vscode.commands.registerCommand('gemini.projects.new', (node?: AgentTreeNode) => view.projectAgents.newProject(node)),
 		vscode.commands.registerCommand('gemini.projects.newThread', (node?: AgentTreeNode) => node?.kind === 'agent' && view.projects.openNewThread(node.record.id)),

@@ -22,6 +22,7 @@ import { CoordinatorTurnFailed } from '../../acp/projectHub';
 import { buildPromptContent } from '../../acp/promptContent';
 import { type JoinedPrompt, type PromptExtras, steeringNote } from '../../acp/promptQueue';
 import { reactionNote, reactionRule, type ReactionRequest } from '../../acp/reactions';
+import { planModeNote } from '../../acp/planExit';
 import { type ChatEvent, isModelOutput } from '../../acp/sessionUpdates';
 import { TeamCommandCancelled } from '../../acp/teamCommandExpansion';
 import { parseTraceFile, summarizeTrace, turnReadout } from '../../acp/traceRecording';
@@ -403,7 +404,8 @@ export class ChatTurn {
 			}
 			const carried = sessions.carriedConversation;
 			const context = this.pendingContext;
-			const note = this.options.turnNote?.();
+			// A Plan mode turn says how its plan is approved (planExit.ts).
+			const note = [this.options.turnNote?.(), this.service.client.settings.mode?.currentId === 'plan' ? planModeNote : undefined].filter(Boolean).join('\n\n') || undefined;
 			const reactionRuleDue = !!session && !this.options.project && agentReactionsOn() && !this.reactionRuleSessions.has(session);
 			if (reactionRuleDue) {
 				this.reactionRuleSessions.add(session!);

@@ -1,0 +1,20 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Pulkit Jain. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+/*
+ * Comment cards sit at the editor's right edge, over the text when the text
+ * runs the full width. While a file has comments, a wide editor keeps a margin
+ * on the right for them, and the cards fit in it. A narrow one keeps the full
+ * width for the text, as before: there is no room for a margin there.
+ */
+@media (min-width: 720px) {
+	.md-editor.gemini-has-comments {
+		padding-right: 260px;
+	}
+
+	.md-editor.gemini-has-comments .md-comment-widget {
+		max-width: 244px;
+	}
+}

@@ -8,13 +8,14 @@
 // Remove's Archive, removing a workspace from the list, and the removal the
 // team flows, Merge Back and Clean Up share (`removeAgentAndWorktree`).
 
+import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { AgentRecord, AgentsModel } from '../../acp/agents';
 import { errorMessage } from '../../acp/errors';
 import type { CheckpointStore } from '../../acp/checkpointStore';
 import type { TranscriptStore } from '../../acp/transcriptStore';
-import { AgentWorktree, removeThreadFolder, removeWorktree, repositoryRoot, worktreeStatus } from '../../acp/worktrees';
+import { AgentWorktree, coordinatorHome, removeThreadFolder, removeWorktree, repositoryRoot, threadsHome, worktreeStatus } from '../../acp/worktrees';
 import type { AgentNotifier } from '../agentNotifier';
 import type { AgentTerminals } from '../agentTerminals';
 import type { ReviewController } from '../reviewController';
@@ -106,6 +107,10 @@ export class AgentRemoval {
 		if (node?.kind !== 'agent') {
 			return;
 		}
+		if (node.record.project?.role === 'coordinator') {
+			await this.removeProject(node.record);
+			return;
+		}
 		// Its forks go too, or stay as agents of their own, as the user says.
 		const forks = host.model.forksOf(node.record.id);
 		if (forks.length) {
@@ -154,6 +159,56 @@ export class AgentRemoval {
 			host.terminals.closeAgent(node.record.id);
 			host.view.teamTools?.forgetAgent(node.record.id);
 			host.view.index?.forgetAgent(node.record.id);
+		}
+	}
+
+	/**
+	 * Removes a project: each of its threads with its folder (and, if the user
+	 * says, its branch), then the project chat and the project's own folder,
+	 * with its settings and memory. Archive puts all of them aside instead.
+	 */
+	private async removeProject(record: AgentRecord): Promise<void> {
+		const host = this.host;
+		const threads = host.model.threadsOf(record.id);
+		const archive = vscode.l10n.t("Archive");
+		const keepBranches = vscode.l10n.t("Remove, Keep Branches");
+		const deleteBranches = vscode.l10n.t("Remove and Delete Branches");
+		const remove = vscode.l10n.t("Remove");
+		const message = threads.length === 0 ? vscode.l10n.t("Remove the project \"{0}\"?", record.title)
+			: threads.length === 1 ? vscode.l10n.t("Remove the project \"{0}\" and its thread?", record.title)
+				: vscode.l10n.t("Remove the project \"{0}\" and its {1} threads?", record.title, threads.length);
+		const detail = threads.length
+			? vscode.l10n.t("This deletes the project chat, its settings and memory, and each thread's chat and folder. Its threads' branches stay in your repositories unless you delete them too.")
+			: vscode.l10n.t("This deletes the project chat, its settings and memory.");
+		const answer = await vscode.window.showWarningMessage(message, { modal: true, detail }, archive, ...threads.length ? [deleteBranches, keepBranches] : [remove]);
+		if (!answer) {
+			return;
+		}
+		if (answer === archive) {
+			for (const thread of threads) {
+				this.archiveAgent(thread.id);
+			}
+			this.archiveAgent(record.id);
+			return;
+		}
+		for (const thread of threads) {
+			await this.removeAgentAndWorktree(thread.id, answer === deleteBranches);
+			if (host.model.agent(thread.id)) {
+				// A thread whose tried work the user chose to keep trying stays, and so does its project.
+				return;
+			}
+		}
+		this.stop(record.id, false);
+		host.model.removeAgent(record.id);
+		void host.transcripts.delete(record.id);
+		void host.checkpointFiles.delete(record.id);
+		host.view.browser?.closeAgent(record.id);
+		host.terminals.closeAgent(record.id);
+		host.view.teamTools?.forgetAgent(record.id);
+		host.view.index?.forgetAgent(record.id);
+		for (const folder of [coordinatorHome(record.id), threadsHome(record.id)]) {
+			await fs.rm(folder, { recursive: true, force: true }).catch(err =>
+				vscode.window.showWarningMessage(vscode.l10n.t("The project was removed, but its folder {0} could not be: {1}", tildify(folder), errorMessage(err))));
 		}
 	}
 

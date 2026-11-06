@@ -1,6 +1,6 @@
 # Chat and prompting
 
-Each agent has a chat. The composer at the bottom is where you write, attach files, and pick the mode and the model. Most of what it offers sits in its **+** menu.
+You work with an agent by talking to it. Each agent has a chat: you write what you want, attach whatever it should look at, and read its replies as it works. The composer at the bottom is where you write, attach files, and pick the mode and the model; most of what it offers sits in its **+** menu.
 
 ![The composer's + menu with Fork, the modes, Files, Context, Follow the agent, Open Terminal and the team tools](../../site/media/docs/plus-menu-dark.webp)
 
@@ -102,6 +102,8 @@ The chevron beside **Approve Plan** offers the CLI's own approval choices, in it
 - **Not yet** leaves the plan as it is.
 
 A choice shows only when its mode is on offer, so with Auto Edit turned off the first one is missing.
+
+Some models end a Plan mode turn by asking the Gemini CLI to approve the plan themselves. GeminiCode leaves the approving to **Approve Plan**: the request is declined for you, the step reads **Plan ready for review** with the plan's file name, and the chat stays in Plan mode.
 
 If you switch to another model after planning, a line under the button names both: "Builds with ...; planned with ...". With the model on Auto there is no such line, because the Gemini CLI doesn't say ahead which model Auto will pick.
 
@@ -212,7 +214,7 @@ The panel shows each part as it is read. **Stop** ends every worker and reports 
 ## Replies
 
 - Code is coloured as in the editor, and the button at the top of a code block copies it. A shell command also has **Run in Terminal**, which runs it in the agent's terminal; see [Terminal](terminal.md#run-a-command-from-a-reply).
-- A file name in a reply, such as `src/cart/total.ts:11`, opens the file at that line.
+- A file name in a reply, such as `src/cart/total.ts:11`, opens the file at that line. The name of a plan the chat wrote, or of a Markdown file the agent created, opens it where its chip would: the plan in Plan Review, the file in the Markdown editor.
 - Math written as `$...$`, `$$...$$`, `\(...\)` or `\[...\]` is typeset; prices and shell variables stay plain text.
 - Notes, tips, important points, warnings and cautions show as coloured callouts.
 

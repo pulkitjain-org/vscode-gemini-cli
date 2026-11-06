@@ -1,5 +1,5 @@
 diff --git a/build/filters.ts b/build/filters.ts
-index b5f5695ba213487f5f5247a4af2a7f4a886b981a..dd1f5970c3dc50df4104ddeeaa9e33aea6bcd85b 100644
+index b5f5695ba213487f5f5247a4af2a7f4a886b981a..2cfa9e7a4f72f498a887ca2cc9e91d8d3475c7f2 100644
 --- a/build/filters.ts
 +++ b/build/filters.ts
 @@ -43,6 +43,7 @@ export const unicodeFilter = Object.freeze<string[]>([
@@ -45,10 +45,10 @@ index b5f5695ba213487f5f5247a4af2a7f4a886b981a..dd1f5970c3dc50df4104ddeeaa9e33ae
  
  export const copyrightFilter = Object.freeze<string[]>([
  	'**',
-+	// GEMINI-FORK: fork files carry their own header, checked by ESLint; so do the files the fork adds under src/vs
++	// GEMINI-FORK: fork files carry their own header, checked by ESLint; so do the files the fork adds under src/vs, and those named gemini* beside upstream code elsewhere
 +	'!extensions/gemini/**',
 +	'!gemini/**',
-+	...readFileSync(join(import.meta.dirname, '..', 'gemini', 'patches', 'ADDED'), 'utf8').split(/\r?\n/).filter(line => line.startsWith('src/vs/')).map(line => `!${line}`),
++	...readFileSync(join(import.meta.dirname, '..', 'gemini', 'patches', 'ADDED'), 'utf8').split(/\r?\n/).filter(line => line.startsWith('src/vs/') || /(^|\/)gemini[^/]*$/.test(line)).map(line => `!${line}`),
  	'!**/*.desktop',
  	'!**/*.json',
  	'!**/*.jsonc',

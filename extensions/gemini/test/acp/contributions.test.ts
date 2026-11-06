@@ -107,11 +107,11 @@ describe('package.json', () => {
 		expect(title.find(entry => entry.command === 'gemini.projects.new')?.when).toBe('view == gemini.agents && config.gemini.projects.enabled');
 	});
 
-	it('gives an agent row Open, Rename, Fork, Stop, More and Remove, and a workspace row its starts, Index and Remove', () => {
+	it('gives an agent row Open, Rename, Fork, Stop, More and Remove (Remove Project on a project\'s), and a workspace row its starts, Index and Remove', () => {
 		const rows = contributes.menus['view/item/context'].filter(entry => !entry.group?.startsWith('inline'));
 		const on = (row: RegExp) => rows.filter(entry => row.test(entry.when ?? '')).map(entry => `${entry.command ?? `submenu ${entry.submenu}`} ${entry.group}`);
 		expect({ agent: on(/\^agent|\\\.(forkable|busy)/), workspace: on(/\^workspace/) }).toEqual({
-			agent: ['gemini.agents.open 1_agent@1', 'gemini.agents.rename 1_agent@2', 'gemini.agents.fork 1_agent@3', 'gemini.agents.stop 1_agent@4', 'submenu gemini.agents.more 2_more@1', 'gemini.agents.remove 3_remove@1'],
+			agent: ['gemini.agents.open 1_agent@1', 'gemini.agents.rename 1_agent@2', 'gemini.agents.fork 1_agent@3', 'gemini.agents.stop 1_agent@4', 'submenu gemini.agents.more 2_more@1', 'gemini.agents.remove 3_remove@1', 'gemini.projects.remove 3_remove@1'],
 			workspace: ['gemini.agents.newAgent 1_agent@1', 'gemini.agents.newAgentOnBranch 1_agent@2', 'gemini.projects.new 1_agent@3', 'submenu gemini.agents.index 2_more@1', 'gemini.agents.removeWorkspace 3_remove@1'],
 		});
 		// Nothing is left on a section row: the list has none.

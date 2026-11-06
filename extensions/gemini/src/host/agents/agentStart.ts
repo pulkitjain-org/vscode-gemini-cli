@@ -10,6 +10,7 @@
 // session state wired back to the list. The pane keeps the agents started
 // here in its `live` map.
 
+import { planApprovalAnswer } from '../../acp/planExit';
 import { errorsNotice } from '../../acp/editorTools';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -168,7 +169,8 @@ export class AgentStarter {
 			session.client.setModeOnNextSession(startMode);
 		}
 		session.permissions.confirmOnly = request => !!host.view.teamTools?.isConfirmCall(request);
-		session.permissions.answerAtOnce = request => (project ? host.projects.instantAnswer(host.model.agent(record.id) ?? record, request) : undefined)
+		// The CLI's own plan approval is declined without a card: Approve Plan under the reply approves plans (planExit.ts).
+		session.permissions.answerAtOnce = request => planApprovalAnswer(request) ?? (project ? host.projects.instantAnswer(host.model.agent(record.id) ?? record, request) : undefined)
 			?? host.view.teamTools?.instantAnswer(request) ?? (host.view.reviewChip?.(record.id) ? reviewerGitAnswer(request) : undefined);
 		// A folder of the window lists the window's files it may reach: its own, and the others with `gemini.agents.allWorkspaceFolders`.
 		// A folder outside the window lists its files from its index once that is built, else from git.
@@ -178,9 +180,15 @@ export class AgentStarter {
 			const workspace = host.model.workspace(record.workspaceId);
 			const current = host.model.agent(record.id) ?? record;
 			// A coordinator of a project with several repositories shows each; a thread across them, its worktree of each.
-			const threadRepos = current.repos?.filter(repo => !repo.merged).map(repo => ({ name: repo.key, folder: repo.cwd }));
+			const open = current.repos?.filter(repo => !repo.merged);
+			const threadRepos = open?.map(repo => ({ name: repo.key, folder: repo.cwd }));
 			const repos = current.project?.role === 'coordinator' && projectsEnabled() ? host.projects.repoFolders(current.id) : threadRepos && threadRepos.length > 1 ? threadRepos : undefined;
-			return workspace && { folder: workspace.folder, cwd: folder, worktree: !!current.worktree, ...(repos ? { repos } : {}) };
+			// A thread in one of a project's repositories is named by that repository, not the project's own.
+			if (!workspace) {
+				return undefined;
+			}
+			const own = open?.length === 1 ? open[0].repository : workspace.folder;
+			return { folder: own, cwd: folder, worktree: !!current.worktree, ...(repos ? { repos } : {}) };
 		};
 		const live: LiveAgent = {
 			session,
