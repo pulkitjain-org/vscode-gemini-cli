@@ -4,8 +4,10 @@
  *--------------------------------------------------------------------------------------------*/
 
 // The MCP servers GeminiCode gives agent sessions (the browser's, the team tools' and a project's):
-// Streamable HTTP with plain JSON replies (no event stream, which the protocol allows) on
-// 127.0.0.1, answering `initialize`, `ping`, `tools/list` and `tools/call`. Each route, such as an
+// Streamable HTTP on 127.0.0.1, answering `initialize`, `ping`, `tools/list` and `tools/call`.
+// Replies are plain JSON, except a `tools/call` from a client that accepts an event stream: that
+// one is answered as a stream at once and kept alive until the tool is done, since the CLI's fetch
+// gives up on a reply whose headers take 5 minutes (a long `research`). Each route, such as an
 // agent's id, has its own URL and token (an HMAC of the route), so one session's token reaches
 // no other route.
 
@@ -36,16 +38,16 @@ export interface LocalMcpServerOptions<C> {
 	call(caller: C, name: string, args: Record<string, unknown>): Promise<McpToolResult>;
 	/** Sees each authorised request's messages before they are answered. */
 	onMessages?(route: string, messages: readonly JsonRpcRequest[]): void;
-	/** How often an open notification stream gets a comment; `streamKeepAliveMs` by default. */
+	/** How often an open stream (notifications, or a tool call's reply) gets a comment or progress; `streamKeepAliveMs` by default. */
 	readonly streamKeepAliveMs?: number;
 }
 
 /** The largest request body read; tool calls are small. */
 const maxBodyBytes = 1024 * 1024;
 /**
- * The CLI's fetch (undici) ends a response that sends nothing for 5 minutes ("SSE stream
- * disconnected: TypeError: terminated", which it reports as an MCP error), so a stream with
- * no notices for that long gets a comment well before.
+ * The CLI's fetch (undici) gives up on a reply that sends nothing for 5 minutes: on its headers
+ * ("fetch failed", a tool call answered only when done) or within its body ("SSE stream
+ * disconnected: TypeError: terminated"). So a stream gets a comment well before.
  */
 export const streamKeepAliveMs = 60_000;
 /** A route: one to three parts of letters, digits, `-` and `_`, such as `agent-1` or `project/thread/t1`. */
@@ -111,7 +113,7 @@ export class LocalMcpServer<C> {
 			return 0;
 		}
 		for (const stream of streams) {
-			stream.write(`event: message\ndata: ${JSON.stringify({ jsonrpc: '2.0', method: 'notifications/tools/list_changed' })}\n\n`);
+			stream.write(sseMessage({ jsonrpc: '2.0', method: 'notifications/tools/list_changed' }));
 		}
 		return streams.size;
 	}
@@ -199,11 +201,44 @@ export class LocalMcpServer<C> {
 		}
 		const messages = (Array.isArray(body) ? body : [body]) as JsonRpcRequest[];
 		this.options.onMessages?.(route, messages);
+		const single = messages[0];
+		if (!Array.isArray(body) && single?.method === 'tools/call' && single.id !== undefined && single.id !== null && /\btext\/event-stream\b/.test(req.headers.accept ?? '')) {
+			return this.streamAnswer(res, caller, single);
+		}
 		const answers = (await Promise.all(messages.map(m => this.answer(caller, m)))).filter(a => a !== undefined);
 		if (!answers.length) {
 			return void res.writeHead(202).end();
 		}
 		reply(res, 200, Array.isArray(body) ? answers : answers[0]);
+	}
+
+	/**
+	 * Answers a tool call as an event stream: headers at once, then a comment (or, when the call
+	 * gave a progress token, a progress notice) every `streamKeepAliveMs`, then the answer.
+	 */
+	private async streamAnswer(res: http.ServerResponse, caller: C, message: JsonRpcRequest): Promise<void> {
+		res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
+		const meta = message.params?._meta;
+		const token = meta && typeof meta === 'object' ? (meta as { progressToken?: unknown }).progressToken : undefined;
+		const progressToken = typeof token === 'string' || typeof token === 'number' ? token : undefined;
+		let progress = 0;
+		const keepAlive = setInterval(() => {
+			if (!res.destroyed) {
+				res.write(progressToken === undefined ? ': ping\n\n' : sseMessage({ jsonrpc: '2.0', method: 'notifications/progress', params: { progressToken, progress: ++progress } }));
+			}
+		}, this.options.streamKeepAliveMs ?? streamKeepAliveMs);
+		res.once('close', () => clearInterval(keepAlive));
+		let answer: unknown;
+		try {
+			answer = await this.answer(caller, message);
+		} catch (err) {
+			answer = { jsonrpc: '2.0', id: message.id, error: { code: -32603, message: err instanceof Error ? err.message : String(err) } };
+		} finally {
+			clearInterval(keepAlive);
+		}
+		if (!res.destroyed) {
+			res.end(sseMessage(answer));
+		}
 	}
 
 	/** The reply to one message; undefined for a notification. */
@@ -262,6 +297,11 @@ function readBody(req: http.IncomingMessage): Promise<string> {
 		req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
 		req.on('error', reject);
 	});
+}
+
+/** One JSON-RPC message as an event of a stream. */
+function sseMessage(message: unknown): string {
+	return `event: message\ndata: ${JSON.stringify(message)}\n\n`;
 }
 
 function reply(res: http.ServerResponse, status: number, body: unknown): void {

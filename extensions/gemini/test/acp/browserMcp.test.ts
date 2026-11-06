@@ -493,7 +493,13 @@ describe('BrowserMcpServer', () => {
 
 	async function post(url: string, headers: Record<string, string>, body: unknown) {
 		const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', ...headers }, body: JSON.stringify(body) });
-		return { status: res.status, json: res.status === 200 ? await res.json() : undefined };
+		if (res.status !== 200) {
+			return { status: res.status, json: undefined };
+		}
+		// A tool call is answered as an event stream whose last event is the answer, as the CLI reads it.
+		const text = await res.text();
+		const events = text.split('\n\n').filter(event => event.startsWith('event: message'));
+		return { status: res.status, json: JSON.parse(events.length ? events[events.length - 1].slice(events[events.length - 1].indexOf('data: ') + 6) : text) };
 	}
 
 	it('speaks MCP over HTTP to the agent it was given to, with the token', async () => {

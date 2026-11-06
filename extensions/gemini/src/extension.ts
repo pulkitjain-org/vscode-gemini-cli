@@ -24,7 +24,7 @@ import { PromptEnhancer } from './acp/promptEnhancer';
 import { configSection, getAgentCommand, getProjectSettings, getWorkspaceCwd, loadProductInfo, productInfo, setAgentEnvOverride, setStorageDirs } from './host/configuration';
 import { initModelList, initModelPreference, knownModelList } from './host/modelPreference';
 import { initReactionRecents } from './host/chatReactions';
-import { defaultConcurrency } from './acp/research';
+import { agentResearchMs, defaultConcurrency } from './acp/research';
 import { SetupState } from './host/setupState';
 import { describeCliSource, GeminiStatusBar } from './host/statusBar';
 import { findCliEntry, QuickEdits } from './host/quickEdits';
@@ -186,7 +186,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 			concurrency: defaultConcurrency,
 			onProgress: progress => progress.state === 'done' || progress.state === 'failed' ? log.info(`Research for an agent in ${folder}: ${progress.state}, ${progress.slices.length} parts`) : undefined,
 		});
-		return run.run();
+		// Stopped in time to answer before the CLI's own limit on a tool call.
+		const deadline = setTimeout(() => run.stop(), agentResearchMs);
+		try {
+			return await run.run();
+		} finally {
+			clearTimeout(deadline);
+		}
 	};
 	// What every model call in a folder carries: Agent Setup's Context per model call, and the chat's usage popover (/context).
 	const measureContext = (folder: string, servers: readonly string[]) => measureFolderContextCost({

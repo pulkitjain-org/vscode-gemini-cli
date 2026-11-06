@@ -85,6 +85,57 @@ describe('local MCP server', () => {
 		await reader.cancel();
 	});
 
+	it('answers a slow tool call as a stream at once, kept alive until the answer, and in JSON for a client without streams', async () => {
+		let finish: () => void = () => undefined;
+		const server = new LocalMcpServer<string>({
+			name: 'test-server',
+			version: '1',
+			callerOf: route => route,
+			instructions: () => '',
+			tools: () => [],
+			call: async (_caller, name) => {
+				if (name === 'slow') {
+					await new Promise<void>(resolve => finish = resolve);
+				}
+				return { content: [{ type: 'text', text: `${name} done` }] };
+			},
+			streamKeepAliveMs: 20,
+		});
+		servers.push(server);
+		await server.start();
+		const config = server.configFor('agent-1')!;
+		const call = (id: number, name: string, meta?: object) => fetch(config.url, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', Authorization: config.headers[0].value },
+			body: JSON.stringify({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: {}, ...meta ? { _meta: meta } : {} } }),
+		});
+		const decoder = new TextDecoder();
+		// The headers come before the tool is done, then comments until it is.
+		const slow = await call(1, 'slow');
+		const reader = slow.body!.getReader();
+		const pinged = decoder.decode((await reader.read()).value);
+		finish();
+		let rest = '';
+		for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) {
+			rest += decoder.decode(chunk.value);
+		}
+		const answer = rest.split('\n\n').filter(event => event.startsWith('event: message')).map(event => JSON.parse(event.slice(event.indexOf('data: ') + 6)));
+		// With a progress token, progress notices instead of comments.
+		const tracked = await call(2, 'slow', { progressToken: 'p1' });
+		const trackedReader = tracked.body!.getReader();
+		const noticed = decoder.decode((await trackedReader.read()).value);
+		finish();
+		await trackedReader.cancel();
+		const plain = await post(config, { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'quick' } });
+		expect({ type: slow.headers.get('content-type'), pinged, answer, noticed, plain }).toEqual({
+			type: 'text/event-stream',
+			pinged: ': ping\n\n',
+			answer: [{ jsonrpc: '2.0', id: 1, result: { content: [{ type: 'text', text: 'slow done' }] } }],
+			noticed: 'event: message\ndata: {"jsonrpc":"2.0","method":"notifications/progress","params":{"progressToken":"p1","progress":1}}\n\n',
+			plain: { status: 200, body: { jsonrpc: '2.0', id: 3, result: { content: [{ type: 'text', text: 'quick done' }] } } },
+		});
+	});
+
 	it('refuses requests from a browser page or another host before looking at the token', async () => {
 		const server = new LocalMcpServer<string>({ name: 'test-server', version: '1', callerOf: route => route, instructions: () => '', tools: () => [], call: async () => ({ content: [] }) });
 		servers.push(server);
