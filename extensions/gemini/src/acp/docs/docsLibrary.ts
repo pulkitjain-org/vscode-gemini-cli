@@ -44,6 +44,14 @@ export interface Section {
 	readonly text: string;
 }
 
+/** A page ready to write: its sections, or none when its Markdown is what the store has. */
+interface ConvertedPage {
+	readonly page: DocsPage;
+	readonly title: string;
+	readonly hash: string;
+	readonly sections?: readonly Section[];
+}
+
 type Sqlite = typeof import('node:sqlite');
 
 export class DocsLibrary {
@@ -55,20 +63,28 @@ export class DocsLibrary {
 	async ingest({ source, pages, unchanged, complete }: { source: DocsSourceInput; pages: readonly DocsPage[]; unchanged: readonly string[]; complete: boolean }): Promise<DocsSourceStatus> {
 		await this.db(source.id);
 		const run = (sql: string, ...args: (string | number | bigint | null)[]) => this.statement(source.id, sql).run(...args);
-		await this.sliced(source.id, pages, page => {
-			const converted = page.type === 'html' ? htmlToMarkdown(page.body, page.url) : { title: titleOfMarkdown(page.body) ?? page.url, markdown: page.body };
-			const hash = createHash('sha1').update(converted.markdown).digest('hex');
+		// Converting a page is the slow part (a large HTML page takes longer than a slice), so it
+		// happens before the write, with a yield after each page, and no transaction holds it.
+		const converted: ConvertedPage[] = [];
+		for (const page of pages) {
+			const { title, markdown } = page.type === 'html' ? htmlToMarkdown(page.body, page.url) : { title: titleOfMarkdown(page.body) ?? page.url, markdown: page.body };
+			const hash = createHash('sha1').update(markdown).digest('hex');
+			await this.db(source.id);
 			const existing = this.statement(source.id, 'SELECT hash FROM pages WHERE url = ?').get(page.url) as { hash: string } | undefined;
-			run('INSERT OR REPLACE INTO pages(url, title, hash, run, etag, last_modified) VALUES (?, ?, ?, ?, ?, ?)', page.url, converted.title || page.url, hash, source.run, page.etag ?? null, page.lastModified ?? null);
-			if (existing?.hash === hash) {
+			converted.push({ page, title, hash, sections: existing?.hash === hash ? undefined : sectionsOf(markdown) });
+			await new Promise<void>(resolve => setImmediate(resolve));
+		}
+		await this.sliced(source.id, converted, ({ page, title, hash, sections }) => {
+			run('INSERT OR REPLACE INTO pages(url, title, hash, run, etag, last_modified) VALUES (?, ?, ?, ?, ?, ?)', page.url, title || page.url, hash, source.run, page.etag ?? null, page.lastModified ?? null);
+			if (!sections) {
 				return;
 			}
 			this.removeSections(source.id, page.url);
-			for (const section of sectionsOf(converted.markdown)) {
+			for (const section of sections) {
 				const id = run('INSERT INTO sections(url, heading, text) VALUES (?, ?, ?)', page.url, section.heading, section.text).lastInsertRowid;
-				run('INSERT INTO sections_fts(rowid, text, heading, title) VALUES (?, ?, ?, ?)', id, section.text, section.heading, converted.title);
+				run('INSERT INTO sections_fts(rowid, text, heading, title) VALUES (?, ?, ?, ?)', id, section.text, section.heading, title);
 			}
-			const site = siteTitleOf(converted.title, page.type === 'html', page.url, source.url);
+			const site = siteTitleOf(title, page.type === 'html', page.url, source.url);
 			if (site && (!this.meta(source.id, 'title') || site.start)) {
 				run('INSERT OR REPLACE INTO meta(key, value) VALUES (\'title\', ?)', site.title);
 			}

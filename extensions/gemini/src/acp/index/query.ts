@@ -10,7 +10,7 @@
 import { bodyLines } from './format';
 import { splitIdentifier } from './identifiers';
 import { IgnoreRules } from './ignore';
-import { IndexStore, unpackText } from './indexStore';
+import { IndexStore, prefixRange, unpackText } from './indexStore';
 
 export interface SearchQuery {
 	readonly query: string;
@@ -34,6 +34,8 @@ export interface SearchResult {
 	readonly total: number;
 	/** The words searched for, for pointing at the matching lines. */
 	readonly terms: readonly string[];
+	/** Only the first `maxScanned` matches were checked against `path`: matches further down the ranking may be missing. */
+	readonly capped?: boolean;
 }
 
 export interface SymbolHit {
@@ -71,6 +73,10 @@ const defaultLimit = 8;
 const maxReferences = 60;
 /** Chunks BM25 hands to re-ranking; their text is read only for the ones returned. */
 const candidatePool = 150;
+/** With a `path` glob, the matches read first; when too few of them are under it, the ranking is read on. */
+const filteredPool = 400;
+/** The most matches checked against a `path` glob: a common word in a large repository matches far more. */
+export const maxScanned = 5_000;
 /** Words that only make a question a question. */
 const stopWords = new Set(['a', 'an', 'the', 'is', 'are', 'was', 'be', 'of', 'to', 'in', 'on', 'at', 'by', 'for', 'from', 'with', 'and', 'or', 'not', 'it', 'its', 'this', 'that', 'these', 'those', 'where', 'what', 'which', 'who', 'how', 'why', 'when', 'does', 'do', 'did', 'can', 'should', 'we', 'i', 'you', 'all', 'any', 'some', 'there', 'here', 'into', 'about', 'find', 'show', 'me', 'get']);
 
@@ -116,9 +122,12 @@ export function search(store: IndexStore, query: SearchQuery): SearchResult {
 	}
 	const filter = query.path ? new IgnoreRules([query.path]) : undefined;
 	const wanted = (hit: { readonly path: string }) => !filter || filter.ignores(hit.path);
+	// A plain folder narrows the ranking itself; a glob is checked on the ranked matches.
+	const folder = query.path ? plainFolder(query.path) : undefined;
 	const hits: SearchHit[] = [];
 	const seen = new Set<number>();
 	let total = 0;
+	let capped = false;
 	// A name in the query (applyDiscount, CartService, DISCOUNT_RULES) puts the chunk that defines it first.
 	for (const row of definitionChunks(store, query.query, query.lang)) {
 		if (!seen.has(row.id) && wanted(row) && hits.length < limit) {
@@ -129,7 +138,9 @@ export function search(store: IndexStore, query: SearchQuery): SearchResult {
 	// Every word first; then any of them, for what the strict search missed.
 	for (const expression of groups.length > 1 ? [groups.join(' AND '), groups.join(' OR ')] : [groups[0]]) {
 		// A wide pool, so re-ranking can lift code above the tests that outrank it in BM25.
-		const rows = rerank(runMatch(store, expression, query.lang, filter ? 400 : candidatePool), query.query, words);
+		const candidates = filter ? filteredMatches(store, expression, query.lang, folder, wanted, limit) : { rows: runMatch(store, expression, query.lang, candidatePool), capped: false };
+		capped ||= candidates.capped;
+		const rows = rerank(candidates.rows, query.query, words);
 		const matching = rows.filter(row => !seen.has(row.id) && wanted(row));
 		total = Math.max(total, matching.length + hits.length);
 		for (const row of matching) {
@@ -142,7 +153,38 @@ export function search(store: IndexStore, query: SearchQuery): SearchResult {
 			break;
 		}
 	}
-	return { hits, total, terms: words };
+	return { hits, total, terms: words, ...capped ? { capped } : {} };
+}
+
+/**
+ * The folder a path filter names outright (`src/cart`, `/src/cart/`), when
+ * it is one: no glob, no negation, and a slash, which anchors it to the folder
+ * as it does in .gitignore. A bare name (`cart`, `*.ts`) matches at any depth.
+ */
+function plainFolder(pattern: string): string | undefined {
+	const text = pattern.trim();
+	if (text.startsWith('!') || /[*?[\]\\]/.test(text) || !text.includes('/')) {
+		return undefined;
+	}
+	return text.replace(/^\/+/, '').replace(/\/+$/, '') || undefined;
+}
+
+/**
+ * The ranked matches under a path filter: the first `filteredPool`, then,
+ * when too few of them are wanted, the ranking on to `maxScanned`. A folder
+ * is put in the query, so a common word elsewhere never hides its matches;
+ * a glob is checked here, and `capped` says when the ranking went on past
+ * what was checked.
+ */
+function filteredMatches(store: IndexStore, expression: string, lang: string | undefined, folder: string | undefined, wanted: (row: ChunkRow) => boolean, needed: number): { rows: ChunkRow[]; capped: boolean } {
+	const first = runMatch(store, expression, lang, filteredPool, folder);
+	const rows = first.filter(wanted);
+	if (rows.length >= needed || first.length < filteredPool) {
+		return { rows, capped: false };
+	}
+	const more = runMatch(store, expression, lang, maxScanned - filteredPool, folder, filteredPool);
+	rows.push(...more.filter(wanted));
+	return { rows, capped: more.length >= maxScanned - filteredPool && rows.length < needed };
 }
 
 interface ChunkRow {
@@ -218,13 +260,14 @@ function chunkText(store: IndexStore, id: number): string {
 	return row ? unpackText(row.body) : '';
 }
 
-function runMatch(store: IndexStore, expression: string, lang: string | undefined, limit: number): ChunkRow[] {
+/** The `limit` best matches from `offset` on, in `folder` (the file of that path, or everything under it) when given. */
+function runMatch(store: IndexStore, expression: string, lang: string | undefined, limit: number, folder?: string, offset = 0): ChunkRow[] {
 	const sql = `SELECT c.id AS id, c.path AS path, c.start_line AS startLine, c.end_line AS endLine, c.symbol AS symbol
 		FROM chunks_fts JOIN chunks c ON c.id = chunks_fts.rowid
-		WHERE chunks_fts MATCH ?${lang ? ' AND c.path IN (SELECT path FROM files WHERE lang = ?)' : ''}
-		ORDER BY bm25(chunks_fts, 1.0, 3.0, 2.0, 6.0) LIMIT ?`;
+		WHERE chunks_fts MATCH ?${lang ? ' AND c.path IN (SELECT path FROM files WHERE lang = ?)' : ''}${folder ? ' AND (c.path = ? OR (c.path >= ? AND c.path < ?))' : ''}
+		ORDER BY bm25(chunks_fts, 1.0, 3.0, 2.0, 6.0) LIMIT ? OFFSET ?`;
 	try {
-		return store.statement(sql).all(...lang ? [expression, lang.toLowerCase(), limit] : [expression, limit]) as unknown as ChunkRow[];
+		return store.statement(sql).all(expression, ...lang ? [lang.toLowerCase()] : [], ...folder ? [folder, ...prefixRange(`${folder}/`)] : [], limit, offset) as unknown as ChunkRow[];
 	} catch {
 		// A query FTS5 can't parse finds nothing rather than failing the tool.
 		return [];

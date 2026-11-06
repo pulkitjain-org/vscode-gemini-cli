@@ -177,9 +177,37 @@ describe('crawl, from a public address', () => {
 		expect(asked.filter(url => !url.startsWith('https://docs.example.com/'))).toEqual([]);
 	});
 
-	it('knows private, loopback, link-local and shared addresses', () => {
+	it('knows private, loopback, link-local and shared addresses, in their IPv6 forms too', () => {
 		expect(['10.0.0.1', '172.16.5.4', '172.32.0.1', '192.168.1.1', '127.0.0.1', '169.254.169.254', '100.64.0.1', '8.8.8.8', '::1', 'fd00::1', 'fe80::1', '::ffff:10.0.0.1', '2001:4860::8888'].map(isPrivateAddress))
 			.toEqual([true, true, false, true, true, true, true, false, true, true, true, true, false]);
+		// An IPv4-mapped address as the URL parser writes it, the NAT64 form, and the unspecified addresses.
+		expect(['::ffff:7f00:1', '[::ffff:7f00:1]', '::FFFF:A9FE:A9FE', '64:ff9b::7f00:1', '0.0.0.0', '::', '::ffff:808:808', '64:ff9b::808:808', 'not-an-address'].map(isPrivateAddress))
+			.toEqual([true, true, true, true, true, true, false, true, false]);
+		expect(new URL('http://[::ffff:127.0.0.1]:8080/x').hostname).toBe('[::ffff:7f00:1]');
+	});
+
+	it('never follows a redirect to a loopback address written as IPv6, nor a site file to another origin', async () => {
+		const asked: string[] = [];
+		const answers: Record<string, () => Response> = {
+			'https://docs.example.com/guide/llms-full.txt': () => new Response(null, { status: 302, headers: { Location: 'https://other.example.com/llms-full.txt' } }),
+			'https://other.example.com/llms-full.txt': () => new Response('# Everything\n\nAll the docs.', { headers: { 'Content-Type': 'text/plain' } }),
+			'https://docs.example.com/guide/llms.txt': () => new Response(null, { status: 302, headers: { Location: 'http://[::ffff:127.0.0.1]:8080/llms.txt' } }),
+			'https://docs.example.com/guide/': () => new Response('<main><h1>Guide</h1></main>', { headers: { 'Content-Type': 'text/html' } }),
+		};
+		const fakeFetch = (async (url: string | URL | Request) => {
+			const href = String(url);
+			asked.push(href);
+			return answers[href]?.() ?? new Response('', { status: 404 });
+		}) as typeof fetch;
+		const pages: string[] = [];
+		const result = await crawl({
+			url: 'https://docs.example.com/guide/', scope: 'prefix', maxPages: 10, validators: {}, fetch: fakeFetch, delayMs: 0,
+			lookup: async () => ['93.184.216.34'],
+			onBatch: async batch => { pages.push(...batch.map(p => p.url)); },
+		});
+		expect(result).toMatchObject({ mode: 'links', fetched: 1 });
+		expect(pages).toEqual(['https://docs.example.com/guide/']);
+		expect(asked.filter(url => !url.startsWith('https://docs.example.com/'))).toEqual([]);
 	});
 
 	it('stops reading a body past its cap, whatever length the server gives', async () => {

@@ -92,6 +92,8 @@ interface Workspace {
 	/** The commit the last turn-end update looked from. */
 	turnHead: string | undefined;
 	reopenTimer: ReturnType<typeof setTimeout> | undefined;
+	/** How often the store was closed, so a job whose store went under it knows not to report the error. */
+	closed: number;
 }
 
 /** The folder's files for import resolution: a set, and paths by file name. */
@@ -188,6 +190,8 @@ export class Indexer {
 			}
 			if (relative === '.geminiignore' || relative === '.gitignore' || relative.endsWith('/.gitignore')) {
 				workspace.rules = undefined;
+				// A running `git check-ignore` keeps the rules it read: the next save is checked by a fresh one.
+				this.ignored.reset();
 				workspace.needsReconcile = true;
 			}
 			workspace.pending.add(relative);
@@ -231,6 +235,9 @@ export class Indexer {
 
 	async rebuild({ root, settings }: { root: string; settings: IndexSettings }): Promise<IndexStatus> {
 		const workspace = await this.workspace(root, settings);
+		// A job under way stops at its next slice; closing the store under it would fail it instead.
+		workspace.paused = true;
+		await workspace.running;
 		await this.closeStore(workspace);
 		await fs.rm(workspace.dir, { recursive: true, force: true });
 		workspace.state = { kind: 'none' };
@@ -268,6 +275,7 @@ export class Indexer {
 			workspace.paused = true;
 			workspace.wanted = false;
 			clearTimeout(workspace.reopenTimer);
+			await workspace.running;
 			await this.closeStore(workspace);
 			this.workspaces.delete(root);
 		}
@@ -473,7 +481,7 @@ export class Indexer {
 				return {
 					root, dir, file: path.join(dir, 'index.db'), settings, store: undefined, lock: undefined, state: { kind: 'none' },
 					pending: new Set(), needsReconcile: false, paused: false, running: undefined, opening: undefined, known: undefined, rules: undefined, lastStatusAt: 0, skipped: [],
-					realRoot: undefined, wanted: false, evicted: false, usedAt: this.now(), turnHead: undefined, reopenTimer: undefined,
+					realRoot: undefined, wanted: false, evicted: false, usedAt: this.now(), turnHead: undefined, reopenTimer: undefined, closed: 0,
 				} satisfies Workspace;
 			});
 			this.workspaces.set(root, pending);
@@ -521,7 +529,11 @@ export class Indexer {
 		try {
 			await fs.mkdir(workspace.dir, { recursive: true });
 			workspace.lock = await IndexLock.acquire(workspace.dir);
-			workspace.store = workspace.lock || !await exists(workspace.file)
+			if (!workspace.lock && !await exists(workspace.file)) {
+				// Another window holds the lock and hasn't written the file yet: read it once it is there.
+				throw new Error('Another window is building this index.');
+			}
+			workspace.store = workspace.lock
 				? await IndexStore.open(workspace.file)
 				: await IndexStore.open(workspace.file, { readOnly: true });
 			if (workspace.store.readOnly) {
@@ -550,6 +562,7 @@ export class Indexer {
 	}
 
 	private async closeStore(workspace: Workspace): Promise<void> {
+		workspace.closed++;
 		workspace.store?.close();
 		workspace.store = undefined;
 		await workspace.lock?.release();
@@ -623,6 +636,7 @@ export class Indexer {
 			return;
 		}
 		this.setBusy(1);
+		const closed = workspace.closed;
 		workspace.running = (async () => {
 			while (!workspace.paused && workspace.store && (workspace.needsReconcile || workspace.pending.size)) {
 				if (!await this.takeOver(workspace)) {
@@ -642,6 +656,10 @@ export class Indexer {
 				}
 			}
 		})().catch(async err => {
+			if (workspace.closed !== closed) {
+				// The store was closed under the job (a rebuild, a recovery): the next job starts from the new one.
+				return;
+			}
 			if (isCorruption(err)) {
 				await this.recover(workspace.root, err);
 				return;
@@ -674,6 +692,7 @@ export class Indexer {
 		const headBefore = store.meta('head');
 		const inventory = await takeInventory(workspace.root, workspace.settings);
 		workspace.rules = undefined;
+		this.ignored.reset();
 		workspace.skipped = inventory.skipped.slice(0, maxSkippedKept).map(s => ({ path: s.path, reason: s.reason }));
 		const states = store.fileStates();
 		const listed = new Set(inventory.files.map(f => f.path));
@@ -857,7 +876,12 @@ export class Indexer {
 	}
 
 	private statusOf(workspace: Workspace): IndexStatus {
-		return { root: workspace.root, state: workspace.state, readOnly: !!workspace.store && !workspace.lock };
+		let state = workspace.state;
+		if (state.kind === 'ready' && workspace.store && !workspace.store.readOnly) {
+			// The counts as the store has them now, so a status asked between a commit and its event doesn't lag it.
+			state = { ...state, ...workspace.store.counts() };
+		}
+		return { root: workspace.root, state, readOnly: !!workspace.store && !workspace.lock };
 	}
 
 	private setState(workspace: Workspace, state: IndexState, force: boolean): void {

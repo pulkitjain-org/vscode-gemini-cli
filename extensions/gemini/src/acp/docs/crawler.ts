@@ -14,13 +14,14 @@
 //
 // It runs with the user's network access (VPN included), so it only goes
 // where it was sent: redirects are followed by hand, each hop checked against
-// gemini.docs.allowedDomains and the source's scope, sitemaps named by
+// gemini.docs.allowedDomains and the source's scope (a site's own files, such
+// as llms.txt and sitemaps, stay on the origin asked), sitemaps named by
 // robots.txt or a sitemap index likewise, and no request goes to a private or
 // loopback address unless the source's own address is one. Bodies are read
 // through a byte cap, whatever the server says their length is.
 
 import { promises as dns } from 'node:dns';
-import { isIP } from 'node:net';
+import { BlockList, isIP } from 'node:net';
 import type { DocsPage } from '../index/indexerProtocol';
 import { domainAllowed, type DocsScope } from './docsProtocol';
 
@@ -281,9 +282,11 @@ async function discover(start: URL, inScope: (url: string) => boolean, robotsSit
 	return urls.length ? { mode: 'sitemap', urls: [...new Set(urls)] } : { mode: 'links', urls: [] };
 }
 
+/** A site's own file (llms.txt, a sitemap, robots.txt): a redirect leaving the origin asked means the site has no such file. */
 async function tryText(options: CrawlOptions, reach: Reach, url: string): Promise<{ body: string; etag?: string; lastModified?: string } | undefined> {
 	try {
-		const fetched = await request(options, reach, url, {});
+		const origin = new URL(url).origin;
+		const fetched = await request(options, reach, url, {}, next => new URL(next).origin === origin);
 		if (fetched.kind !== 'response') {
 			return undefined;
 		}
@@ -421,18 +424,28 @@ async function hostIsPrivate(host: string, lookup: (host: string) => Promise<rea
 	}
 }
 
-/** Whether an IP address is private, loopback, link-local, shared (CGNAT) or unspecified. */
+/**
+ * The addresses no public source may send the crawler to: private, loopback,
+ * link-local, shared (CGNAT) and unspecified ranges, their IPv6 forms, and
+ * the NAT64 prefix, through which an IPv6 address names an IPv4 one. An
+ * IPv4-mapped IPv6 address, in either spelling (`::ffff:127.0.0.1`,
+ * `::ffff:7f00:1`, as the URL parser writes it), is checked as its IPv4 address.
+ */
+const privateRanges = new BlockList();
+for (const [address, prefix] of [['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10], ['127.0.0.0', 8], ['169.254.0.0', 16], ['172.16.0.0', 12], ['192.168.0.0', 16]] as const) {
+	privateRanges.addSubnet(address, prefix, 'ipv4');
+}
+privateRanges.addAddress('::', 'ipv6');
+privateRanges.addAddress('::1', 'ipv6');
+privateRanges.addSubnet('fc00::', 7, 'ipv6');
+privateRanges.addSubnet('fe80::', 10, 'ipv6');
+privateRanges.addSubnet('64:ff9b::', 96, 'ipv6');
+
+/** Whether an IP address is private, loopback, link-local, shared (CGNAT), unspecified, or an IPv6 form of one. */
 export function isPrivateAddress(address: string): boolean {
 	const ip = address.toLowerCase().replace(/^\[|\]$/g, '');
-	const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(ip)?.[1];
-	if (isIP(ip) === 4 || mapped) {
-		const [a, b] = (mapped ?? ip).split('.').map(Number);
-		return a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127);
-	}
-	if (isIP(ip) === 6) {
-		return ip === '::' || ip === '::1' || /^f[cd]/.test(ip) || /^fe[89ab]/.test(ip);
-	}
-	return false;
+	const version = isIP(ip);
+	return version !== 0 && privateRanges.check(ip, version === 4 ? 'ipv4' : 'ipv6');
 }
 
 /** robots.txt rules for this fetcher (its own group, else `*`): the longest matching rule wins, Allow on a tie. */

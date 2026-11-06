@@ -6,9 +6,24 @@
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
-import { afterAll, describe, expect, it } from 'vitest';
+import type { DatabaseSync } from 'node:sqlite';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import { DocsLibrary, siteTitleOf } from '../../../src/acp/docs/docsLibrary';
 import type { DocsPage } from '../../../src/acp/index/indexerProtocol';
+
+/** Whether each conversion ran inside a write transaction of the source's store. */
+const conversions: boolean[] = [];
+let openStores: Map<string, { db: DatabaseSync }> | undefined;
+vi.mock('../../../src/acp/docs/htmlToMarkdown', async importOriginal => {
+	const original = await importOriginal<typeof import('../../../src/acp/docs/htmlToMarkdown')>();
+	return {
+		...original,
+		htmlToMarkdown: (html: string, url: string) => {
+			conversions.push([...openStores?.values() ?? []].some(entry => entry.db.isTransaction));
+			return original.htmlToMarkdown(html, url);
+		},
+	};
+});
 
 describe('DocsLibrary', () => {
 	const base = realpathSync(mkdtempSync(path.join(tmpdir(), 'docs-library-')));
@@ -27,6 +42,18 @@ describe('DocsLibrary', () => {
 		// The next complete run drops what it no longer has.
 		const next = await library.ingest({ source: { id: 'big', url: 'https://docs.example.com/', run: 2 }, pages: [page(1)], unchanged: [page(2).url], complete: true });
 		expect(next).toMatchObject({ pages: 2, sections: 2 });
+	});
+
+	it('converts pages before writing them, holding no transaction while it does', async () => {
+		openStores = (library as unknown as { open: Map<string, { db: DatabaseSync }> }).open;
+		const html = (n: number): DocsPage => ({ url: `https://h.example.com/p${n}`, body: `<html><head><title>Page ${n}</title></head><body><main><h1>Page ${n}</h1><p>Retry number ${n}.</p></main></body></html>`, type: 'html' });
+		const status = await library.ingest({ source: { id: 'html', url: 'https://h.example.com/', run: 1 }, pages: [html(1), html(2), html(3)], unchanged: [], complete: true });
+		expect(status).toMatchObject({ pages: 3, sections: 3 });
+		expect(conversions).toEqual([false, false, false]);
+		// A page whose Markdown is unchanged keeps its sections; a changed one is cut again.
+		const again = await library.ingest({ source: { id: 'html', url: 'https://h.example.com/', run: 2 }, pages: [html(1), { ...html(2), body: html(2).body.replace('Retry number 2.', 'Retry number two.') }], unchanged: [html(3).url], complete: true });
+		expect(again).toMatchObject({ pages: 3, sections: 3 });
+		expect((await library.search({ ids: ['html'], query: 'retry number two' })).hits[0]?.url).toBe('https://h.example.com/p2');
 	});
 
 	it('deletes a damaged store, and keeps one it can\'t open for another reason', async () => {

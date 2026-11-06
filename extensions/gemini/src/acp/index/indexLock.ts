@@ -43,6 +43,13 @@ export interface LockOptions {
 	readonly heartbeatMs?: number;
 }
 
+/**
+ * The tokens of the locks this process holds now. A lock with this process's
+ * pid is otherwise taken as left behind, and two spellings of one folder
+ * (`/tmp/x` and `/private/tmp/x`) would take its lock from each other.
+ */
+const heldTokens = new Set<string>();
+
 export class IndexLock {
 
 	private timer: ReturnType<typeof setInterval> | undefined;
@@ -54,6 +61,9 @@ export class IndexLock {
 
 	private constructor(private readonly file: string, private readonly holder: Holder, private readonly now: () => number, heartbeat: number) {
 		this.written = holder.at;
+		if (holder.token) {
+			heldTokens.add(holder.token);
+		}
 		if (heartbeat > 0) {
 			this.timer = setInterval(() => void this.beat(), heartbeat);
 			this.timer.unref?.();
@@ -81,7 +91,11 @@ export class IndexLock {
 			if (current && current.pid !== pid && isAlive(current.pid) && now() - current.at < staleLockMs) {
 				return undefined;
 			}
-			// Gone, hung, or this process's own: move it out of the way and try again.
+			if (current && current.pid === pid && current.token && heldTokens.has(current.token)) {
+				// This process holds it, for another spelling of the folder.
+				return undefined;
+			}
+			// Gone, hung, or left behind by this process: move it out of the way and try again.
 			if (!await removeIfUnchanged(file, current)) {
 				return undefined;
 			}
@@ -101,6 +115,7 @@ export class IndexLock {
 			return;
 		}
 		this.lost = true;
+		this.forget();
 		// A rewrite under way would put the lock back after it was removed.
 		await this.beating;
 		// Only this process's own lock: one another process took over is put back.
@@ -158,8 +173,15 @@ export class IndexLock {
 	/** Another process holds the lock now: stop rewriting it. */
 	private stop(): void {
 		this.lost = true;
+		this.forget();
 		clearInterval(this.timer);
 		this.timer = undefined;
+	}
+
+	private forget(): void {
+		if (this.holder.token) {
+			heldTokens.delete(this.holder.token);
+		}
 	}
 }
 

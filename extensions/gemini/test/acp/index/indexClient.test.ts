@@ -4,12 +4,91 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { build } from 'esbuild';
+import { EventEmitter } from 'node:events';
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { IndexClient } from '../../../src/acp/index/indexClient';
-import type { IndexStatus } from '../../../src/acp/index/indexerProtocol';
+import type { HostMessage, IndexStatus } from '../../../src/acp/index/indexerProtocol';
+
+/** Stands in for the forked process: records what the client does to it, answers what it is told to. */
+class FakeChild extends EventEmitter {
+	readonly calls: string[] = [];
+	readonly pid = 4242;
+	connected = true;
+	readonly stderr = undefined;
+	constructor(private readonly answers: (message: HostMessage) => boolean) {
+		super();
+	}
+	send(message: HostMessage, callback?: (err: Error | null) => void): boolean {
+		callback?.(null);
+		if (this.answers(message)) {
+			setImmediate(() => this.emit('message', { kind: 'answer', id: message.id, result: [] }));
+		}
+		return true;
+	}
+	disconnect(): void {
+		this.calls.push('disconnect');
+		this.connected = false;
+	}
+	kill(signal?: string): boolean {
+		this.calls.push(`kill ${signal}`);
+		return true;
+	}
+}
+
+describe('IndexClient stopping its process', () => {
+	const fakeClient = (child: FakeChild, stopGraceMs: number) => new IndexClient({ script: 'indexer.js', execPath: process.execPath, baseDir: '/nowhere', log: () => undefined, stopGraceMs, fork: (() => child) as never });
+
+	it('disconnects first, and signals only a process that does not exit in the grace', async () => {
+		const child = new FakeChild(() => true);
+		const client = fakeClient(child, 30);
+		await client.request('status', { roots: [] });
+		client.dispose();
+		expect(child.calls).toEqual(['disconnect']);
+		await new Promise(resolve => setTimeout(resolve, 45));
+		expect(child.calls).toEqual(['disconnect', 'kill SIGTERM']);
+		await new Promise(resolve => setTimeout(resolve, 40));
+		expect(child.calls).toEqual(['disconnect', 'kill SIGTERM', 'kill SIGKILL']);
+
+		const prompt = new FakeChild(() => true);
+		const quick = fakeClient(prompt, 30);
+		await quick.request('status', { roots: [] });
+		quick.dispose();
+		prompt.emit('exit', 0, null);
+		await new Promise(resolve => setTimeout(resolve, 80));
+		expect(prompt.calls).toEqual(['disconnect']);
+	});
+
+	it('ends a process after three unanswered requests in a row, not three over its life', async () => {
+		// Only the timers: the fake child answers through setImmediate.
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] });
+		try {
+			let answer = false;
+			const child = new FakeChild(() => answer);
+			const client = fakeClient(child, 30);
+			const timesOut = async () => {
+				const failed = expect(client.request('status', { roots: [] })).rejects.toThrow('did not answer status within 30 s');
+				await vi.advanceTimersByTimeAsync(30_000);
+				await failed;
+			};
+			await timesOut();
+			await timesOut();
+			answer = true;
+			await client.request('status', { roots: [] });
+			answer = false;
+			await timesOut();
+			await timesOut();
+			expect(child.calls).toEqual([]);
+			await timesOut();
+			expect(child.calls).toEqual(['kill undefined']);
+			client.dispose();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+});
 
 describe('IndexClient with the real indexer process', () => {
 	const base = realpathSync(mkdtempSync(path.join(tmpdir(), 'index-client-')));

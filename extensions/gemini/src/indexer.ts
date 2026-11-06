@@ -69,9 +69,25 @@ process.on('message', (raw: unknown) => {
 	})();
 });
 
-process.on('disconnect', () => {
+/**
+ * Closes every index (a checkpoint of its write-ahead log, its lock released)
+ * and exits: when the host goes away or disconnects, and on SIGTERM, which
+ * Node would otherwise answer by exiting at once. A close that hangs is cut
+ * short rather than keeping the process around.
+ */
+const stopDeadlineMs = 10_000;
+let stopping = false;
+function stop(): void {
+	if (stopping) {
+		return;
+	}
+	stopping = true;
+	setTimeout(() => process.exit(0), stopDeadlineMs).unref();
 	docs.dispose();
 	void indexer.dispose().finally(() => process.exit(0));
-});
+}
+
+process.on('disconnect', stop);
+process.on('SIGTERM', stop);
 
 setTimeout(() => void indexer.collectUnused(), 60_000).unref();

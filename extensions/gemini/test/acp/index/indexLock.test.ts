@@ -94,6 +94,20 @@ describe('IndexLock, between processes', () => {
 		await left!.release();
 	});
 
+	it('leaves a lock this process holds alone, and takes one it left behind', async () => {
+		const held = await IndexLock.acquire(dir, process.pid, 'index.lock', { heartbeatMs: 0 });
+		expect(held).toBeDefined();
+		// Another spelling of the folder asks in the same process: it reads, as another window would.
+		expect(await IndexLock.acquire(dir, process.pid, 'index.lock', { heartbeatMs: 0 })).toBeUndefined();
+		expect(held!.held).toBe(true);
+		await held!.release();
+		// One this process wrote but no longer holds (an earlier run with this pid, say) is taken.
+		writeFileSync(lockFile, JSON.stringify({ pid: process.pid, at: Date.now(), token: 'forgotten' }));
+		const taken = await IndexLock.acquire(dir, process.pid, 'index.lock', { heartbeatMs: 0 });
+		expect(taken).toBeDefined();
+		await taken!.release();
+	});
+
 	it('lets exactly one of several processes take a free lock at once', async () => {
 		const pids = [process.pid, process.ppid, 1];
 		const locks = await Promise.all(pids.map(pid => IndexLock.acquire(dir, pid, 'index.lock', { heartbeatMs: 0 })));
