@@ -1,5 +1,5 @@
 diff --git a/build/filters.ts b/build/filters.ts
-index b5f5695ba213487f5f5247a4af2a7f4a886b981a..451cf43d7de207d141f85f5c189be7e6fc70b56a 100644
+index b5f5695ba213487f5f5247a4af2a7f4a886b981a..dd1f5970c3dc50df4104ddeeaa9e33aea6bcd85b 100644
 --- a/build/filters.ts
 +++ b/build/filters.ts
 @@ -43,6 +43,7 @@ export const unicodeFilter = Object.freeze<string[]>([
@@ -35,7 +35,7 @@ index b5f5695ba213487f5f5247a4af2a7f4a886b981a..451cf43d7de207d141f85f5c189be7e6
  	'!build/{lib,download,linux,darwin}/**/*.js',
  	'!build/**/*.sh',
  	'!build/azure-pipelines/**/*.js',
-@@ -171,10 +176,15 @@ export const indentationFilter = Object.freeze<string[]>([
+@@ -171,10 +176,16 @@ export const indentationFilter = Object.freeze<string[]>([
  	'!extensions/ipynb/notebook-out/**',
  	'!extensions/notebook-renderers/renderer-out/*.js',
  	'!extensions/simple-browser/media/*.js',
@@ -45,9 +45,10 @@ index b5f5695ba213487f5f5247a4af2a7f4a886b981a..451cf43d7de207d141f85f5c189be7e6
  
  export const copyrightFilter = Object.freeze<string[]>([
  	'**',
-+	// GEMINI-FORK: fork files carry their own header, checked by ESLint
++	// GEMINI-FORK: fork files carry their own header, checked by ESLint; so do the files the fork adds under src/vs
 +	'!extensions/gemini/**',
 +	'!gemini/**',
++	...readFileSync(join(import.meta.dirname, '..', 'gemini', 'patches', 'ADDED'), 'utf8').split(/\r?\n/).filter(line => line.startsWith('src/vs/')).map(line => `!${line}`),
  	'!**/*.desktop',
  	'!**/*.json',
  	'!**/*.jsonc',

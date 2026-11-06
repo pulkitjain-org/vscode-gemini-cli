@@ -942,7 +942,7 @@ export function settingsPageStrings(): SettingsPageStrings {
 		addMemory: vscode.l10n.t("Add Memory"),
 		refresh: vscode.l10n.t("Refresh"),
 		noMemory: vscode.l10n.t("No GEMINI.md files in use."),
-		loading: vscode.l10n.t("Asking the Gemini CLI…"),
+		loading: vscode.l10n.t("Asking the Gemini CLI..."),
 		rules: vscode.l10n.t("Rules"),
 		rulesHint: vscode.l10n.t("Instructions every agent follows, such as how to build, test and write code here."),
 		open: vscode.l10n.t("Open"),

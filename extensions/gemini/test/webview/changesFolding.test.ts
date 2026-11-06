@@ -40,6 +40,20 @@ beforeAll(async () => {
 });
 
 describe('Changes panel folding', () => {
+	it('folds from the file name, a button beside Open, Undo and Keep rather than around them', () => {
+		sendToPage({ type: 'view', view });
+		const head = header('cart.ts');
+		const name = head.querySelector('button.file-name') as HTMLElement;
+		const before = name.getAttribute('aria-expanded');
+		name.click();
+		expect({
+			role: head.getAttribute('role'), before, after: name.getAttribute('aria-expanded'),
+			folded: shown().find(([file]) => file === 'cart.ts')![1],
+			nested: name.querySelectorAll('button').length, siblings: head.querySelectorAll(':scope > .file-actions > button').length,
+		}).toEqual({ role: null, before: 'true', after: 'false', folded: true, nested: 0, siblings: 3 });
+		name.click();
+	});
+
 	it('starts a new file folded and an edited one open, then keeps what the user picked across updates', () => {
 		sendToPage({ type: 'view', view });
 		const first = shown();

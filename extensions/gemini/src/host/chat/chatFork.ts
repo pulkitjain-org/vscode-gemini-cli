@@ -14,9 +14,9 @@
 import * as vscode from 'vscode';
 import type { ChatTranscript, ForkContext } from '../../acp/chatTranscript';
 import { forkedItems, forkPointAfter, laterRepeats } from '../../acp/chatTurns';
-import { carriedConversationNote, conversationOf, MessageRecord, readSessionMessages, readSessionTokens } from '../../acp/cliSessions';
+import { conversationOf, MessageRecord, readSessionMessages, readSessionTokens } from '../../acp/cliSessions';
 import { errorMessage } from '../../acp/errors';
-import { compactedMessages, compactSplit, estimateTokens, messagesBefore } from '../../acp/sessionSnapshot';
+import { compactedMessages, compactSplit, messagesBefore } from '../../acp/sessionSnapshot';
 import type { SlashCommand } from '../../acp/slashCommands';
 import type { ForkRequest, ForkView, FromWebview, ToWebview } from '../chatProtocol';
 import type { TryChoice } from '../panelProtocol';
@@ -30,7 +30,6 @@ export type ForkMessage = Extract<FromWebview, { readonly type: 'requestFork' | 
 const compactByDefaultAbove = 100_000;
 
 /** About how many tokens a compacted session's summary adds, for the estimate shown before it is written. */
-const summaryTokens = 1_500;
 
 /** What forking needs of its chat. */
 export interface ForkHost {
@@ -99,16 +98,15 @@ export class ChatFork {
 			const source = await this.source(itemId);
 			const place = await forker.place();
 			const busy = this.host.isBusy();
-			const whole = Math.max(estimateTokens(source.messages), source.before ? 0 : (await this.contextTokens()) ?? 0);
-			const compact = busy ? undefined : estimateTokens(compactedMessages(source.messages, '', compactSplit(source.messages))) + summaryTokens;
-			const conversation = Math.round(carriedConversationNote(this.host.title(), conversationOf(source.messages)).length / 4);
+			// Only the figure the CLI saved for the session; a fork from a reply has none, and nothing is estimated.
+			const contextTokens = source.before ? undefined : await this.contextTokens();
 			const view: ForkView = {
 				parentTitle: this.host.title(),
 				title: vscode.l10n.t("{0} (fork)", this.host.title()),
 				...(point?.answered !== undefined ? { fromHere: { ...(itemId ? { before: itemId } : {}), answered: point.answered } } : {}),
-				tokens: { whole, conversation, ...(compact !== undefined ? { compact } : {}) },
-				...(compact === undefined ? { compactWhy: vscode.l10n.t("Compacted waits for the agent to finish its turn.") } : {}),
-				context: defaultContext(whole, compact),
+				...(contextTokens !== undefined ? { contextTokens } : {}),
+				...(busy ? { compactWhy: vscode.l10n.t("Compacted waits for the agent to finish its turn.") } : {}),
+				context: defaultContext(contextTokens, !busy),
 				git: place.git,
 				...(place.branch ? { parentBranch: place.branch } : {}),
 				branch: place.forkBranch,
@@ -184,9 +182,9 @@ export function forkCommand(): SlashCommand {
 	return { name: 'fork', description: vscode.l10n.t("Start a new agent from this conversation, on its own branch"), source: 'app' };
 }
 
-/** Whole session while it is small, else Compacted when it can be made now. */
-function defaultContext(whole: number, compact: number | undefined): ForkContext {
-	return whole > compactByDefaultAbove && compact !== undefined ? 'compact' : 'whole';
+/** Whole session while the CLI's figure for it is small (or unknown), else Compacted when it can be made now. */
+function defaultContext(contextTokens: number | undefined, compactAvailable: boolean): ForkContext {
+	return contextTokens !== undefined && contextTokens > compactByDefaultAbove && compactAvailable ? 'compact' : 'whole';
 }
 
 function lastPromptId(items: ChatTranscript['items']): string | undefined {

@@ -10,6 +10,7 @@
 import type { AuditPageView, AuditRowView, AuditStrings, FromAudit, ToAudit } from '../src/host/auditProtocol';
 import { bootPage } from './panelBoot';
 import { button, el, format } from './panelDom';
+import { selectMenu, type SelectMenu } from './selectMenu';
 import { storageSection } from './settingsStorage';
 import { toolLogo } from './toolLogos';
 
@@ -19,11 +20,15 @@ let view: AuditPageView | undefined;
 /** The tool filter: all, or one tool. */
 let tool: 'all' | 'jira' | 'gitlab' = 'all';
 let onlyOpen = false;
+/** The filters' menus, let go when the page is drawn again. */
+let filterMenus: SelectMenu[] = [];
 
 function render(): void {
 	if (!view) {
 		return;
 	}
+	filterMenus.forEach(menu => menu.dispose());
+	filterMenus = [];
 	page.replaceChildren();
 	const header = el('header', 'settings-header');
 	const intro = el('div');
@@ -51,7 +56,8 @@ function render(): void {
 		day.append(option);
 	}
 	day.addEventListener('change', () => post({ type: 'day', day: day.value }));
-	dayLabel.append(el('span', 'muted', strings.day), day);
+	const dayMenu = selectMenu(day, strings.day);
+	dayLabel.append(el('span', 'muted', strings.day), dayMenu.element);
 	const toolLabel = el('label', 'audit-filter');
 	const tools = el('select', 'audit-select');
 	for (const [value, label] of [['all', strings.all], ['jira', 'Jira'], ['gitlab', 'GitLab']] as const) {
@@ -64,7 +70,9 @@ function render(): void {
 		tool = tools.value as typeof tool;
 		render();
 	});
-	toolLabel.append(el('span', 'muted', strings.tool), tools);
+	const toolMenu = selectMenu(tools, strings.tool);
+	filterMenus.push(dayMenu, toolMenu);
+	toolLabel.append(el('span', 'muted', strings.tool), toolMenu.element);
 	const openLabel = el('label', 'audit-filter');
 	const openBox = el('input');
 	openBox.type = 'checkbox';

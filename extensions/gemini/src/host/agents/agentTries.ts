@@ -259,7 +259,9 @@ export class AgentTries implements vscode.Disposable {
 			const repos = [...before.repos];
 			const problems: Problems = { conflicts: [], unmerged: [], skipped: [] };
 			const changed: string[] = [];
+			const updates = before.updates ? { updates: before.updates } : {};
 			let moved = false;
+			let writing = false;
 			try {
 				for (const [i, repo] of before.repos.entries()) {
 					await this.host.inRepository([repo.repository, repo.worktree], async () => {
@@ -267,6 +269,9 @@ export class AgentTries implements vscode.Disposable {
 						if (tree === repo.tree) {
 							return;
 						}
+						// Recorded before anything is written, as Try is: a crash in the middle then leaves a record the next start takes back from.
+						this.host.model.setTried(id, { state: 'applying', repos: repos.map((each, j) => j === i ? { ...each, tree } : each), at: Date.now(), ...updates });
+						writing = true;
 						const unsaved = this.unsaved(repo.repository);
 						const result = await applyTrees(repo.repository, repo.repository, repo.tree, tree, { labels: this.labels(record), skip: file => unsaved.has(file) });
 						collect(problems, result);
@@ -286,10 +291,13 @@ export class AgentTries implements vscode.Disposable {
 			} finally {
 				if (moved) {
 					const touched = changed.length + problems.conflicts.length + problems.unmerged.length > 0;
-					const updates = (before.updates ?? 0) + (touched ? 1 : 0);
-					this.host.model.setTried(id, { state: 'trying', repos, at: Date.now(), ...updates ? { updates } : {} });
+					const count = (before.updates ?? 0) + (touched ? 1 : 0);
+					this.host.model.setTried(id, { state: 'trying', repos, at: Date.now(), ...count ? { updates: count } : {} });
 					this.host.setResolved(id, false);
 					this.watchHeads();
+				} else if (writing) {
+					// The first write failed: the record goes back to what was tried before it.
+					this.host.model.setTried(id, before);
 				}
 			}
 			if (!moved) {

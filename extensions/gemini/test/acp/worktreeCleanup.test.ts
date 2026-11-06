@@ -37,6 +37,18 @@ function record(id: string, fields: Partial<AgentRecord>): AgentRecord {
 }
 
 describe('the worktrees Clean Up may offer', () => {
+	it('never offers a worktree whose commits git cannot count', async () => {
+		const gone = await createWorktree(repo, 'gemini/gone', '', home);
+		await fs.writeFile(path.join(gone.folder, 'a.ts'), 'a\n');
+		await commitAll(gone.folder, 'A');
+		// Its branch's ref was removed by hand: nothing says whether its commit is anywhere else.
+		await git(repo, ['update-ref', '-d', 'refs/heads/gemini/gone']);
+		const records = [record('gone', { worktree: gone, project: { role: 'thread', coordinator: 'c', byCoordinator: false, resolved: true } })];
+		const candidates = await cleanupWorktrees({ records, repositoryOf: async () => repo, running: () => false, reviewing: () => false }, home);
+		const plan = await cleanupPlan({ globalStorage: path.join(root, 'global'), agents: new Set(['gone']), merged: new Set(), keepLogsDays: 90, now: new Date(), running: () => true, worktrees: candidates });
+		expect({ status: candidates.map(each => each.status), offered: plan.filter(item => item.area === 'worktrees') }).toEqual({ status: [undefined], offered: [] });
+	});
+
 	it('offers merged threads\', ended reviews\' and removed agents\' worktrees only when nothing would be lost', async () => {
 		const merged = await createWorktree(repo, 'gemini/merged', '', home);
 		await fs.writeFile(path.join(merged.folder, 'a.ts'), 'a\n');

@@ -262,7 +262,7 @@ export class GeminiStatusBar implements vscode.Disposable {
 				: state.kind === 'unreachable' ? (tool === 'figma' ? vscode.l10n.t("Figma isn't open") : vscode.l10n.t("can't reach, check your VPN"))
 					: state.kind === 'auth' ? vscode.l10n.t("token refused")
 						: state.kind === 'notInstalled' ? vscode.l10n.t("CLI not installed")
-							: state.kind === 'checking' ? vscode.l10n.t("checking…")
+							: state.kind === 'checking' ? vscode.l10n.t("checking...")
 								: vscode.l10n.t("not working");
 			return `${escapeMarkdown(teamToolNames[tool])}: ${escapeMarkdown(word)}`;
 		});

@@ -21,6 +21,9 @@ export const searchFooter = 'These are the best matches in the whole folder, ran
 /** Instead of claiming completeness, when the index covers only part of the folder. */
 export const partialNote = 'The index covers only part of this folder (it has more files than can be listed without git), so files it doesn\'t cover can also match.';
 
+/** Instead of claiming completeness, when only the best-ranked matches were checked against the path filter. */
+export const cappedNote = 'Only the best-ranked matches in the whole folder were checked against path, so matches under it that rank lower may be missing: use more specific words, or a folder rather than a glob.';
+
 /** The most a tool result says, in characters. */
 export const maxResultChars = 8_000;
 /**
@@ -51,9 +54,9 @@ export function fallbackNote(progress: Progress | undefined): string {
 
 export function formatSearch(query: string, result: SearchResult, progress?: Progress, partial = false): string {
 	if (!result.hits.length) {
-		return `Nothing in the code matches "${query}". Try other words, a symbol name, or find_symbol.${partial ? ` ${partialNote}` : ''}${fallbackNote(progress)}`;
+		return `Nothing in the code matches "${query}". Try other words, a symbol name, or find_symbol.${partial ? ` ${partialNote}` : ''}${result.capped ? ` ${cappedNote}` : ''}${fallbackNote(progress)}`;
 	}
-	const head = `${result.hits.length} ${result.hits.length === 1 ? 'result' : 'results'} for "${query}"${result.total > result.hits.length ? ` (showing ${result.hits.length} of ${result.total}; narrow with path or lang)` : ''}`;
+	const head = `${result.hits.length} ${result.hits.length === 1 ? 'result' : 'results'} for "${query}"${result.total > result.hits.length ? ` (showing ${result.hits.length} of ${result.capped ? 'at least ' : ''}${result.total}; narrow with path or lang)` : ''}`;
 	const parts: string[] = [head];
 	let length = head.length;
 	// Each hit's share of the result; a hit past it shows fewer lines, never fewer than the match and its neighbours.
@@ -76,7 +79,7 @@ export function formatSearch(query: string, result: SearchResult, progress?: Pro
 		parts.push(block);
 		length += block.length;
 	});
-	parts.push(`\n${partial ? partialNote : searchFooter}`);
+	parts.push(`\n${partial ? partialNote : result.capped ? cappedNote : searchFooter}`);
 	return parts.join('\n') + fallbackNote(progress);
 }
 

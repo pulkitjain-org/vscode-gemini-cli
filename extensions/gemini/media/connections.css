@@ -167,46 +167,12 @@
 	gap: 6px;
 }
 
-button.quiet {
-	border-color: transparent;
-	background: none;
-	color: var(--gemini-muted);
-}
-
-button.quiet:hover:not(:disabled) {
-	color: var(--vscode-foreground);
-}
-
-.state-pill {
-	display: inline-flex;
-	align-items: center;
-	gap: 5px;
-	padding: 0 8px;
-	border-radius: var(--gc-radius-pill);
-	font-size: var(--gc-text-xs);
-	font-weight: var(--gc-weight-medium);
-	line-height: 18px;
-	background: var(--gemini-hover);
-	color: var(--gemini-muted);
-}
-
+/* The quiet button and the state pill are tokens.css's. */
 .state-dot {
 	width: 6px;
 	height: 6px;
 	border-radius: 50%;
 	background: currentColor;
-}
-
-.state-pill.ok {
-	color: var(--gemini-ok);
-}
-
-.state-pill.warn {
-	color: var(--gemini-warn);
-}
-
-.state-pill.error {
-	color: var(--gemini-error);
 }
 
 .permission-logos {
@@ -324,13 +290,6 @@ button.quiet:hover:not(:disabled) {
 	color: var(--vscode-input-foreground);
 	font-family: inherit;
 	font-size: var(--gc-text-md);
-}
-
-button.link-button {
-	padding: 4px 4px;
-	border: none;
-	background: none;
-	color: var(--vscode-textLink-foreground);
 }
 
 .dialog-result {

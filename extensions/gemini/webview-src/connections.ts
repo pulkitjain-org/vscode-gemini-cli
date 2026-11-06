@@ -8,9 +8,11 @@
 
 import type { TeamToolId } from '../src/acp/teamHttp';
 import type { ConnectionRowView, ConnectionsStrings, ConnectionsView, FromConnections, JiraSiteRowView, ToConnections } from '../src/host/connectionsProtocol';
-import { button, el, format, icon } from './panelDom';
+import { button, el, format, icon, keepFocus } from './panelDom';
 import { bootPage } from './panelBoot';
 import { toolLogo } from './toolLogos';
+// The themed tooltips of the dialogs' Close and Sync Design System: the buttons mark theirs, this shows them.
+import './tooltip';
 
 const { strings, post, main: page, start } = bootPage<ToConnections, FromConnections, ConnectionsStrings>();
 const repoMenuUrl = document.querySelector<HTMLScriptElement>('script[data-strings]')?.dataset.connectionsMenu;
@@ -249,11 +251,17 @@ function permissionRow(title: string, detail: string, answer: string, tools: rea
 	return node;
 }
 
+/** Draws the page for `view`; a view arrives with every state tick, so focus stays on the control the user had. */
 function render(): void {
+	if (view) {
+		keepFocus(page, draw);
+	}
+}
+
+function draw(): void {
 	if (!view) {
 		return;
 	}
-	const focused = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>('.tool-row')?.dataset.tool;
 	page.replaceChildren();
 	const header = el('header', 'settings-header');
 	const intro = el('div');
@@ -329,10 +337,6 @@ function render(): void {
 	);
 	permissions.append(permissionsHeader, permissionRows);
 	page.append(permissions);
-
-	if (focused) {
-		page.querySelector<HTMLElement>(`.tool-row[data-tool="${focused}"] button`)?.focus();
-	}
 }
 
 function field(label: string, hint: string, input: HTMLInputElement, trailing?: HTMLElement): HTMLElement {

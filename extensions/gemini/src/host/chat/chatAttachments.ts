@@ -16,6 +16,7 @@ import * as vscode from 'vscode';
 import type { Attachment } from '../../acp/attachments';
 import { diffAgainstHead } from '../../acp/commitMessage';
 import { changedFileCount, countProblems, foldersOf, type Problem, problemsReport, symbolLines } from '../../acp/mentions';
+import { secretPathReason } from '../../acp/fileAccess';
 import { commandAttachment } from '../../acp/runCommands';
 import { git } from '../../acp/worktrees';
 import { attachmentsForFiles } from '../addToChat';
@@ -109,8 +110,15 @@ export class ChatAttachments implements vscode.Disposable {
 				break;
 			}
 			case 'attachUris': {
+				// Dropped files, by the URIs the page sends. The host can't tell a drop from a URI the page made up, so one that
+				// may hold secrets (a key, `.env`, `~/.ssh`) is left out, as Home leaves it out; the Attach dialog is the way in.
 				const uris = message.uris.map(uri => vscode.Uri.parse(uri)).filter(uri => uri.scheme === 'file');
-				void attachmentsForFiles(uris).then(attachments => this.add(attachments));
+				const kept = uris.filter(uri => !secretPathReason(uri.fsPath));
+				if (kept.length < uris.length) {
+					const names = uris.filter(uri => secretPathReason(uri.fsPath)).map(uri => path.basename(uri.fsPath)).join(', ');
+					vscode.window.setStatusBarMessage(vscode.l10n.t("Not attached, since it may hold secrets: {0}. Use Attach Files to attach it anyway.", names), 6000);
+				}
+				void attachmentsForFiles(kept).then(attachments => this.add(attachments));
 				break;
 			}
 			case 'searchFiles':

@@ -20,7 +20,7 @@ import { threadMemoryContext, threadPrompt, type ThreadRequest } from '../../acp
 import { linkCoordinatorRules, linkThreadRules, ruleEntries, ruleFolders } from '../../acp/projectRules';
 import { savedRepoCount, type ProjectRepo } from '../../acp/projectStore';
 import { foldersTrusted } from '../../acp/trustedFolders';
-import { AgentWorktree, branchExists, coordinatorHome, createWorktreeAt, currentBranch, folderSize, freeBranchName, freeFolder, inRepository, pathExists, projectFolders, removeThreadFolder, removeWorktree, repositoryRoot, threadGuide, threadsHome, worktreeStatus, writeThreadGuide } from '../../acp/worktrees';
+import { AgentWorktree, branchExists, coordinatorHome, createWorktreeAt, currentBranch, folderSize, freeBranchName, freeFolder, inBatches, inRepository, pathExists, projectFolders, removeThreadFolder, removeWorktree, repositoryRoot, threadGuide, threadsHome, worktreeStatus, writeThreadGuide } from '../../acp/worktrees';
 import type { AgentService } from '../agentService';
 import type { ChatActivity, ChatController } from '../chatController';
 import { configSection } from '../configuration';
@@ -191,23 +191,30 @@ export class AgentProjects {
 		return `Added ${repo.key}/ to your folder, on the branch ${branch}.${command ? ' Its setup script is running in the background, so packages may not be installed yet.' : ''}`;
 	}
 
-	/** "Remove thread": asks, then removes the thread with its folder and branch. Discard Changes keeps the thread instead. */
+	/**
+	 * "Remove thread": asks, naming the branch, then removes the thread with
+	 * its folder and, unless the user keeps it, its branch. Discard Changes
+	 * keeps the thread instead. A thread whose work is being tried in the
+	 * user's checkout is then asked about that too (`AgentTries.beforeRemove`).
+	 */
 	async undoThread(id: string): Promise<boolean> {
 		const record = this.model.agent(id);
 		if (!record) {
 			return false;
 		}
-		// Asking about a try in the user's checkout comes first, and is its own question.
-		if (record.tried?.state !== 'trying') {
-			const remove = vscode.l10n.t("Remove Thread");
-			const detail = record.worktree
-				? vscode.l10n.t("Its branch {0} and its folder are deleted, with any work on them. To keep the thread and only reset its work, use Discard Changes.", record.worktree.branch)
-				: undefined;
-			if (await vscode.window.showWarningMessage(vscode.l10n.t("Remove the thread \"{0}\"?", record.title), { modal: true, detail }, remove) !== remove) {
-				return false;
-			}
+		const remove = vscode.l10n.t("Remove Thread");
+		const keepBranch = vscode.l10n.t("Remove, Keep Branch");
+		const detail = record.worktree
+			? [
+				vscode.l10n.t("Its folder is deleted. Deleting its branch {0} loses any work on it that isn't merged; keeping the branch leaves it in your repository. To keep the thread and only reset its work, use Discard Changes.", record.worktree.branch),
+				...record.tried?.state === 'trying' ? [vscode.l10n.t("You're trying its changes in your workspace: you'll be asked whether to keep them or take them back.")] : [],
+			].join('\n\n')
+			: undefined;
+		const answer = await vscode.window.showWarningMessage(vscode.l10n.t("Remove the thread \"{0}\"?", record.title), { modal: true, detail }, remove, ...record.worktree ? [keepBranch] : []);
+		if (answer !== remove && answer !== keepBranch) {
+			return false;
 		}
-		await this.host.removeAgent(id, true);
+		await this.host.removeAgent(id, answer === remove);
 		return true;
 	}
 
@@ -254,26 +261,29 @@ export class AgentProjects {
 			&& thread.tried?.state !== 'trying' && !this.live.get(thread.id)?.activity.busy && !this.merge.isMerging(thread.id) && !this.settingUp.has(thread.id));
 		type Folder = { readonly thread: AgentRecord; readonly repository: string; readonly worktree: AgentWorktree; readonly size: number };
 		const { found, kept } = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: vscode.l10n.t("Looking at merged threads' folders...") }, async () => {
-			const found: Folder[] = [];
-			let kept = 0;
-			for (const thread of threads) {
+			// Several threads at a time: each asks git two or three questions, and a project may have hundreds.
+			const looked = await inBatches(threads, 8, async thread => {
+				const found: Folder[] = [];
+				let kept = 0;
 				// Kept in the user's checkout rather than merged: clean when the folder has nothing beyond what was kept.
 				const keptOnly = thread.tried?.state === 'kept' && await this.host.keptClean(thread).catch(() => false);
 				for (const { repository, worktree } of await this.worktrees.threadWorktrees(thread)) {
 					if (!await pathExists(worktree.folder)) {
 						continue;
 					}
-					// Only a folder whose every change is merged into what its repository has checked out.
+					// Only a folder whose every change is merged into what its repository has checked out; a count git couldn't give keeps the folder.
 					const into = await currentBranch(repository).catch(() => undefined);
 					const status = into ? await worktreeStatus(worktree, into).catch(() => undefined) : undefined;
-					if (keptOnly || (status && !status.uncommitted && !status.commits)) {
+					if (keptOnly || (status && !status.uncommitted && status.commits === 0)) {
+						// Its size is read only once it qualifies: a folder's node_modules can take a while to walk.
 						found.push({ thread, repository, worktree, size: await folderSize(worktree.folder) });
 					} else {
 						kept++;
 					}
 				}
-			}
-			return { found, kept };
+				return { found, kept };
+			});
+			return { found: looked.flatMap(each => each.found), kept: looked.reduce((sum, each) => sum + each.kept, 0) };
 		});
 		const keptNote = kept === 1 ? vscode.l10n.t("1 folder has work that isn't merged yet, so it stays.") : kept ? vscode.l10n.t("{0} folders have work that isn't merged yet, so they stay.", kept) : '';
 		if (!found.length) {

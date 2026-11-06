@@ -432,8 +432,11 @@ export class BrowserToolHost {
 	 * Whether the agent's page may load `url`: a file it shows in a frame,
 	 * runs or fetches, by the agent's file policy; or, from a page the agent
 	 * could have written (a file, or a site on this machine), another site,
-	 * only when the user already let the agent see that site. The workbench
-	 * asks before every such load, and this never asks the user: checking
+	 * the page's own navigation there included, only when the user already
+	 * let the agent see that site. A `browser_navigate` has asked and recorded
+	 * the answer before the page loads, so a site the agent asked for is known
+	 * here; one the page sends itself to is not. The workbench asks before
+	 * every such load, and this never asks the user: checking
 	 * only the page's own URL would let a page the agent wrote show it a
 	 * file its policy refuses, or fetch the user's intranet or signed-in
 	 * sites with the browser's cookies.

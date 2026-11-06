@@ -114,7 +114,7 @@ export class ChatSettings implements vscode.Disposable {
 		const client = this.service.client;
 		switch (message.type) {
 			case 'setMode':
-				void this.change(() => client.setMode(message.id).catch(err => this.offerFolderTrust(err, message.id))).then(() => {
+				void this.change(() => client.setMode(message.id).catch(err => this.offerFolderTrust(err, message.id)), err => refusalText('mode', this.nameOf('mode', message.id), err)).then(() => {
 					// Requests that were already waiting are answered as YOLO answers the ones that come next. The picker offers YOLO only where policy allows it.
 					if (message.id === 'yolo' && client.settings.mode?.currentId === 'yolo') {
 						this.service.permissions.allowPending();
@@ -122,7 +122,7 @@ export class ChatSettings implements vscode.Disposable {
 				});
 				break;
 			case 'setModel':
-				void this.change(() => client.setModel(message.id)).then(() => {
+				void this.change(() => client.setModel(message.id), err => refusalText('model', this.nameOf('model', message.id), err)).then(() => {
 					if (client.settings.model?.currentId === message.id) {
 						rememberModel(message.id);
 						this.options.onDidPickModel?.(message.id);
@@ -150,12 +150,17 @@ export class ChatSettings implements vscode.Disposable {
 		}
 	}
 
-	/** Makes a change to the session's settings; a failure shows in the chat, and the pickers show what the session has after it. */
-	async change(change: () => Promise<void>): Promise<void> {
+	/** The name of mode or model `id`, as the picker shows it. */
+	private nameOf(key: 'mode' | 'model', id: string): string {
+		return this.service.client.settings[key]?.available.find(choice => choice.id === id)?.name ?? id;
+	}
+
+	/** Makes a change to the session's settings; a failure shows in the chat, worded by `refused` (see `refusalText`), and the pickers show what the session has after it. */
+	async change(change: () => Promise<void>, refused: (err: unknown) => string = err => vscode.l10n.t("The agent refused the change: {0}", errorMessage(err))): Promise<void> {
 		try {
 			await change();
 		} catch (err) {
-			this.transcript.addNotice(errorMessage(err), 'error');
+			this.transcript.addNotice(refused(err), 'error');
 		}
 		// Resync the pickers: the change may have failed or been ignored.
 		this.post({ type: 'settings', settings: this.service.client.settings });
@@ -185,6 +190,28 @@ export class ChatSettings implements vscode.Disposable {
 		this.service.client.setModeOnNextSession(modeId);
 		this.transcript.addNotice(vscode.l10n.t("Folder trusted. The agent switches to {0} mode when it restarts, once no agent is working.", modeName), 'info');
 	}
+}
+
+/**
+ * What the chat says when the agent refused the switch to mode or model
+ * `name`: a sentence for each known cause, else its own message framed.
+ * A mode refused for an untrusted folder is offered trust instead (`offerFolderTrust`).
+ */
+export function refusalText(key: 'mode' | 'model', name: string, err: unknown): string {
+	const kind = err instanceof AgentError ? err.info.kind : undefined;
+	if (kind === 'agent-restarted') {
+		return key === 'mode'
+			? vscode.l10n.t("The agent restarted before it could switch to {0} mode. Pick it again.", name)
+			: vscode.l10n.t("The agent restarted before it could switch to {0}. Pick it again.", name);
+	}
+	if (kind === 'network') {
+		return key === 'mode'
+			? vscode.l10n.t("Can't reach Google to switch to {0} mode. Check your connection, VPN or proxy.", name)
+			: vscode.l10n.t("Can't reach Google to switch to {0}. Check your connection, VPN or proxy.", name);
+	}
+	return key === 'mode'
+		? vscode.l10n.t("The agent refused the switch to {0} mode: {1}", name, errorMessage(err))
+		: vscode.l10n.t("The agent refused the switch to {0}: {1}", name, errorMessage(err));
 }
 
 /** `gemini.chat.sendWith`: whether ⌘Return (Ctrl+Enter elsewhere) sends, and Return makes a new line. */

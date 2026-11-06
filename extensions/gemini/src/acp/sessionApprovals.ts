@@ -82,12 +82,14 @@ export function isGitHookFile(filePath: string): boolean {
 
 /**
  * GeminiCode's and the editor's own settings in a repository: the worktree setup script, the CLI's
- * project settings (hooks, MCP servers) and the folder's editor settings and tasks. Writing one decides
- * what runs next, outside any approval, so an agent's write to one always asks (toolPolicy.ts).
- * The ignore files are here too: what git ignores is what an agent may not read (fileAccess.ts),
- * so a write that un-ignores a secret would open it.
+ * project settings (hooks, MCP servers) and its workspace policies (`.gemini/policies/*.toml`, which
+ * gemini-cli 0.67 loads in a trusted folder at the next start, above its own default rules), and the
+ * folder's editor settings, tasks and launch configurations (a `preLaunchTask` or `runtimeExecutable`
+ * runs on F5). Writing one decides what runs next, outside any approval, so an agent's write to one
+ * always asks (toolPolicy.ts). The ignore files are here too: what git ignores is what an agent may
+ * not read (fileAccess.ts), so a write that un-ignores a secret would open it.
  */
-const protectedSetting = /(^|[\\/])(\.gemini[\\/]([^\\/]+\.sh|settings\.json)|\.vscode[\\/](settings|tasks)\.json|\.gitignore|\.geminiignore|\.git[\\/]info[\\/]exclude)$/i;
+const protectedSetting = /(^|[\\/])(\.gemini[\\/]([^\\/]+\.sh|settings\.json|policies[\\/][^\\/]+)|\.vscode[\\/](settings|tasks|launch)\.json|\.gitignore|\.geminiignore|\.git[\\/]info[\\/]exclude)$/i;
 
 /** Whether `filePath` is one of the settings an agent's write to always asks for. */
 export function isProtectedSetting(filePath: string): boolean {
@@ -111,7 +113,7 @@ export function decidesWhatRuns(filePath: string): boolean {
 }
 
 /** `decidesWhatRuns` for a path as a command names it, with a redirect's prefix and quotes removed. */
-function changesWhatRuns(filePath: string): boolean {
+export function changesWhatRuns(filePath: string): boolean {
 	return decidesWhatRuns(filePath.replace(/^(of|--output)=/, '').replace(/['"]/g, ''));
 }
 
@@ -202,8 +204,45 @@ function gitRunsCode(args: readonly string[]): boolean {
 	}
 }
 
+/**
+ * Git commands that reach the network, which an approval never covers: they fetch, push or clone,
+ * or change where a later one does (`remote add`, `set-url`, `rename`; `submodule update` and `add`
+ * clone). `remote -v`, `get-url` and `submodule status` only read.
+ */
+function gitReachesNetwork(args: readonly string[]): boolean {
+	const at = gitCommandIndex(args);
+	if (at < 0) {
+		return false;
+	}
+	const command = args[at];
+	const sub = args.slice(at + 1).find(arg => !arg.startsWith('-'));
+	switch (command) {
+		case 'push': case 'fetch': case 'pull': case 'clone': case 'ls-remote': case 'request-pull': case 'send-pack': case 'fetch-pack': case 'remote-http': case 'remote-https': case 'http-fetch': case 'http-push': case 'svn':
+			return true;
+		case 'remote':
+			return !!sub && /^(add|set-url|rename|remove|rm|update|prune|set-head|set-branches)$/.test(sub);
+		case 'submodule':
+			return !!sub && /^(update|add|sync)$/.test(sub);
+		default:
+			return false;
+	}
+}
+
 /** `NAME=value` prefixes that only change formatting; any other can make a program run code (`GIT_SSH_COMMAND`, `LD_PRELOAD`). */
 const harmlessVariable = /^(LC_\w+|LANG|LANGUAGE|TZ|NO_COLOR|FORCE_COLOR|CLICOLOR|CI|TERM|COLUMNS|LINES)$/;
+
+/**
+ * Variables a command may read in an argument (`ls $HOME`, `echo $?`) without the approval
+ * covering more than it showed: the folders the shell names, formatting, and the shell's own
+ * numbers. Any other (`echo $GEMINI_API_KEY`, `cat $FILE`) is only known when it runs, so it asks.
+ */
+const harmlessExpansion = /^(HOME|PWD|OLDPWD|USER|LOGNAME|SHELL|TMPDIR|LC_\w+|LANG|LANGUAGE|TZ|NO_COLOR|FORCE_COLOR|CLICOLOR|CI|TERM|COLUMNS|LINES|\d+|[?$#!@*-])$/;
+
+/** The variable `$NAME` or `${NAME...}` at `text[i]` (a `$`) names, or undefined when it is no expansion. */
+function expansionAt(text: string, i: number): string | undefined {
+	const match = /^\$(?:\{[#!]?([A-Za-z_]\w*|\d+|[?$#!@*-])|([A-Za-z_]\w*|\d+|[?$#!@*-]))/.exec(text.slice(i, i + 64));
+	return match ? match[1] ?? match[2] : undefined;
+}
 
 /** A sed script that runs a command (`e`, GNU `s///e`) or writes a file (`w`). */
 const sedRunsOrWrites = /(^|[;{}\n])\s*([0-9]+|\$|\/[^/]*\/)?\s*[ewW](\s|$)|\/[gpIiMm0-9]*[ew]\b/;
@@ -477,12 +516,19 @@ export function parseCommand(command: string, context: ApprovalContext = {}): Pa
 		}
 		words = [];
 	};
+	/** Whether the `$` at `i` reads a variable the approval would not have shown (`$GEMINI_API_KEY`, `$FILE`). */
+	const readsUnknown = (i: number) => {
+		const name = expansionAt(text, i);
+		return name !== undefined && !harmlessExpansion.test(name);
+	};
 	for (let i = 0; i < text.length; i++) {
 		const c = text[i];
 		if (quote) {
 			if (c === quote) {
 				quote = undefined;
 			} else if (quote === '"' && (c === '`' || (c === '$' && text[i + 1] === '('))) {
+				return { kind: 'asks', reason: 'dynamic' };
+			} else if (quote === '"' && c === '$' && readsUnknown(i)) {
 				return { kind: 'asks', reason: 'dynamic' };
 			} else if (c === '\\' && quote === '"') {
 				word += text[++i] ?? '';
@@ -494,6 +540,8 @@ export function parseCommand(command: string, context: ApprovalContext = {}): Pa
 		if (c === '"' || c === '\'') {
 			quote = c;
 		} else if (c === '`' || (c === '$' && text[i + 1] === '(') || c === '(' || c === ')' || c === '{' || c === '}') {
+			return { kind: 'asks', reason: 'dynamic' };
+		} else if (c === '$' && readsUnknown(i)) {
 			return { kind: 'asks', reason: 'dynamic' };
 		} else if (c === '<') {
 			if (text[i + 1] === '<' || text[i + 1] === '(') {
@@ -587,6 +635,9 @@ export function parseCommand(command: string, context: ApprovalContext = {}): Pa
 		}
 		if (action === 'runs' || runsCode(name, args)) {
 			return { kind: 'asks', reason: 'dynamic' };
+		}
+		if (name === 'git' && gitReachesNetwork(args)) {
+			return { kind: 'asks', reason: 'network' };
 		}
 		programs.push(program);
 		prefixes.push(formatPrefix(builtin ?? prefixOf(words)));

@@ -739,9 +739,10 @@ export function wakeThreadLines(threads: readonly ThreadInfo[]): string[] {
 	return lines;
 }
 
+/** A thread's line in <threads>: its title and detail escaped as events are, since a thread may have written them. */
 function threadLine(thread: ThreadInfo): string {
 	const state = thread.resolved ? 'resolved (merged)' : thread.state === 'queued' ? `queued, ${thread.queued === 'quota' ? 'until the quota resets' : 'until a running thread finishes'}` : thread.state;
-	return `- ${thread.id} "${thread.title}": ${state}${thread.repos?.length ? ` [${thread.repos.join(', ')}]` : ''}${thread.workspace ? `, ${workspaceNotes[thread.workspace]}` : ''}${thread.detail ? `, ${oneLine(thread.detail)}` : ''}${thread.byCoordinator ? '' : ' (started by the user)'}`;
+	return `- ${thread.id} "${escaped(thread.title)}": ${state}${thread.repos?.length ? ` [${thread.repos.join(', ')}]` : ''}${thread.workspace ? `, ${workspaceNotes[thread.workspace]}` : ''}${thread.detail ? `, ${escaped(oneLine(thread.detail))}` : ''}${thread.byCoordinator ? '' : ' (started by the user)'}`;
 }
 
 /** What the coordinator is told of a thread's work in the user's checkout. */

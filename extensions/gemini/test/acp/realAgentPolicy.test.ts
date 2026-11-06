@@ -143,7 +143,9 @@ describeRealCli('gemini --acp with GeminiCode\'s tool policy', () => {
 
 	const pilot: ApprovalPolicy = { allowAutoEdit: true, allowYolo: true, allowShell: true, denyEnvironmentCommands: true, confirmTools: confirmToolGroups() };
 
-	it.each(['printenv', 'env | grep TOKEN', 'echo start && printenv HOME', 'set', 'declare -x', 'typeset -x', 'export -p', 'compgen -e', 'declare', 'ls && ps eww 1', 'ps -E'])('refuses `%s`, which prints the environment, even in YOLO mode', async command => {
+	it.each(['printenv', 'env | grep TOKEN', 'echo start && printenv HOME', 'set', 'declare -x', 'typeset -x', 'export -p', 'compgen -e', 'declare', 'ls && ps eww 1', 'ps -E',
+		'echo "$GEMINI_API_KEY"', 'echo ${GOOGLE_APPLICATION_CREDENTIALS}', 'node -p process.env', 'python3 -c \'import os;print(os.environ)\'', 'cat /proc/self/environ',
+	])('refuses `%s`, which prints the environment, even in YOLO mode', async command => {
 		const result = await runTurn('yolo', pilot, true, command);
 		expect({ permissions: result.permissions, error: result.responses[0]?.response.error ?? result.responses[0]?.response.output }).toMatchObject({ permissions: 0, error: expect.stringMatching(/denied by policy/) });
 	}, 60_000);
@@ -161,6 +163,17 @@ describeRealCli('gemini --acp with GeminiCode\'s tool policy', () => {
 		const asked = await runTurn('yolo', pilot, true, undefined, [tools], 'jira_transition');
 		const unpoliced = await runTurn('yolo', { allowAutoEdit: true, allowYolo: true, allowShell: true }, true, undefined, [tools], 'jira_transition');
 		expect({ asked: asked.permissions, unpoliced: unpoliced.permissions, answered: asked.responses[0]?.response.output ?? asked.responses[0]?.response.error }).toEqual({ asked: 1, unpoliced: 0, answered: expect.stringMatching(/Moved ACME-412/) });
+	}, 120_000);
+
+	it('asks before a team write that is not the confirm class, a comment, even in YOLO mode', async () => {
+		// Without the rule the CLI runs an MCP tool in YOLO with no request, so the chat's own rule for team writes (`isTeamWriteToolCall`) is never consulted.
+		const scripts = mkdtempSync(path.join(tmpdir(), 'gemini-mcp-'));
+		const script = path.join(scripts, 'script.json');
+		writeFileSync(script, JSON.stringify({ tools: { jira_comment: { text: 'Commented on ACME-412.' } } }));
+		const tools: acp.McpServer = { name: teamToolsServerName, command: process.execPath, args: [fakeMcpServer, script, path.join(scripts, 'calls.jsonl')], env: [] };
+		const asked = await runTurn('yolo', pilot, true, undefined, [tools], 'jira_comment');
+		const unpoliced = await runTurn('yolo', { allowAutoEdit: true, allowYolo: true, allowShell: true }, true, undefined, [tools], 'jira_comment');
+		expect({ asked: asked.permissions, unpoliced: unpoliced.permissions, answered: asked.responses[0]?.response.output ?? asked.responses[0]?.response.error }).toEqual({ asked: 1, unpoliced: 0, answered: expect.stringMatching(/Commented on ACME-412/) });
 	}, 120_000);
 
 	it('refuses Auto Edit in a folder it does not trust, with an error GeminiCode recognises', async () => {

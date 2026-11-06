@@ -24,7 +24,7 @@ export interface ApprovalPolicy {
 	readonly allowShell: boolean;
 	/** Refuse the shell commands that print the environment, where a token passed to a server could sit. */
 	readonly denyEnvironmentCommands?: boolean;
-	/** MCP tools that ask in every mode, YOLO included, whatever a user or workspace policy allows: the confirm class. */
+	/** MCP tools that ask in every mode, YOLO included, whatever a user or workspace policy allows: every team tool that writes, the confirm class among them. */
 	readonly confirmTools?: readonly { readonly server: string; readonly tools: readonly string[] }[];
 }
 
@@ -37,6 +37,17 @@ export interface ApprovalPolicy {
 export const environmentCommandPrefixes = ['env', 'printenv', 'declare -x', 'declare -p', 'typeset -x', 'typeset -p', 'export -p', 'compgen -e', 'compgen -v'] as const;
 export const environmentCommandRegex = '(?:set|export|declare|typeset)\\s*"';
 export const processEnvironmentRegex = 'ps\\s(?:[a-zA-Z]*e[a-zA-Z]*[\\s"]|-[a-zA-Z]*E|[^"]*\\s-[a-zA-Z]*E)';
+/**
+ * The CLI matches `commandRegex` from the start of each command, as `"command":"<regex>` against the
+ * call's arguments as JSON (`buildArgsPatterns`), so a rule for something anywhere in the command starts
+ * with the command's text up to it: any character but a quote, or an escaped quote, since JSON writes
+ * `"` as `\"`. A capturing group, as the CLI refuses a quantified `(?:...)` group as a nested quantifier.
+ */
+const anywhereInCommand = '([^"]|\\\\")*';
+/** The CLI's own variables read by name (`echo "$GEMINI_API_KEY"`, `${GOOGLE_APPLICATION_CREDENTIALS}`): the only credentials left in the agent's environment (env.ts). */
+export const cliVariableRegex = `${anywhereInCommand}\\$\\{?(?:GEMINI|GOOGLE)_`;
+/** The environment read whole through an interpreter or the kernel: `node -p process.env`, `python -c "import os; print(os.environ)"`, `cat /proc/self/environ`. */
+export const environmentObjectRegex = `${anywhereInCommand}(?:process\\.env|os\\.environ|/proc/[a-z0-9]+/environ)`;
 
 export const shellToolName = 'run_shell_command';
 export const policyFileName = 'geminicode.toml';
@@ -100,6 +111,20 @@ export function buildToolPolicy(policy: ApprovalPolicy): string | undefined {
 			`decision = "deny"`,
 			`priority = 960`,
 			`denyMessage = "${environmentDenyMessage}"`,
+			``,
+			`[[rule]]`,
+			`toolName = "${shellToolName}"`,
+			`commandRegex = '${cliVariableRegex}'`,
+			`decision = "deny"`,
+			`priority = 960`,
+			`denyMessage = "${environmentDenyMessage}"`,
+			``,
+			`[[rule]]`,
+			`toolName = "${shellToolName}"`,
+			`commandRegex = '${environmentObjectRegex}'`,
+			`decision = "deny"`,
+			`priority = 960`,
+			`denyMessage = "${environmentDenyMessage}"`,
 		].join('\n'));
 	}
 	// By the names the model calls them (`mcp_<server>_<tool>`), not `mcpName`: gemini-cli 0.63 gives the
@@ -107,7 +132,7 @@ export function buildToolPolicy(policy: ApprovalPolicy): string | undefined {
 	// them (test/acp/realAgentPolicy.test.ts).
 	for (const group of policy.confirmTools ?? []) {
 		rules.push([
-			`# ${group.server}: hard to take back, so these ask every time, in every mode.`,
+			`# ${group.server}: writes to the team's tools, which nothing undoes, so these ask every time, in every mode.`,
 			`[[rule]]`,
 			`toolName = [${group.tools.map(t => `"mcp_${group.server}_${t}"`).join(', ')}]`,
 			`decision = "ask_user"`,

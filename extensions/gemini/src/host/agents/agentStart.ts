@@ -355,8 +355,10 @@ export class AgentStarter {
 					host.projects.threadChanged(host.model.agent(record.id) ?? record);
 				}
 				host.persistence.scheduleSave(record.id, live);
-				host.refresh();
+				host.refresh(record.id);
 			}),
+			// A long reply with no tool call reaches the saved chat while it streams, at the save's longest wait, not only when the turn ends.
+			live.controller.onDidChangeConversation(() => host.persistence.scheduleSave(record.id, live)),
 			live.controller.onDidRestoreSession(title => {
 				host.model.recordRestore(record.id, title);
 				const name = host.model.agent(record.id)?.title;

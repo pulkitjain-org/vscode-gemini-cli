@@ -1,5 +1,5 @@
 /*---------------------------------------------------------------------------------------------
- *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Copyright (c) Pulkit Jain. All rights reserved.
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
@@ -39,10 +39,10 @@ class TestSession {
 		return new Promise(resolve => this.beforeRequest!({ url, webContentsId, resourceType } as Electron.OnBeforeRequestListenerDetails, response => resolve(!response.cancel)));
 	}
 
-	/** The response headers the page `webContentsId` gets, or undefined when they are left alone. */
-	headers(responseHeaders: Record<string, string[]>, webContentsId: number): Record<string, string[]> | undefined {
+	/** The response headers the page `webContentsId` gets for `url`, or undefined when they are left alone. */
+	headers(responseHeaders: Record<string, string[]>, webContentsId: number, url = 'file:///w/index.html'): Record<string, string[]> | undefined {
 		let result: Record<string, string[]> | undefined;
-		this.headersReceived!({ url: 'file:///w/index.html', webContentsId, responseHeaders } as unknown as Electron.OnHeadersReceivedListenerDetails, response => result = response.responseHeaders as Record<string, string[]> | undefined);
+		this.headersReceived!({ url, webContentsId, responseHeaders } as unknown as Electron.OnHeadersReceivedListenerDetails, response => result = response.responseHeaders as Record<string, string[]> | undefined);
 		return result;
 	}
 }
@@ -141,7 +141,6 @@ suite('GeminiAgentFiles', () => {
 			fileToIntranet: await session.load('https://intranet.example/api', 1, 'xhr'),
 			fileToShop: await session.load('https://shop.example/api', 1, 'xhr'),
 			fileToLocal: await session.load('http://127.0.0.1:9000/api', 1, 'xhr'),
-			fileNavigation: await session.load('https://intranet.example/', 1, 'mainFrame'),
 			devToIntranet: await session.load('https://intranet.example/api', 3, 'xhr'),
 			remoteToIntranet: await session.load('https://intranet.example/api', 2, 'xhr'),
 			usersToIntranet: await session.load('https://intranet.example/api', 4, 'xhr'),
@@ -150,7 +149,6 @@ suite('GeminiAgentFiles', () => {
 			fileToIntranet: false,
 			fileToShop: true,
 			fileToLocal: true,
-			fileNavigation: true,
 			devToIntranet: false,
 			remoteToIntranet: true,
 			usersToIntranet: true,
@@ -159,22 +157,63 @@ suite('GeminiAgentFiles', () => {
 		closeAll();
 	});
 
+	test('holds a local page\'s own navigation to another site, which a page the agent wrote could start by itself', async () => {
+		const { asked, session, page, closeAll } = setup();
+		const local = page(1, agent);
+		local.url = 'file:///w/index.html';
+		const dev = page(2, agent);
+		dev.url = 'http://localhost:5173/';
+		const remote = page(3, agent);
+		remote.url = 'https://shop.example/cart';
+		const fresh = page(4, agent);
+		fresh.url = '';
+		const users = page(5, user);
+		users.url = 'file:///w/index.html';
+		assert.deepStrictEqual({
+			fileToIntranet: await session.load('https://intranet.example/x?secret', 1, 'mainFrame'),
+			fileToShop: await session.load('https://shop.example/', 1, 'mainFrame'),
+			fileToLocal: await session.load('http://localhost:3000/', 1, 'mainFrame'),
+			devToIntranet: await session.load('https://intranet.example/', 2, 'mainFrame'),
+			remoteToIntranet: await session.load('https://intranet.example/', 3, 'mainFrame'),
+			freshToIntranet: await session.load('https://intranet.example/', 4, 'mainFrame'),
+			usersToIntranet: await session.load('https://intranet.example/', 5, 'mainFrame'),
+			asked,
+		}, {
+			fileToIntranet: false,
+			fileToShop: true,
+			fileToLocal: true,
+			devToIntranet: false,
+			remoteToIntranet: true,
+			freshToIntranet: true,
+			usersToIntranet: true,
+			asked: ['7 a1 https://intranet.example/x?secret', '7 a1 https://shop.example/', '7 a1 https://intranet.example/'],
+		});
+		closeAll();
+	});
+
 	test('lets the session\'s own reads through, and refuses other loads without a page once an agent had a page there', async () => {
 		const { asked, files, session, page, closeAll } = setup();
 		const before = await session.load('file:///w/.env');
+		const siteBefore = await session.load('https://intranet.example/api');
 		const shared = page(1, user);
 		shared.setOwner(agent);
 		shared.setOwner(user);
 		assert.deepStrictEqual({
 			before,
+			siteBefore,
 			worker: await session.load('file:///w/.env'),
+			workerToIntranet: await session.load('https://intranet.example/api'),
+			workerToLocal: await session.load('http://localhost:5173/api'),
 			ownRead: await files.readOwn(session.asSession(), 'file:///w/.env', () => session.load('file:///w/.env')),
 			afterOwnRead: await session.load('file:///w/.env'),
 			unknownPage: await session.load('file:///w/index.html', 99),
 			asked,
 		}, {
 			before: true,
+			siteBefore: true,
 			worker: false,
+			workerToIntranet: false,
+			workerToLocal: true,
 			ownRead: true,
 			afterOwnRead: false,
 			unknownPage: false,
@@ -183,18 +222,26 @@ suite('GeminiAgentFiles', () => {
 		closeAll();
 	});
 
-	test('keeps workers off a Gemini agent\'s documents', () => {
+	test('keeps workers off a Gemini agent\'s local documents, files and local sites alike', () => {
 		const { session, page, closeAll } = setup();
 		page(1, agent);
 		page(2, user);
 		assert.deepStrictEqual({
 			agent: session.headers({ 'content-type': ['text/html'] }, 1),
 			agentWithPolicy: session.headers({ 'content-security-policy': ['default-src *'] }, 1),
+			agentDevServer: session.headers({ 'content-type': ['text/html'] }, 1, 'http://localhost:5173/'),
+			agentLoopback: session.headers({ 'content-type': ['text/html'] }, 1, 'http://127.0.0.1:8080/index.html'),
+			agentRemote: session.headers({ 'content-type': ['text/html'] }, 1, 'https://shop.example/'),
 			user: session.headers({ 'content-type': ['text/html'] }, 2),
+			userDevServer: session.headers({ 'content-type': ['text/html'] }, 2, 'http://localhost:5173/'),
 		}, {
 			agent: { 'content-type': ['text/html'], 'Content-Security-Policy': ['worker-src \'none\''] },
 			agentWithPolicy: { 'content-security-policy': ['default-src *', 'worker-src \'none\''] },
+			agentDevServer: { 'content-type': ['text/html'], 'Content-Security-Policy': ['worker-src \'none\''] },
+			agentLoopback: { 'content-type': ['text/html'], 'Content-Security-Policy': ['worker-src \'none\''] },
+			agentRemote: undefined,
 			user: undefined,
+			userDevServer: undefined,
 		});
 		closeAll();
 	});

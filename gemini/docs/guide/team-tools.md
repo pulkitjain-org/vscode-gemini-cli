@@ -245,7 +245,7 @@ Every agent session gets a `geminicode-tools` MCP server, with tools only for th
 
 Reading runs without asking, except Snyk's tests: `snyk_test` runs your project's build tools to resolve its dependencies and `snyk_code_test` uploads your source to Snyk, so each shows a permission card, and both are off while `gemini.tools.allowShell` turns shell commands off. Snyk on Home's Quality card refreshes on its own only in a folder that both GeminiCode and the Gemini CLI trust, while shell commands are allowed; elsewhere it shows results once Snyk has run from a chat.
 
-A Jira comment, a reassignment and a comment on a merge request show you a permission card with the exact text first, and you can allow the rest of the session.
+A Jira comment, a reassignment and a comment on a merge request show you a permission card with the exact text first, in every mode, YOLO included, and you can allow the rest of the session. The same goes for a comment, an assignment, a reply or an approval through a `jira` or `gitlab` MCP server your team runs beside GeminiCode.
 
 Four actions are harder to take back, so they ask every time, with Allow once and Reject only: moving a ticket (`jira_transition`), logging time (`jira_log_time`), opening a merge request (`gitlab_create_mr`) and merging one (`gitlab_merge`, which needs the merge request named). The same goes for the matching tools of a `jira` or `gitlab` MCP server your team runs beside GeminiCode. `gitlab_merge` reads GitLab's own checks first (pipeline, approval rules, threads, conflicts, GitLab's mergeable verdict) and refuses when any fails, saying which; when it merges, it names the commit it read, so a push in between makes GitLab refuse rather than merge something else.
 

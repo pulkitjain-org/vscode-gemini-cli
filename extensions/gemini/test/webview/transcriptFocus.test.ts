@@ -48,21 +48,22 @@ describe('a tool call without folding', () => {
 	it('opens and closes in place, keeping focus on its row, and builds its output on first open', () => {
 		reset([prompt, toolCall('t1', 'Read cart.ts'), { id: 'e1', kind: 'turnEnd', durationMs: 4000 }]);
 		const card = only('.tool-call');
-		const row = card.querySelector('.tool-row') as HTMLElement;
+		// The row's chevron and title are its button; the row itself is a plain line.
+		const row = card.querySelector('.tool-row > .tool-toggle') as HTMLElement;
 		expect(card.querySelector('.tool-body')).toBeNull();
 		row.focus();
 		row.click();
 		expect({ focused: document.activeElement === row, same: only('.tool-call') === card, expanded: row.getAttribute('aria-expanded'), output: card.querySelector('.tool-output')?.textContent }).toEqual({ focused: true, same: true, expanded: 'true', output: 'output of t1' });
-		press(row, 'Enter');
+		row.click();
 		expect({ focused: document.activeElement === row, expanded: row.getAttribute('aria-expanded'), open: card.classList.contains('expanded') }).toEqual({ focused: true, expanded: 'false', open: false });
 	});
 
 	it('moves focus to the row drawn in place of the focused one', () => {
 		reset([prompt, toolCall('t1', 'Read cart.ts'), { id: 'e1', kind: 'turnEnd', durationMs: 4000 }]);
-		const row = only('.tool-row');
+		const row = only('.tool-row > .tool-toggle');
 		row.focus();
 		sendToPage({ type: 'items', items: [toolCall('t1', 'Read cart.ts and more')] });
-		const drawn = only('.tool-row');
+		const drawn = only('.tool-row > .tool-toggle');
 		expect({ replaced: drawn !== row, focused: document.activeElement === drawn }).toEqual({ replaced: true, focused: true });
 	});
 });

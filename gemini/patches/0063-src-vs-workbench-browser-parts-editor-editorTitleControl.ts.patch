@@ -1,5 +1,5 @@
 diff --git a/src/vs/workbench/browser/parts/editor/editorTitleControl.ts b/src/vs/workbench/browser/parts/editor/editorTitleControl.ts
-index 39a193871d85f7caace0423ab7aacbd5792a11a0..a90d9b5bfee7f90395b432f0e35eea06fbe19f41 100644
+index 39a193871d85f7caace0423ab7aacbd5792a11a0..9570464a516ee714e9d504d244f8f0174acc4e39 100644
 --- a/src/vs/workbench/browser/parts/editor/editorTitleControl.ts
 +++ b/src/vs/workbench/browser/parts/editor/editorTitleControl.ts
 @@ -11,13 +11,14 @@ import { IEditorGroupMenuIds, IEditorGroupsView, IEditorGroupTitleHeight, IEdito
@@ -18,7 +18,7 @@ index 39a193871d85f7caace0423ab7aacbd5792a11a0..a90d9b5bfee7f90395b432f0e35eea06
  
  export interface IEditorTitleControlDimensions {
  
-@@ -58,11 +59,29 @@ export class EditorTitleControl extends Themable {
+@@ -58,11 +59,32 @@ export class EditorTitleControl extends Themable {
  
  		this.editorTabsControl = this.createEditorTabsControl();
  		this.headerControl = this.createHeaderControl();
@@ -31,14 +31,17 @@ index 39a193871d85f7caace0423ab7aacbd5792a11a0..a90d9b5bfee7f90395b432f0e35eea06
 +	private hidesTabRow = false;
 +
 +	// GEMINI-FORK: a group gains or loses its tab row when agents open in it or leave it.
-+	private checkGeminiTabRow(): void {
-+		if (geminiHidesTabRow(this.model) !== this.hidesTabRow) {
-+			this.recreateControls();
-+			this.groupView.relayout();
-+			if (this.model.activeEditor) {
-+				this.openEditors(this.model.getEditors(EditorsOrder.SEQUENTIAL));
-+			}
++	// Returns whether the controls were recreated, with the group's editors already opened into them.
++	private checkGeminiTabRow(): boolean {
++		if (geminiHidesTabRow(this.model) === this.hidesTabRow) {
++			return false;
 +		}
++		this.recreateControls();
++		this.groupView.relayout();
++		if (this.model.activeEditor) {
++			this.openEditors(this.model.getEditors(EditorsOrder.SEQUENTIAL));
++		}
++		return true;
  	}
  
  	private createEditorTabsControl(): IEditorTabsControl {
@@ -49,22 +52,26 @@ index 39a193871d85f7caace0423ab7aacbd5792a11a0..a90d9b5bfee7f90395b432f0e35eea06
  			case 'none':
  				tabsControlType = NoEditorTabsControl;
  				break;
-@@ -86,12 +105,14 @@ export class EditorTitleControl extends Themable {
+@@ -86,12 +108,18 @@ export class EditorTitleControl extends Themable {
  	}
  
  	openEditor(editor: EditorInput, options?: IInternalEditorOpenOptions): void {
-+		this.checkGeminiTabRow(); // GEMINI-FORK: as restored editors arrive
++		if (this.checkGeminiTabRow()) { // GEMINI-FORK: as restored editors arrive; a flip has opened them all already
++			return;
++		}
  		const didChange = this.editorTabsControl.openEditor(editor, options);
  
  		this.handleOpenedEditors(didChange);
  	}
  
  	openEditors(editors: EditorInput[]): void {
-+		this.checkGeminiTabRow(); // GEMINI-FORK: as restored editors arrive
++		if (this.checkGeminiTabRow()) { // GEMINI-FORK: as restored editors arrive; a flip has opened them all already
++			return;
++		}
  		const didChange = this.editorTabsControl.openEditors(editors);
  
  		this.handleOpenedEditors(didChange);
-@@ -170,14 +191,7 @@ export class EditorTitleControl extends Themable {
+@@ -170,14 +198,7 @@ export class EditorTitleControl extends Themable {
  			oldOptions.showTabs !== newOptions.showTabs ||
  			(newOptions.showTabs !== 'single' && oldOptions.pinnedTabsOnSeparateRow !== newOptions.pinnedTabsOnSeparateRow)
  		) {
@@ -80,7 +87,7 @@ index 39a193871d85f7caace0423ab7aacbd5792a11a0..a90d9b5bfee7f90395b432f0e35eea06
  		}
  
  		// Forward into editor tabs control
-@@ -186,6 +200,19 @@ export class EditorTitleControl extends Themable {
+@@ -186,6 +207,19 @@ export class EditorTitleControl extends Themable {
  		}
  	}
  

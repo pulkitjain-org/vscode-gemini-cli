@@ -151,7 +151,9 @@ export function defaultBrowserWindowOptions(accessor: ServicesAccessor, windowSt
 		height: windowState.height,
 		webPreferences: {
 			...webPreferences,
-			spellcheck: true, // GEMINI-FORK: for the chat composers, which opt in; upstream's inputs opt out (geminiSpellCheck.ts)
+			// GEMINI-FORK: for the chat composers, which opt in; upstream's inputs opt out (geminiSpellCheck.ts). Only where
+			// the system's checker is used: on Windows and Linux Chromium would fetch Hunspell dictionaries from Google's CDN.
+			spellcheck: isMacintosh,
 			zoomFactor: zoomLevelToZoomFactor(windowState.zoomLevel ?? windowSettings?.zoomLevel),
 			autoplayPolicy: 'user-gesture-required',
 			// Enable experimental css highlight api https://chromestatus.com/feature/5436441440026624

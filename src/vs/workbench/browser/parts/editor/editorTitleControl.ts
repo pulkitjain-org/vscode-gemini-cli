@@ -68,14 +68,17 @@ export class EditorTitleControl extends Themable {
 	private hidesTabRow = false;
 
 	// GEMINI-FORK: a group gains or loses its tab row when agents open in it or leave it.
-	private checkGeminiTabRow(): void {
-		if (geminiHidesTabRow(this.model) !== this.hidesTabRow) {
-			this.recreateControls();
-			this.groupView.relayout();
-			if (this.model.activeEditor) {
-				this.openEditors(this.model.getEditors(EditorsOrder.SEQUENTIAL));
-			}
+	// Returns whether the controls were recreated, with the group's editors already opened into them.
+	private checkGeminiTabRow(): boolean {
+		if (geminiHidesTabRow(this.model) === this.hidesTabRow) {
+			return false;
 		}
+		this.recreateControls();
+		this.groupView.relayout();
+		if (this.model.activeEditor) {
+			this.openEditors(this.model.getEditors(EditorsOrder.SEQUENTIAL));
+		}
+		return true;
 	}
 
 	private createEditorTabsControl(): IEditorTabsControl {
@@ -105,14 +108,18 @@ export class EditorTitleControl extends Themable {
 	}
 
 	openEditor(editor: EditorInput, options?: IInternalEditorOpenOptions): void {
-		this.checkGeminiTabRow(); // GEMINI-FORK: as restored editors arrive
+		if (this.checkGeminiTabRow()) { // GEMINI-FORK: as restored editors arrive; a flip has opened them all already
+			return;
+		}
 		const didChange = this.editorTabsControl.openEditor(editor, options);
 
 		this.handleOpenedEditors(didChange);
 	}
 
 	openEditors(editors: EditorInput[]): void {
-		this.checkGeminiTabRow(); // GEMINI-FORK: as restored editors arrive
+		if (this.checkGeminiTabRow()) { // GEMINI-FORK: as restored editors arrive; a flip has opened them all already
+			return;
+		}
 		const didChange = this.editorTabsControl.openEditors(editors);
 
 		this.handleOpenedEditors(didChange);

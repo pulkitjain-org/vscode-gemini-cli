@@ -176,10 +176,12 @@ export interface RunStrings {
 	/** Run is off until the reply's block is finished. */
 	readonly streaming: string;
 	readonly running: string;
-	/** `{0}` is how long it took. */
+	/** Beside the block's language once it ran: `{0}` is the exit code the terminal reported. */
+	readonly exit: string;
+	/** The tooltips on that: exit code 0, exit code `{0}`, and a shell that reported none. */
 	readonly passed: string;
-	/** `{0}` is the exit code, `{1}` how long it took. */
 	readonly failed: string;
+	readonly ended: string;
 	readonly sendOutput: string;
 	/** The "+" menu's Open Terminal, in the agent's folder. */
 	readonly openTerminal: string;
@@ -388,10 +390,10 @@ export interface ChatStrings {
 	readonly confirmWhy: string;
 	/** `{0}` is the time to the agent's first reply text. */
 	readonly firstToken: string;
-	/** The compact card and divider (`webview-src/items.ts`). `suggested` takes the percent full; `done` takes the tokens before and after. */
+	/** The compact card and divider (`webview-src/items.ts`). `suggested` takes the percent full; `doneFrom` the context's tokens as the CLI last counted them, `done` says so without a figure. */
 	readonly compact: {
 		readonly suggested: string; readonly suggestedText: string; readonly compact: string; readonly notNow: string;
-		readonly running: string; readonly done: string; readonly keptOne: string; readonly kept: string; readonly keptNone: string;
+		readonly running: string; readonly done: string; readonly doneFrom: string; readonly keptOne: string; readonly kept: string; readonly keptNone: string;
 		readonly undo: string; readonly viewSummary: string; readonly undone: string; readonly failed: string;
 		/** The usage popover's button, and its note. */
 		readonly popover: string; readonly popoverNote: string;
@@ -677,7 +679,7 @@ export interface ForkStrings {
 	readonly compactHint: string;
 	readonly conversation: string;
 	readonly conversationHint: string;
-	/** `{0}` is a token count such as "38k". */
+	/** `{0}` is the token count the CLI saved for the session, such as "38k". */
 	readonly tokens: string;
 	readonly wholeLarge: string;
 	readonly where: string;

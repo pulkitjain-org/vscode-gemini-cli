@@ -223,6 +223,8 @@ export class AgentClient {
 	private readonly onDispose = new Set<() => void>();
 	/** Ends each running turn here, without the agent's answer (see `cancel`). */
 	private readonly endTurnLocally = new Set<() => void>();
+	/** Ends the wait of each prompt still held back by a reopened session's replay, so it is never sent (see `cancel`). */
+	private readonly endWaitLocally = new Set<() => void>();
 	private cancelTimer: ReturnType<typeof setTimeout> | undefined;
 	/** Sessions that failed to open in a row while the agent stayed ready, and when the last one failed. */
 	private failures = 0;
@@ -467,9 +469,9 @@ export class AgentClient {
 
 	/** Like `prompt`, and also resolves with the tokens the turn used, when the agent reports them. */
 	async promptTurn(content: string | acp.ContentBlock[]): Promise<TurnResult> {
-		if (this.replay.done) {
-			// The answer must not mix with the history still arriving.
-			await this.replay.done;
+		const replaying = this.replay.done;
+		if (replaying && !await this.waitForReplay(replaying)) {
+			return { stopReason: 'cancelled' };
 		}
 		const state = this._state;
 		if (state.kind !== 'ready' || !this.connection) {
@@ -483,7 +485,7 @@ export class AgentClient {
 		const endedHere = new Promise<undefined>(resolve => endLocally = () => resolve(undefined));
 		this.endTurnLocally.add(endLocally);
 		try {
-			const response = await this.runtime.trackTurn(Promise.race([connection.prompt(state.sessionId, typeof content === 'string' ? [{ type: 'text', text: content }] : content), endedHere]));
+			const response = await this.runtime.trackTurn(Promise.race([connection.prompt(state.sessionId, typeof content === 'string' ? [{ type: 'text', text: content }] : content), endedHere]), state.sessionId);
 			if (!response) {
 				this.runtime.debug(`The turn in ${state.sessionId} did not stop when asked; ended it without the agent's answer`);
 				return { stopReason: 'cancelled' };
@@ -514,13 +516,31 @@ export class AgentClient {
 	}
 
 	/**
+	 * Holds a prompt until the reopened session's replay is over, so the answer
+	 * does not mix with the history still arriving. Resolves with false when
+	 * `cancel` ends the wait first: the prompt is then not sent.
+	 */
+	private async waitForReplay(replaying: Promise<void>): Promise<boolean> {
+		let stop!: () => void;
+		const stopped = new Promise<false>(resolve => stop = () => resolve(false));
+		this.endWaitLocally.add(stop);
+		try {
+			return await Promise.race([replaying.then(() => true), stopped]);
+		} finally {
+			this.endWaitLocally.delete(stop);
+		}
+	}
+
+	/**
 	 * Asks the agent to stop the current turn; the pending `prompt` resolves
 	 * with `cancelled`. gemini-cli stops at its next check, which a hung MCP
 	 * server or tool can hold up, so a turn still running after a grace period
 	 * is ended here (the CLI drops it when the next prompt comes). Without a
-	 * session to send the cancel to, it ends at once.
+	 * session to send the cancel to, it ends at once. A prompt still waiting
+	 * for the session's replay is dropped at once, unsent.
 	 */
 	async cancel(): Promise<void> {
+		this.endWaitingPrompts();
 		const state = this._state;
 		const connection = this.connection;
 		if (state.kind === 'ready' && connection) {
@@ -548,6 +568,12 @@ export class AgentClient {
 		}
 	}
 
+	private endWaitingPrompts(): void {
+		for (const end of [...this.endWaitLocally]) {
+			end();
+		}
+	}
+
 	/** The running turn's stall, while it has had no update for a while; undefined otherwise. */
 	get stall(): TurnStall | undefined {
 		return this.stallWatch.stall;
@@ -562,6 +588,7 @@ export class AgentClient {
 		if (state.kind === 'ready' && this.connection) {
 			this.closeSession(this.connection, state.agent, state.sessionId);
 		}
+		this.endWaitingPrompts();
 		this.endRunningTurns();
 		this.stallWatch.dispose();
 		for (const done of [...this.onDispose]) {

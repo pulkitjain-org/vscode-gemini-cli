@@ -128,10 +128,6 @@ body.team-flow {
 	font-size: var(--gc-text-sm);
 }
 
-.small {
-	font-size: var(--gc-text-sm);
-}
-
 .accent {
 	color: var(--vscode-textLink-foreground);
 }
@@ -153,62 +149,10 @@ textarea.flow-input {
 	resize: vertical;
 }
 
-.flow-input:focus {
-	outline: 1px solid var(--vscode-focusBorder);
-	outline-offset: -1px;
-}
-
-button.link {
-	padding: 0;
-	border: none;
-	background: none;
-	color: var(--vscode-textLink-foreground);
-}
-
-button.link:hover:not(:disabled) {
-	text-decoration: underline;
-}
-
-button.small {
-	padding: 1px 8px;
-	font-size: var(--gc-text-sm);
-}
-
+/* .link, .small and .pill are tokens.css's. */
 button.wide {
 	justify-content: center;
 	width: 100%;
-}
-
-.pill {
-	display: inline-flex;
-	align-items: center;
-	gap: 4px;
-	padding: 1px 8px;
-	border-radius: var(--gc-radius-pill);
-	background: var(--gemini-hover);
-	font-size: var(--gc-text-xs);
-	font-weight: var(--gc-weight-medium);
-	white-space: nowrap;
-}
-
-.pill.ok {
-	color: var(--gemini-ok);
-}
-
-.pill.warn {
-	color: var(--gemini-warn);
-}
-
-.pill.error {
-	color: var(--gemini-error);
-}
-
-.pill.info {
-	color: var(--vscode-textLink-foreground);
-}
-
-.pill.muted {
-	color: var(--gemini-muted);
 }
 
 .flow-list {

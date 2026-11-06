@@ -377,8 +377,6 @@ const previewTabs = createPreviewTabs({
 	strings,
 	render: text => loadDraftMarkdown().then(module => module.renderDraft(text, kind => calloutLabels[kind] ?? kind)),
 });
-// The shortcut, which the shared tabs put in a native tooltip, in the themed one.
-setTip(previewTab, previewTab.title);
 // Warm the menus and the renderer once Home has settled, so the first menu and the first Preview open at once.
 setTimeout(() => (window.requestIdleCallback ?? setTimeout)(() => {
 	void loadMenus().catch(() => undefined);

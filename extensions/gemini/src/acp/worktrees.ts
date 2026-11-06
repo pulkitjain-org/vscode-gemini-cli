@@ -13,6 +13,7 @@ import { execFile, spawn } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { writeFileAtomic } from './fsUtil';
 
 /** An agent's own branch and folder. Plain data, kept with the agent. */
 export interface AgentWorktree {
@@ -317,23 +318,43 @@ export function threadGuide(repos: readonly { readonly key: string; readonly abo
 /** Writes a multi-repository thread's GEMINI.md and .geminiignore into its folder. */
 export async function writeThreadGuide(folder: string, guide: string): Promise<void> {
 	await fs.mkdir(folder, { recursive: true });
-	await fs.writeFile(path.join(folder, 'GEMINI.md'), guide);
-	await fs.writeFile(path.join(folder, '.geminiignore'), `${threadIgnores.join('\n')}\n`);
+	await writeFileAtomic(path.join(folder, 'GEMINI.md'), guide);
+	await writeFileAtomic(path.join(folder, '.geminiignore'), `${threadIgnores.join('\n')}\n`);
 }
 
 export interface WorktreeStatus {
 	/** Files changed in the worktree and not committed. */
 	readonly uncommitted: number;
-	/** Commits on the agent's branch that `into` does not have. */
-	readonly commits: number;
+	/**
+	 * Commits on the agent's branch that `into` does not have; when `into`
+	 * is gone, commits no other branch or remote has. Undefined when git
+	 * could not count them, which callers treat as work that would be lost.
+	 */
+	readonly commits: number | undefined;
 }
 
 export async function worktreeStatus(worktree: AgentWorktree, into: string): Promise<WorktreeStatus> {
-	const [status, count] = await Promise.all([
+	const [status, commits] = await Promise.all([
 		git(worktree.folder, ['status', '--porcelain']),
-		git(worktree.folder, ['rev-list', '--count', `${into}..${worktree.branch}`]).catch(() => '0'),
+		unmergedCommits(worktree.folder, worktree.branch, into),
 	]);
-	return { uncommitted: status.split('\n').filter(Boolean).length, commits: Number(count.trim()) || 0 };
+	return { uncommitted: status.split('\n').filter(Boolean).length, commits };
+}
+
+/**
+ * How many commits of `branch` are not in `into`. When `into` is gone
+ * (deleted or renamed since the agent started), the commits no other branch
+ * or remote has, which is what deleting the branch would lose; undefined
+ * when that cannot be counted either. Never 0 for a count that failed.
+ */
+async function unmergedCommits(folder: string, branch: string, into: string): Promise<number | undefined> {
+	const count = async (args: readonly string[]) => Number((await git(folder, ['rev-list', '--count', ...args])).trim());
+	try {
+		return await count([`${into}..${branch}`]);
+	} catch {
+		// --exclude names a branch as --branches lists it, without refs/heads/; branch names can't hold glob characters.
+		return count([branch, '--not', `--exclude=${branch}`, '--branches', '--remotes']).catch(() => undefined);
+	}
 }
 
 /**
@@ -390,10 +411,11 @@ export async function removeWorktree(repository: string, worktree: AgentWorktree
 /**
  * Puts back a worktree whose folder was removed (Clean Up Merged Folders),
  * at the same place and on its branch as the branch now stands. Resolves
- * false when the branch is gone too; does nothing when the folder is there.
+ * false when the branch is gone too; does nothing when the folder is there
+ * and still a checkout.
  */
 export async function restoreWorktree(repository: string, worktree: AgentWorktree): Promise<boolean> {
-	if (await fs.access(worktree.folder).then(() => true, () => false)) {
+	if (await isCheckout(worktree.folder)) {
 		return true;
 	}
 	if (!await branchExists(repository, worktree.branch)) {
@@ -404,6 +426,16 @@ export async function restoreWorktree(repository: string, worktree: AgentWorktre
 	await fs.mkdir(path.dirname(worktree.folder), { recursive: true });
 	await git(repository, ['worktree', 'add', '--quiet', worktree.folder, worktree.branch]);
 	return true;
+}
+
+/** Whether `folder` is the top of a checkout: not gone, and not a plain folder left behind (git would answer for a repository above it). */
+async function isCheckout(folder: string): Promise<boolean> {
+	try {
+		const [top, real] = await Promise.all([git(folder, ['rev-parse', '--show-toplevel']), fs.realpath(folder)]);
+		return top.trim() === real;
+	} catch {
+		return false;
+	}
 }
 
 /** The bytes the files under `folder` take, symbolic links not followed; 0 when it is gone. */
@@ -514,6 +546,19 @@ export async function removeThreadFolder(repos: readonly RepoWorktree[], folder:
  */
 export function projectFolders(repository: string, threads: boolean, home: string = os.homedir()): string[] {
 	return [projectsHome(home), worktreesHome(repository, home), ...threads ? [allThreadsHome(home)] : []];
+}
+
+/**
+ * `task` on every item, `size` at a time, in order: enough in flight for a
+ * long list of worktrees to be looked at quickly, without a git process per
+ * item at once.
+ */
+export async function inBatches<T, R>(items: readonly T[], size: number, task: (item: T) => Promise<R>): Promise<R[]> {
+	const results: R[] = [];
+	for (let start = 0; start < items.length; start += size) {
+		results.push(...await Promise.all(items.slice(start, start + size).map(task)));
+	}
+	return results;
 }
 
 /** Whether `folder` exists. */

@@ -12,7 +12,7 @@ import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const root = path.join(__dirname, '..', '..');
-const createsSelect = /['"]select['"]\s*\)|\$\(\s*['"]select|<select[\s>]/;
+const createsSelect = /['"]select['"]\s*[,)]|\$\(\s*['"]select|<select[\s>]/;
 
 function sources(folder: string): string[] {
 	return readdirSync(folder, { withFileTypes: true }).flatMap(entry => entry.isDirectory()

@@ -234,7 +234,7 @@ function unfinishedCard(input: DashboardInput, title: string): ListedCard | unde
 		})),
 		...intents.map((entry): HomeRow => ({
 			tool: entry.tool.startsWith('jira') ? 'jira' : 'gitlab', title: entry.effect, detail: vscode.l10n.t("{0} · started {1}, no result recorded", entry.tool, relativeTime(Date.parse(entry.time), now)),
-			pill: { text: vscode.l10n.t("intent only"), tone: 'warn' },
+			pill: { text: vscode.l10n.t("Intent only"), tone: 'warn' },
 			button: { label: vscode.l10n.t("Open Audit Log"), action: command('gemini.openAuditLog') },
 			menu: [{ label: vscode.l10n.t("Mark as Checked"), action: command('gemini.team.settleIntent', entry.id) }],
 		})),
@@ -253,16 +253,16 @@ function startupCard(input: DashboardInput, title: string): HomeCard | undefined
 		return undefined;
 	}
 	const seconds = (ms: number) => vscode.l10n.t("{0} s", (ms / 1000).toFixed(1));
-	const done = { text: vscode.l10n.t("done"), tone: 'ok' as const };
+	const done = { text: vscode.l10n.t("Done"), tone: 'ok' as const };
 	const rows: HomeRow[] = [
 		{ icon: 'check', title: vscode.l10n.t("Agent list, transcripts, Home's last data, tokens (keychain)"), detail: vscode.l10n.t("at start"), pill: done },
 		{
 			icon: 'sparkle', title: vscode.l10n.t("Gemini CLI started ahead of the first chat"),
 			detail: startup.readyAt ? seconds(startup.readyAt - startup.activatedAt) : startup.agent === 'starting' ? vscode.l10n.t("starting") : '',
-			pill: startup.agent === 'ready' ? done : startup.agent === 'starting' ? { text: vscode.l10n.t("starting"), tone: 'info' } : startup.agent === 'error' ? { text: vscode.l10n.t("needs attention"), tone: 'error' } : { text: vscode.l10n.t("not started"), tone: 'muted' },
+			pill: startup.agent === 'ready' ? done : startup.agent === 'starting' ? { text: vscode.l10n.t("Starting"), tone: 'info' } : startup.agent === 'error' ? { text: vscode.l10n.t("Needs attention"), tone: 'error' } : { text: vscode.l10n.t("Not started"), tone: 'muted' },
 		},
-		{ icon: 'sync', title: vscode.l10n.t("Jira, GitLab, SonarQube and Snyk refreshed behind the cards"), detail: vscode.l10n.t("background"), pill: input.refreshing || !input.dataFrom ? { text: vscode.l10n.t("refreshing"), tone: 'info' } : done },
-		{ icon: 'debug-restart', title: vscode.l10n.t("Spare session, pending permission cards, session approvals"), detail: vscode.l10n.t("gone, by design"), pill: { text: vscode.l10n.t("reset"), tone: 'muted' } },
+		{ icon: 'sync', title: vscode.l10n.t("Jira, GitLab, SonarQube and Snyk refreshed behind the cards"), detail: vscode.l10n.t("background"), pill: input.refreshing || !input.dataFrom ? { text: vscode.l10n.t("Refreshing"), tone: 'info' } : done },
+		{ icon: 'debug-restart', title: vscode.l10n.t("Spare session, pending permission cards, session approvals"), detail: vscode.l10n.t("gone, by design"), pill: { text: vscode.l10n.t("Reset"), tone: 'muted' } },
 	];
 	return { id: 'startup', title, icon: 'history', query: 'cold start · restart model', rows };
 }
@@ -272,7 +272,8 @@ function agentsCard(input: DashboardInput, title: string): ListedCard {
 	const isLive = (a: AgentSummary) => a.state !== 'stopped' && a.state !== 'idle' && a.state !== 'kept' || !!a.changes?.files && a.state !== 'kept';
 	const live = own.filter(isLive).map((agent): HomeRow => {
 		const tone: HomeTone = agent.state === 'working' ? 'info' : agent.state === 'waiting' ? 'warn' : agent.state === 'error' ? 'error' : 'ok';
-		const label = agent.state === 'working' ? vscode.l10n.t("working") : agent.state === 'waiting' ? vscode.l10n.t("needs you") : agent.state === 'error' ? vscode.l10n.t("stopped with an error") : agent.changes?.files ? vscode.l10n.t("ready to review") : vscode.l10n.t("done");
+		// Sentence case, as every pill of the app's own; Jira's status text stays as its server gives it.
+		const label = agent.state === 'working' ? vscode.l10n.t("Working") : agent.state === 'waiting' ? vscode.l10n.t("Needs you") : agent.state === 'error' ? vscode.l10n.t("Stopped with an error") : agent.changes?.files ? vscode.l10n.t("Ready to review") : vscode.l10n.t("Done");
 		return {
 			icon: 'circle-filled',
 			title: agent.title,
@@ -417,22 +418,22 @@ function reviewInProgress(input: DashboardInput, mr: { readonly project: string;
 /** Review, or Continue Review when the user's review of it is in progress. */
 function reviewButton(input: DashboardInput, mr: { readonly project: string; readonly iid: number }): HomeButton {
 	return reviewInProgress(input, mr)
-		? { label: vscode.l10n.t("Continue Review"), action: command('gemini.team.reviewMergeRequest', mr.project, mr.iid), primary: true }
+		? { label: vscode.l10n.t("Continue Review"), action: command('gemini.team.reviewMergeRequest', mr.project, mr.iid) }
 		: { label: vscode.l10n.t("Review"), action: command('gemini.team.reviewMergeRequest', mr.project, mr.iid) };
 }
 
 function pipelinePill(mr: GitLabMr): HomeRow['pill'] {
 	const status: PipelineState | undefined = mr.pipeline?.status;
 	if (status === 'failed') {
-		return { text: vscode.l10n.t("pipeline failed"), tone: 'error' };
+		return { text: vscode.l10n.t("Pipeline failed"), tone: 'error' };
 	}
 	if (status === 'running' || status === 'pending' || status === 'created') {
-		return { text: vscode.l10n.t("pipeline running"), tone: 'info' };
+		return { text: vscode.l10n.t("Pipeline running"), tone: 'info' };
 	}
 	if (mr.approvals) {
 		return { text: vscode.l10n.t("{0} of {1} approvals", mr.approvals.given, Math.max(mr.approvals.required, mr.approvals.given)), tone: mr.approvals.given >= mr.approvals.required && mr.approvals.required > 0 ? 'ok' : 'muted' };
 	}
-	return status === 'success' ? { text: vscode.l10n.t("pipeline passed"), tone: 'ok' } : undefined;
+	return status === 'success' ? { text: vscode.l10n.t("Pipeline passed"), tone: 'ok' } : undefined;
 }
 
 function mergeRequestsCard(input: DashboardInput, title: string): ListedCard | undefined {
@@ -450,7 +451,7 @@ function mergeRequestsCard(input: DashboardInput, title: string): ListedCard | u
 		const going = reviewInProgress(input, mr);
 		return {
 			key: `!${mr.iid}`, repo: mr.project, title: mr.title, detail: mr.author, open: { kind: 'link', url: mr.url },
-			...going ? { pill: { text: vscode.l10n.t("Your draft: {0}", going.comments), tone: 'info' as const } } : mr.draft ? { pill: { text: vscode.l10n.t("draft"), tone: 'muted' as const } } : {},
+			...going ? { pill: { text: vscode.l10n.t("Your draft: {0}", going.comments), tone: 'info' as const } } : mr.draft ? { pill: { text: vscode.l10n.t("Draft"), tone: 'muted' as const } } : {},
 			button: reviewButton(input, mr),
 			...going ? {
 				menu: [
@@ -464,8 +465,8 @@ function mergeRequestsCard(input: DashboardInput, title: string): ListedCard | u
 	const mineRows = (mine?.data ?? []).map((mr, i): HomeRow => ({
 			...i === 0 ? { group: mineGroup, groupQuery: 'author_id=me, state=opened' } : {},
 			key: `!${mr.iid}`, repo: mr.project, title: mr.title, open: { kind: 'link', url: mr.url },
-			...isReadyToMerge(mr) ? { pill: { text: vscode.l10n.t("ready to merge"), tone: 'ok' as const }, button: { label: vscode.l10n.t("Merge..."), action: command('gemini.team.mergeMergeRequest', mr.project, mr.iid), primary: true } }
-				: mr.pipeline?.status !== 'failed' && mr.unresolved && !mr.draft ? { pill: { text: vscode.l10n.t("unresolved threads"), tone: 'warn' as const }, button: { label: vscode.l10n.t("Reply"), action: { kind: 'link', url: mr.url } } }
+			...isReadyToMerge(mr) ? { pill: { text: vscode.l10n.t("Ready to merge"), tone: 'ok' as const }, button: { label: vscode.l10n.t("Merge..."), action: command('gemini.team.mergeMergeRequest', mr.project, mr.iid) } }
+				: mr.pipeline?.status !== 'failed' && mr.unresolved && !mr.draft ? { pill: { text: vscode.l10n.t("Unresolved threads"), tone: 'warn' as const }, button: { label: vscode.l10n.t("Reply"), action: { kind: 'link', url: mr.url } } }
 				: { ...pipelinePill(mr) ? { pill: pipelinePill(mr) } : {}, ...mr.pipeline?.status === 'failed' ? { button: { label: vscode.l10n.t("Fix"), action: command('gemini.team.fixMergeRequest', mr.project, mr.iid) } } : {} },
 	}));
 	const all = [...forMe, ...mineRows];
@@ -492,7 +493,7 @@ function qualityCard(input: DashboardInput, title: string): HomeCard | undefined
 		rows.push({
 			tool: 'sonar', title: vscode.l10n.t("Quality gate"),
 			pill: {
-				text: [gate?.status === 'OK' ? vscode.l10n.t("passed") : gate?.status === 'ERROR' ? vscode.l10n.t("failed") : gate?.status === 'WARN' ? vscode.l10n.t("warning") : vscode.l10n.t("not analysed"), gate?.coverage ? vscode.l10n.t("coverage {0}%", Math.round(Number(gate.coverage))) : ''].filter(Boolean).join(' · '),
+				text: [gate?.status === 'OK' ? vscode.l10n.t("Passed") : gate?.status === 'ERROR' ? vscode.l10n.t("Failed") : gate?.status === 'WARN' ? vscode.l10n.t("Warning") : vscode.l10n.t("Not analysed"), gate?.coverage ? vscode.l10n.t("coverage {0}%", Math.round(Number(gate.coverage))) : ''].filter(Boolean).join(' · '),
 				tone: passed ? 'ok' : gate?.status === 'ERROR' ? 'error' : 'muted',
 			},
 			...quality.data.url ? { open: { kind: 'link', url: quality.data.url } } : {},
@@ -512,7 +513,7 @@ function qualityCard(input: DashboardInput, title: string): HomeCard | undefined
 			? { tool: 'snyk', title: vscode.l10n.t("Snyk"), detail: s.problem }
 			: bad
 				? { tool: 'snyk', title: s.critical ? vscode.l10n.t("Snyk: {0} critical, {1} high in dependencies", s.critical, s.high) : vscode.l10n.t("Snyk: {0} high in dependencies", s.high), detail: s.packages.join(', '), button: { label: vscode.l10n.t("Fix"), action: command('gemini.team.runChecks') } }
-				: { tool: 'snyk', title: vscode.l10n.t("Snyk: no high issues in dependencies"), pill: { text: vscode.l10n.t("clean"), tone: 'ok' } });
+				: { tool: 'snyk', title: vscode.l10n.t("Snyk: no high issues in dependencies"), pill: { text: vscode.l10n.t("Clean"), tone: 'ok' } });
 	}
 	const sonarState = sonar ? sourceState(input, 'sonar', quality) : { stale: false };
 	const snykState = snyk ? sourceState(input, 'snyk', snykData) : { stale: false };

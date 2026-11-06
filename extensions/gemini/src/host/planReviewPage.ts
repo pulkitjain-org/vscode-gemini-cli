@@ -423,7 +423,7 @@ export function planStrings(): PlanStrings {
 	return {
 		from: vscode.l10n.t("Plan from \"{0}\""),
 		saved: vscode.l10n.t("Saved"),
-		saving: vscode.l10n.t("Saving…"),
+		saving: vscode.l10n.t("Saving..."),
 		editedOne: vscode.l10n.t("Saved · your edits in 1 section"),
 		editedMany: vscode.l10n.t("Saved · your edits in {0} sections"),
 		commentsOne: vscode.l10n.t("1 comment"),

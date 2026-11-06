@@ -3,11 +3,15 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// Themed tooltips for controls, for the chat (dom.ts) and Home: shown on
-// hover and on keyboard focus, styled by menu.css. Importing it starts the
-// listeners; a control opts in with `setTip`. While a control's tip is up, or
-// about to be, the control is described by it (`aria-describedby`), as a
-// native `title` would be.
+// Themed tooltips for controls, for every page and the chat (dom.ts): shown
+// on hover and on keyboard focus, styled by menu.css. Importing it starts the
+// listeners, which show the tip of any control marked `data-tip`; a control
+// opts in with `setTip`, or with panelDom's `markTip`, which a chunk loaded
+// into the page (a menu, the comment box) uses without a copy of this module.
+// While a control's tip is up, or about to be, the control is described by it
+// (`aria-describedby`), as a native `title` would be.
+
+import { markTip } from './panelDom';
 
 /**
  * Gives `node` a themed tooltip, shown on hover and keyboard focus. The
@@ -15,8 +19,7 @@
  * unthemed, against the rule that every popup uses the app's own look.
  */
 export function setTip(node: HTMLElement, tip: string): void {
-	node.removeAttribute('title');
-	node.dataset.tip = tip;
+	markTip(node, tip);
 	if (shownFor === node && tooltip) {
 		tooltip.textContent = tip;
 	}

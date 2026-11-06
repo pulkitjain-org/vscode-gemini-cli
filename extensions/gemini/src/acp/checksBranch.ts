@@ -109,9 +109,9 @@ export async function changedFiles(cwd: string, target: string, remote = 'origin
 	for (const base of [`${remote}/${target}`, target]) {
 		const mergeBase = (await git(cwd, ['merge-base', 'HEAD', base]).catch(() => '')).trim();
 		if (mergeBase) {
-			for (const file of (await git(cwd, ['diff', '--name-only', '--relative', '--diff-filter=ACMR', `${mergeBase}...HEAD`])).split('\n')) {
-				if (file.trim()) {
-					files.add(file.trim());
+			for (const file of (await git(cwd, ['diff', '--name-only', '-z', '--relative', '--diff-filter=ACMR', `${mergeBase}...HEAD`])).split('\0')) {
+				if (file) {
+					files.add(file);
 				}
 			}
 			break;
@@ -120,11 +120,20 @@ export async function changedFiles(cwd: string, target: string, remote = 'origin
 	// Git names the top folder by its real path (/private/var, not /var), so `cwd` is compared the same way.
 	const top = await repositoryTop(cwd);
 	const here = await fs.realpath(cwd).catch(() => cwd);
-	for (const line of (await git(cwd, ['status', '--porcelain', '--untracked-files=all', '--', '.'])).split('\n')) {
-		// "XY path" or "XY old -> new"; a deleted file has nothing left to analyse.
-		if (line.length > 3 && !line.startsWith(' D') && !line.startsWith('D ')) {
-			const file = line.slice(3).split(' -> ').pop()!.trim().replace(/^"(.*)"$/, '$1');
-			files.add(path.relative(here, path.join(top, file)));
+	// NUL-ended entries, so a name with spaces, quotes or non-ASCII characters comes as it is.
+	const entries = (await git(cwd, ['status', '--porcelain', '-z', '--untracked-files=all', '--', '.'])).split('\0');
+	for (let i = 0; i < entries.length; i++) {
+		const entry = entries[i];
+		// "XY path"; a rename or copy is "XY new" followed by the old path as an entry of its own.
+		if (entry.length <= 3) {
+			continue;
+		}
+		if (/[RC]/.test(entry.slice(0, 2))) {
+			i++;
+		}
+		// A deleted file has nothing left to analyse.
+		if (!entry.startsWith(' D') && !entry.startsWith('D ')) {
+			files.add(path.relative(here, path.join(top, entry.slice(3))));
 		}
 	}
 	return [...files].sort();

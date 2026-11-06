@@ -163,7 +163,7 @@ export class QuickEdits implements vscode.Disposable {
 		// The rewrite shows in the file as it arrives, and goes again before the clean one is applied.
 		const preview = new InlineEditPreview(editor, start, end - start);
 		let intact = true;
-		const reply = await this.withProgress(vscode.ProgressLocation.Notification, vscode.l10n.t("Gemini is editing…"), async signal => {
+		const reply = await this.withProgress(vscode.ProgressLocation.Notification, vscode.l10n.t("Gemini is editing..."), async signal => {
 			try {
 				return await this.generate({ system, prompt, signal, onText: text => preview.show(partialEdit(text)) });
 			} finally {
@@ -212,7 +212,7 @@ export class QuickEdits implements vscode.Disposable {
 		}
 		const subjects = await repository.log({ maxEntries: 8 }).then(commits => commits.map(c => c.message.split('\n')[0]), () => []);
 		const { system, prompt } = commitMessagePrompt(diff, subjects);
-		const reply = await this.withProgress(vscode.ProgressLocation.SourceControl, vscode.l10n.t("Writing a commit message…"), signal =>
+		const reply = await this.withProgress(vscode.ProgressLocation.SourceControl, vscode.l10n.t("Writing a commit message..."), signal =>
 			this.generate({ system, prompt, signal, temperature: 0.3 }));
 		if (reply) {
 			repository.inputBox.value = cleanCommitMessage(reply);

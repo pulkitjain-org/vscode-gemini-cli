@@ -81,15 +81,19 @@ export function isRunning(pid: number): boolean {
 	}
 }
 
-/** Removes the debug logs in `dir` of processes that have ended; returns the files removed. */
+/**
+ * Removes the debug logs in `dir` of processes that have ended; returns the
+ * files removed. Never rejects: a log that cannot be removed (another user's,
+ * or in a folder that cannot be written) is left for next time.
+ */
 export async function removeEndedDebugLogs(dir: string, running: (pid: number) => boolean = isRunning): Promise<string[]> {
 	const names = await fs.readdir(dir).catch(() => [] as string[]);
 	const ended = names.flatMap(name => {
 		const pid = debugLogPid(name);
 		return pid !== undefined && pid !== process.pid && !running(pid) ? [path.join(dir, name)] : [];
 	});
-	await Promise.all(ended.map(file => fs.rm(file, { force: true })));
-	return ended;
+	const removed = await Promise.all(ended.map(file => fs.rm(file, { force: true }).then(() => file, () => undefined)));
+	return removed.filter((file): file is string => file !== undefined);
 }
 
 /**

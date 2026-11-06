@@ -8,7 +8,7 @@ import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { branchChoices, checkoutForChecks, checkoutOf, listBranches } from '../../src/acp/checksBranch';
+import { branchChoices, changedFiles, checkoutForChecks, checkoutOf, listBranches } from '../../src/acp/checksBranch';
 
 describe('branch choices for Run Checks', () => {
 	it('offers the current branch, then agents\', local and remote branches, once each', () => {
@@ -63,5 +63,26 @@ describe('a checkout for checks', () => {
 		expect(again.cwd).toBe(made.cwd);
 		// The user's checkout did not move.
 		expect(run(repo, 'rev-parse', '--abbrev-ref', 'HEAD').trim()).toBe('main');
+	});
+
+	it('names the files a branch changed as they are, committed, renamed, new or deleted', async () => {
+		dir = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'checks-files-')));
+		const repo = path.join(dir, 'repo');
+		run(dir, 'init', '--quiet', '-b', 'main', repo);
+		writeFileSync(path.join(repo, 'a.txt'), 'a\n');
+		writeFileSync(path.join(repo, 'gone.txt'), 'gone\n');
+		writeFileSync(path.join(repo, 'old name.txt'), 'old\n');
+		run(repo, 'add', '.');
+		run(repo, 'commit', '--quiet', '-m', 'one');
+		run(repo, 'checkout', '--quiet', '-b', 'feature/names');
+		writeFileSync(path.join(repo, 'caf\u00e9 "menu".txt'), 'committed\n');
+		run(repo, 'add', '.');
+		run(repo, 'commit', '--quiet', '-m', 'two');
+		// Not committed: a renamed file, a deleted one, a new one with spaces and quotes, and a change.
+		run(repo, 'mv', 'old name.txt', 'new name.txt');
+		run(repo, 'rm', '--quiet', 'gone.txt');
+		writeFileSync(path.join(repo, 'na\u00efve "draft".txt'), 'new\n');
+		writeFileSync(path.join(repo, 'a.txt'), 'changed\n');
+		expect(await changedFiles(repo, 'main')).toEqual(['a.txt', 'caf\u00e9 "menu".txt', 'na\u00efve "draft".txt', 'new name.txt']);
 	});
 });

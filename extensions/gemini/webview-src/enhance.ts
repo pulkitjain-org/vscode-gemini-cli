@@ -76,12 +76,18 @@ function updateRow(): void {
 
 let placing = 0;
 let mirrorStyled = false;
+/** The input's line height, read with its text styles. */
+let lineHeight = 0;
+/** Where the text last measured ended, with the text and the input's width it was measured at: the same again is not measured twice. */
+let measured: { readonly text: string; readonly width: number; readonly left: number; readonly top: number; readonly lineHeight: number } | undefined;
 let below = false;
 
 /**
  * Moves the button to where the text ends, once per frame. The text is copied
  * into a hidden mirror that wraps like the input; reading where it ends lays
  * out only what the frame lays out anyway, and the button moves by transform.
+ * The copy and the reading happen only when the text or the width changed:
+ * a scroll, or a change of phase, moves the button with what was measured.
  */
 function placeButton(): void {
 	if (placing || enhanceFloat.hidden) {
@@ -94,15 +100,20 @@ function placeButton(): void {
 			for (const name of mirroredStyles) {
 				mirror.style[name] = style[name];
 			}
+			lineHeight = parseFloat(style.lineHeight) || 0;
 			mirrorStyled = true;
+			measured = undefined;
 		}
-		mirror.style.width = `${input.clientWidth}px`;
-		const marker = document.createElement('span');
-		marker.textContent = '\u200b';
-		mirror.replaceChildren(input.value, marker);
-		const lineHeight = parseFloat(getComputedStyle(input).lineHeight) || marker.offsetHeight;
+		const width = input.clientWidth;
+		if (!measured || measured.text !== input.value || measured.width !== width) {
+			mirror.style.width = `${width}px`;
+			const marker = document.createElement('span');
+			marker.textContent = '\u200b';
+			mirror.replaceChildren(input.value, marker);
+			measured = { text: input.value, width, left: marker.offsetLeft, top: marker.offsetTop, lineHeight: lineHeight || marker.offsetHeight };
+		}
 		const place = enhanceButtonPlacement(
-			{ left: marker.offsetLeft, top: marker.offsetTop, lineHeight, width: input.clientWidth, height: input.clientHeight, scrollTop: input.scrollTop },
+			{ left: measured.left, top: measured.top, lineHeight: measured.lineHeight, width, height: input.clientHeight, scrollTop: input.scrollTop },
 			{ width: enhanceFloat.offsetWidth, height: enhanceFloat.offsetHeight },
 		);
 		enhanceFloat.style.transform = `translate(${place.x}px, ${place.y}px)`;

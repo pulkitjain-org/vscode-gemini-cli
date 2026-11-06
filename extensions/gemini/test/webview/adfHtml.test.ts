@@ -136,6 +136,15 @@ describe('adfHtml', () => {
 		expect(Array.from(root.querySelectorAll('.adf-opaque')).map(node => node.textContent)).toEqual(['Image ou fichier', 'Macro', '@quelqu\'un', 'Contenu Confluence']);
 	});
 
+	it('opens only web and mail links, keeping any other scheme in the mark for the round trip', () => {
+		const link = (text: string, href: string): AdfDocument['content'][number] => ({ type: 'text', text, marks: [{ type: 'link', attrs: { href } }] });
+		const doc: AdfDocument = { type: 'doc', version: 1, content: [{ type: 'paragraph', content: [link('docs', 'https://acme.example/docs'), link('open', 'vscode://file/etc/hosts'), link('run', 'javascript:alert(1)'), link('mail', 'mailto:ada@acme.example')] }] };
+		const root = document.createElement('div');
+		adfToHtml(doc, root);
+		expect({ hrefs: [...root.querySelectorAll('a')].map(a => a.getAttribute('href')), back: htmlToAdf(root) })
+			.toEqual({ hrefs: ['https://acme.example/docs', null, null, 'mailto:ada@acme.example'], back: doc });
+	});
+
 	it('drops the id of a pasted copy that comes before its original', () => {
 		const original = { type: 'paragraph', attrs: { localId: 'p1' }, content: [{ type: 'text', text: 'One' }] };
 		const root = document.createElement('div');

@@ -33,9 +33,6 @@
 }
 
 :root {
-	--gemini-radius: 10px;
-	--gemini-radius-small: 6px;
-	--gemini-radius-large: 12px;
 	/* Soft: the theme's own colours, named by their role. */
 	--gemini-surface: var(--vscode-editor-background);
 	/* Cards and the composer: a step above the page. */
@@ -466,32 +463,24 @@ body.has-parent-project .side-links {
 	font-size: 0.85em;
 }
 
-.restore-button,
-.restore-more {
+.restore-button {
 	flex: none;
-	border: 1px solid var(--gemini-border-strong);
-	border-radius: var(--gemini-radius-small);
-	background: var(--gemini-surface);
-	color: var(--vscode-foreground);
-	font: inherit;
-	font-size: 0.92em;
-	padding: 4px 8px;
-	cursor: pointer;
-}
-
-.restore-button:hover,
-.restore-more:hover {
-	background: var(--gemini-hover);
 }
 
 .restore-more {
 	display: block;
 	width: 100%;
+	padding: 8px 12px;
 	border: none;
-	border-radius: 0;
 	background: none;
 	color: var(--vscode-textLink-foreground);
-	padding: 8px 12px;
+	font: inherit;
+	font-size: 0.92em;
+	cursor: pointer;
+}
+
+.restore-more:hover {
+	background: var(--gemini-hover);
 }
 
 .empty-hints li {
@@ -715,8 +704,13 @@ body:not(.can-run) .code-run {
 	display: inline-flex;
 	align-items: center;
 	gap: 4px;
-	margin-right: 4px;
 	font-variant-numeric: tabular-nums;
+}
+
+.run-status::before {
+	content: "\00b7";
+	margin: 0 4px;
+	color: var(--gemini-faint);
 }
 
 .run-status.passed {
@@ -727,19 +721,10 @@ body:not(.can-run) .code-run {
 	color: var(--gemini-error);
 }
 
+/* Send Output, in the block's header: the inline control's height, so it sits inside the header's line. */
 .run-send {
-	margin-left: 4px;
-	padding: 1px 8px;
-	border: 1px solid var(--gemini-border);
-	border-radius: var(--gemini-radius-small);
-	background: none;
-	color: var(--vscode-foreground);
-	font: inherit;
-	cursor: pointer;
-}
-
-.run-send:hover {
-	background: var(--gemini-hover);
+	height: var(--gc-control-sm);
+	margin-right: 4px;
 }
 
 /* The block's question before a risky command runs, or which repository to run in. */
@@ -1046,12 +1031,26 @@ body.vscode-high-contrast-light {
 	cursor: pointer;
 }
 
-.tool-call.expandable .tool-row:hover {
-	background: var(--gemini-hover);
+/* The row's chevron, icon and title as one button, drawn as the row's own text; the chips beside it are buttons of their own. */
+.tool-toggle {
+	display: inline-flex;
+	align-items: center;
+	flex: 0 1 auto;
+	gap: 9px;
+	min-width: 0;
+	height: auto;
+	padding: 0;
+	border: none;
+	border-radius: var(--gc-radius-sm);
+	background: none;
+	color: inherit;
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
 }
 
-.tool-row:focus-visible {
-	outline: 1px solid var(--vscode-focusBorder);
+.tool-call.expandable .tool-row:hover {
+	background: var(--gemini-hover);
 }
 
 .tool-title {
@@ -1189,17 +1188,6 @@ body.vscode-high-contrast-light {
 	background: var(--gemini-hover);
 }
 
-.chip:focus-visible,
-.icon-button:focus-visible,
-.round-button:focus-visible,
-.scroll-down:focus-visible,
-.status-action:focus-visible,
-.permission button:focus-visible,
-.pill:focus-visible {
-	outline: 1px solid var(--vscode-focusBorder);
-	outline-offset: 1px;
-}
-
 .chip > span {
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -1252,9 +1240,14 @@ body.vscode-high-contrast-light {
 	background: var(--gemini-hover);
 }
 
-.work-head:focus-visible,
-.work-run-row:focus-visible {
-	outline: 1px solid var(--vscode-focusBorder);
+/* The line is the control: pointed at, its lead reads as a link and its chevron is a step larger than a step's. */
+.work-head:hover .work-lead {
+	text-decoration: underline;
+	text-underline-offset: 2px;
+}
+
+.work-head > .chevron {
+	font-size: var(--gc-text-md) !important;
 }
 
 .work-lead {
@@ -1375,20 +1368,6 @@ body.vscode-high-contrast-light {
 .work-show {
 	flex: none;
 	margin-left: auto;
-	padding: 0 2px;
-	border: none;
-	background: none;
-	color: var(--vscode-textLink-foreground);
-	font: inherit;
-	cursor: pointer;
-}
-
-.work-show:hover {
-	text-decoration: underline;
-}
-
-.work-show:focus-visible {
-	outline: 1px solid var(--vscode-focusBorder);
 }
 
 /* Opened: every step, in order, on a quiet rail under the chevron. */
@@ -1520,17 +1499,6 @@ body.vscode-high-contrast-light {
 	background: color-mix(in srgb, var(--gemini-warn) 4%, var(--gemini-card));
 }
 
-.permission-pill {
-	flex: none;
-	padding: 0 8px;
-	border: 1px solid color-mix(in srgb, var(--gemini-warn) 40%, transparent);
-	border-radius: var(--gc-radius-pill);
-	font-size: var(--gc-text-xs);
-	font-weight: var(--gc-weight-medium);
-	color: var(--gemini-warn);
-	white-space: nowrap;
-}
-
 .permission-effect {
 	margin: 8px 0 0;
 	padding: 8px 8px;
@@ -1602,33 +1570,6 @@ body.vscode-high-contrast-light {
 	align-items: center;
 	gap: 6px;
 	margin-top: 8px;
-}
-
-.permission-actions button {
-	padding: 4px 16px;
-	border-radius: var(--gemini-radius-small);
-	border: 1px solid var(--vscode-button-border, transparent);
-	cursor: pointer;
-}
-
-.permission-actions button.primary {
-	background: var(--vscode-button-background);
-	color: var(--vscode-button-foreground);
-	font-weight: var(--gc-weight-semibold);
-}
-
-.permission-actions button.primary:hover {
-	background: var(--vscode-button-hoverBackground);
-}
-
-.permission-actions button.secondary {
-	background: var(--vscode-button-secondaryBackground, transparent);
-	color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
-	border-color: var(--vscode-button-secondaryBorder, var(--vscode-button-border, var(--gemini-border)));
-}
-
-.permission-actions button.secondary:hover {
-	background: var(--vscode-button-secondaryHoverBackground, var(--gemini-hover));
 }
 
 .hint {
@@ -1707,13 +1648,6 @@ body.vscode-high-contrast-light {
 
 .notice .notice-actions {
 	margin-top: 0;
-}
-
-/* Show Log, and other links among the buttons: no box. */
-.permission-actions button.link-button {
-	padding: 4px 4px;
-	border-color: transparent;
-	background: none;
 }
 
 /* An edit card's warning that another agent is changing the file too. */
@@ -2023,7 +1957,7 @@ body:not(.developer) .first-token + .turn-dot {
 	display: inline-flex;
 	align-items: center;
 	gap: 4px;
-	height: 22px;
+	height: var(--gc-control-sm);
 	padding: 0 8px;
 	border: none;
 	border-radius: var(--gc-radius-sm);
@@ -2040,11 +1974,6 @@ body:not(.developer) .first-token + .turn-dot {
 .turn-action:hover {
 	background: var(--vscode-toolbar-hoverBackground);
 	color: var(--vscode-foreground);
-}
-
-.turn-action:focus-visible {
-	outline: 1px solid var(--vscode-focusBorder);
-	outline-offset: 1px;
 }
 
 .turn-undone {
@@ -2182,12 +2111,6 @@ body:not(.developer) .first-token + .turn-dot {
 	color: var(--vscode-foreground);
 }
 
-.reaction-more:focus-visible,
-.reaction-quick:focus-visible {
-	outline: 1px solid var(--vscode-focusBorder);
-	outline-offset: -1px;
-}
-
 /* Room under the bubble for the part of the agent's pill that hangs below it, above the time and Copy. */
 .message.user.has-reaction {
 	position: relative;
@@ -2251,10 +2174,6 @@ button.reaction-line {
 button.reaction-line:hover {
 	background: var(--gemini-hover);
 	color: var(--vscode-foreground);
-}
-
-button.reaction-line:focus-visible {
-	outline: 1px solid var(--vscode-focusBorder);
 }
 
 .user-turn.reaction-turn {
@@ -2361,8 +2280,6 @@ button.reaction-line:focus-visible {
 }
 
 .emoji-cell:focus-visible {
-	outline: 1px solid var(--vscode-focusBorder);
-	outline-offset: -1px;
 	background: var(--gemini-selected);
 }
 
@@ -2522,7 +2439,10 @@ button.reaction-line:focus-visible {
 }
 
 .status-action {
-	padding: 4px 12px;
+	display: inline-flex;
+	align-items: center;
+	height: var(--gc-control);
+	padding: 0 12px;
 	border: 1px solid var(--gemini-border-strong);
 	border-radius: var(--gemini-radius-small);
 	background: var(--gemini-surface);
@@ -2678,39 +2598,11 @@ body.vscode-high-contrast-light .composer:focus-within {
 
 /* Write and Preview (markdownPreview.ts): tabs at the top of the composer once there is a draft; Preview takes the input's place. */
 .composer-tabs {
-	display: flex;
-	gap: 12px;
-	margin: -2px 0 4px;
-	font-size: var(--gc-text-sm);
+	margin: 0 0 4px;
 }
 
 .composer:has(textarea:placeholder-shown) .composer-tabs {
 	display: none;
-}
-
-.composer-tab {
-	padding: 1px 0;
-	border: none;
-	border-bottom: 2px solid transparent;
-	background: none;
-	color: var(--gemini-faint);
-	font: inherit;
-	cursor: pointer;
-}
-
-.composer-tab:hover,
-.composer-tab[aria-selected="true"] {
-	color: var(--vscode-foreground);
-}
-
-.composer-tab[aria-selected="true"] {
-	border-bottom-color: var(--vscode-foreground);
-}
-
-.composer-tab:focus-visible {
-	outline: 1px solid var(--vscode-focusBorder);
-	outline-offset: 2px;
-	border-radius: var(--gc-radius-sm);
 }
 
 .composer-preview {
@@ -2791,11 +2683,6 @@ body.vscode-high-contrast-light .composer:focus-within {
 
 .enhance-chip:hover {
 	background: var(--gemini-hover);
-}
-
-.enhance-chip:focus-visible {
-	outline: 1px solid var(--vscode-focusBorder);
-	outline-offset: -2px;
 }
 
 .enhance-chip .codicon {
@@ -2986,23 +2873,6 @@ body.vscode-high-contrast-light #send {
 	font-size: var(--gc-text-sm);
 }
 
-.icon-button {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	width: 22px;
-	height: 22px;
-	padding: 0;
-	border: none;
-	border-radius: var(--gc-radius-sm);
-	background: transparent;
-	cursor: pointer;
-}
-
-.icon-button:hover {
-	background: var(--gemini-hover);
-}
-
 /* ---- The composer's "+" button and mode chip ---- */
 
 .plus-button {
@@ -3147,11 +3017,6 @@ body.vscode-high-contrast-light #send {
 	color: var(--vscode-foreground);
 }
 
-.foot-button:focus-visible {
-	outline: 1px solid var(--vscode-focusBorder);
-	outline-offset: -1px;
-}
-
 .foot-button span {
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -3249,11 +3114,6 @@ body.vscode-high-contrast-light #send {
 .followed-close:hover {
 	background: var(--gemini-hover);
 	color: var(--vscode-foreground);
-}
-
-.followed-close:focus-visible {
-	outline: 1px solid var(--vscode-focusBorder);
-	outline-offset: -1px;
 }
 
 @media (max-width: 360px) {
@@ -3394,25 +3254,6 @@ body.vscode-high-contrast-light #send {
 	height: 100%;
 	border-radius: var(--gc-radius-sm);
 	background: var(--usage-fill);
-}
-
-.usage-more {
-	padding: 0;
-	border: none;
-	background: none;
-	color: var(--vscode-textLink-foreground, var(--gemini-accent));
-	font: inherit;
-	cursor: pointer;
-}
-
-.usage-more:hover {
-	text-decoration: underline;
-}
-
-.usage-more:focus-visible {
-	outline: 1px solid var(--vscode-focusBorder);
-	outline-offset: 2px;
-	border-radius: var(--gc-radius-sm);
 }
 
 .usage-section > .usage-more,
@@ -3578,33 +3419,23 @@ body.vscode-high-contrast-light #send {
 	display: none;
 }
 
-.side-chat-actions button,
+/* Ask: the primary button's look, on a button of its own. */
 .side-chat-ask {
-	padding: 4px 12px;
-	border: 1px solid var(--vscode-button-border, transparent);
-	border-radius: var(--gemini-radius-small);
+	display: inline-flex;
+	align-items: center;
+	height: var(--gc-control);
+	padding: 0 12px;
+	border: 1px solid var(--gemini-accent);
+	border-radius: var(--gc-radius-md);
+	background: var(--gemini-accent);
+	color: var(--gemini-on-accent);
+	font-size: var(--gc-text-sm);
+	font-weight: var(--gc-weight-medium);
 	cursor: pointer;
 }
 
-.side-chat-actions button.primary,
-.side-chat-ask {
-	background: var(--vscode-button-background);
-	color: var(--vscode-button-foreground);
-}
-
-.side-chat-actions button.primary:hover,
 .side-chat-ask:hover {
-	background: var(--vscode-button-hoverBackground);
-}
-
-.side-chat-actions button.secondary {
-	background: var(--vscode-button-secondaryBackground, transparent);
-	color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
-	border-color: var(--vscode-button-secondaryBorder, var(--vscode-button-border, var(--gemini-border)));
-}
-
-.side-chat-actions button.secondary:hover {
-	background: var(--vscode-button-secondaryHoverBackground, var(--gemini-hover));
+	background: var(--vscode-button-hoverBackground, var(--gemini-accent));
 }
 
 .side-chat-form {
@@ -3622,11 +3453,6 @@ body.vscode-high-contrast-light #send {
 	background: var(--vscode-input-background);
 	color: var(--vscode-input-foreground);
 	font: inherit;
-}
-
-.side-chat-input:focus {
-	outline: 1px solid var(--vscode-focusBorder);
-	outline-offset: -1px;
 }
 
 .side-chat-hint {
@@ -3722,10 +3548,6 @@ body.vscode-high-contrast-light #send {
 .queue-action:hover {
 	background: var(--gemini-hover);
 	color: var(--vscode-foreground);
-}
-
-.queue-action:focus-visible {
-	outline: 1px solid var(--vscode-focusBorder);
 }
 
 .chip .thumbnail {
@@ -4394,11 +4216,6 @@ textarea.new-thread-input {
 	min-height: 5.5em;
 }
 
-.new-thread-input:focus {
-	outline: 1px solid var(--vscode-focusBorder);
-	outline-offset: -1px;
-}
-
 .new-thread-pair {
 	display: flex;
 	gap: 12px;
@@ -4798,27 +4615,32 @@ textarea.new-thread-input {
 	border-right: 1px solid var(--gemini-border);
 }
 
+/* A column of tabs: the chosen one's line is on its left edge, in the focus colour, as the row of tabs underlines it. */
 .project-settings-tab {
 	display: flex;
 	align-items: center;
 	gap: 8px;
-	padding: 8px 8px;
+	height: var(--gc-control-lg);
+	padding: 0 8px;
 	border: none;
-	border-radius: var(--gemini-radius-small);
+	border-left: 2px solid transparent;
+	border-radius: 0 var(--gc-radius-sm) var(--gc-radius-sm) 0;
 	background: transparent;
-	color: var(--vscode-foreground);
+	color: var(--gemini-muted);
 	font: inherit;
 	text-align: left;
 	cursor: pointer;
 }
 
 .project-settings-tab:hover {
+	color: var(--vscode-foreground);
 	background: var(--gemini-hover);
 }
 
 .project-settings-tab.selected {
-	background: var(--gemini-selected);
-	color: var(--vscode-list-activeSelectionForeground, var(--vscode-foreground));
+	border-left-color: var(--vscode-focusBorder);
+	background: var(--gemini-hover);
+	color: var(--vscode-foreground);
 }
 
 .project-settings-body {
@@ -4859,27 +4681,6 @@ textarea.new-thread-input {
 	background: var(--vscode-inputValidation-errorBackground, var(--gemini-error));
 	border-color: var(--gemini-error);
 	color: var(--vscode-foreground);
-}
-
-.link-button {
-	display: inline-flex;
-	align-items: center;
-	gap: 5px;
-	padding: 0;
-	border: none;
-	background: none;
-	color: var(--vscode-textLink-foreground);
-	font: inherit;
-	cursor: pointer;
-}
-
-.link-button:hover:not(:disabled) {
-	text-decoration: underline;
-}
-
-.link-button:disabled {
-	color: var(--gemini-faint);
-	cursor: default;
 }
 
 .settings-section + .settings-section,
@@ -5403,12 +5204,6 @@ textarea.new-thread-input {
 	text-decoration: underline;
 }
 
-.tool-chip-open:focus-visible {
-	outline: 1px solid var(--vscode-focusBorder);
-	outline-offset: 1px;
-	border-radius: var(--gc-radius-pill);
-}
-
 /* A geminicode-tools call shows its tool's logo where other calls show a codicon. */
 .tool-row .tool-logo.kind-icon,
 .menu-row .tool-logo.menu-icon {
@@ -5484,11 +5279,6 @@ textarea.new-thread-input {
 	color: var(--vscode-input-foreground);
 	font: inherit;
 	resize: vertical;
-}
-
-.commit-message:focus {
-	outline: 1px solid var(--vscode-focusBorder);
-	outline-offset: -1px;
 }
 
 .commit-box .permission-actions {

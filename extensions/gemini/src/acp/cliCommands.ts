@@ -9,7 +9,10 @@
 // (`CommandHandler.runCommand`), and `/extensions list` sends its list as JSON.
 // The commands of one run share a hidden session of their own, so no chat sees
 // them, and a command the CLI does not list in `available_commands_update` is
-// never sent: it would reach the model as a prompt.
+// never sent: it would reach the model as a prompt. A run holds the process
+// (`AgentRuntime.hold`) without counting as a prompt: a restart that waits for
+// the agents to be idle waits for it too, so no install is cut off, while the
+// Mac is not kept awake for a listing.
 
 import type * as acp from '@agentclientprotocol/sdk';
 import type { AgentRuntime } from './agentRuntime';
@@ -31,6 +34,15 @@ function commandName(line: string): string {
  * rejects. The session is closed afterwards when the CLI can close sessions.
  */
 export async function runCliCommands(runtime: AgentRuntime, cwd: string, commands: readonly string[], timeoutMs = defaultTimeoutMs, listWaitMs = commandListMs): Promise<(string | undefined)[]> {
+	const hold = runtime.hold();
+	try {
+		return await runHeld(runtime, cwd, commands, timeoutMs, listWaitMs);
+	} finally {
+		hold.dispose();
+	}
+}
+
+async function runHeld(runtime: AgentRuntime, cwd: string, commands: readonly string[], timeoutMs: number, listWaitMs: number): Promise<(string | undefined)[]> {
 	const { connection, agent, session } = await runtime.newSession(cwd);
 	const sessionId = session.sessionId;
 	let reply = '';

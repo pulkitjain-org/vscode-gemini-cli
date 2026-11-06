@@ -15,6 +15,7 @@ import * as vscode from 'vscode';
 import type { AgentChanges } from '../../acp/agentChanges';
 import type { AgentRecord, AgentsModel } from '../../acp/agents';
 import { errorMessage } from '../../acp/errors';
+import { samePath } from '../../acp/fsUtil';
 import { AgentWorktree, commitAll, currentBranch, type inRepository, mergeBranch, mergeRefusal, repositoryRoot, worktreeStatus } from '../../acp/worktrees';
 import type { ChatActivity } from '../chatController';
 import { tildify } from '../displayText';
@@ -42,6 +43,8 @@ export class AgentMerge {
 		private readonly lock: typeof inRepository,
 		/** Writes a commit message for a folder's uncommitted work; undefined when it can't. */
 		private readonly writeMessage?: (folder: string) => Promise<string | undefined>,
+		/** Takes an agent's tried work back out of the user's checkout (`AgentTries.takeBack`); resolves whether it did. Without it, a merge over tried work is refused. */
+		private readonly takeBack?: (id: string) => Promise<boolean>,
 	) { }
 
 	/** Whether agent `id` is being merged back now. */
@@ -166,7 +169,7 @@ export class AgentMerge {
 			// Resolved once no repository has work left to merge.
 			const left = await Promise.all(repos.filter(repo => !repo.merged).map(async repo => {
 				const status = await worktreeStatus(repo, await currentBranch(repo.repository)).catch(() => undefined);
-				return !!status && (status.commits > 0 || status.uncommitted > 0);
+				return !!status && (status.commits !== 0 || status.uncommitted > 0);
 			}));
 			const into = await currentBranch(target.repository).catch(() => '');
 			void vscode.window.showInformationMessage(vscode.l10n.t("Merged {0} into {1} in {2}.", target.branch, into, target.key));
@@ -174,6 +177,25 @@ export class AgentMerge {
 		} finally {
 			this.merging.delete(record.id);
 		}
+	}
+
+	/**
+	 * Whether `repository` is free of the agent's tried work: it is, or the
+	 * user chose Take Back and Merge and it was taken back. Without a way to
+	 * take it back, the merge is refused with the reason.
+	 */
+	private async untried(record: AgentRecord, repository: string): Promise<boolean> {
+		const tried = this.model.agent(record.id)?.tried;
+		if (tried?.state !== 'trying' || !tried.repos.some(repo => samePath(repo.repository, repository))) {
+			return true;
+		}
+		if (!this.takeBack) {
+			void vscode.window.showWarningMessage(vscode.l10n.t("You're trying the changes from \"{0}\" in {1}. Take them back or keep them first, then merge.", record.title, path.basename(repository)));
+			return false;
+		}
+		const back = vscode.l10n.t("Take Back and Merge");
+		const choice = await vscode.window.showWarningMessage(vscode.l10n.t("You're trying the changes from \"{0}\" in {1}.", record.title, path.basename(repository)), { modal: true, detail: vscode.l10n.t("The merge brings the same work in as commits, so the tried files are taken back out of your checkout first. Edits you made in them stay as yours.") }, back);
+		return choice === back && await this.takeBack(record.id);
 	}
 
 	/** Asks, commits the worktree's work and merges its branch into `repository`'s; returns whether it merged. Reports failures itself. */
@@ -186,16 +208,20 @@ export class AgentMerge {
 					: vscode.l10n.t("{0} is in the middle of a {1}. Finish or abort it before merging {2}.", path.basename(repository), refusal, worktree.branch));
 				return false;
 			}
+			// Its work tried in this checkout would be in the merge's way ("local changes would be overwritten"): taken back first, or the merge waits.
+			if (!await this.untried(record, repository)) {
+				return false;
+			}
 			const into = await currentBranch(repository);
 			const status = await worktreeStatus(worktree, into);
-			if (!status.uncommitted && !status.commits) {
+			if (!status.uncommitted && status.commits === 0) {
 				void vscode.window.showInformationMessage(vscode.l10n.t("{0} has nothing to merge into {1}.", worktree.branch, into));
 				return false;
 			}
 			// Written from the uncommitted work while the user reads the question.
 			const written = status.uncommitted ? this.writeMessage?.(worktree.folder).catch(() => undefined) : undefined;
 			const detail = [
-				status.commits === 1 ? vscode.l10n.t("1 commit") : status.commits ? vscode.l10n.t("{0} commits", status.commits) : undefined,
+				status.commits === 1 ? vscode.l10n.t("1 commit") : status.commits ? vscode.l10n.t("{0} commits", status.commits) : status.commits === undefined ? vscode.l10n.t("commits that could not be counted against {0}", into) : undefined,
 				status.uncommitted === 1 ? vscode.l10n.t("1 changed file not committed yet; it is committed first, with a message written from the change (or \"{0}\")", record.title)
 					: status.uncommitted ? vscode.l10n.t("{0} changed files not committed yet; they are committed first, with a message written from the changes (or \"{1}\")", status.uncommitted, record.title) : undefined,
 			].filter(Boolean).join('\n');

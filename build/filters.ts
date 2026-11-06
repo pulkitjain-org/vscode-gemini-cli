@@ -182,9 +182,10 @@ export const indentationFilter = Object.freeze<string[]>([
 
 export const copyrightFilter = Object.freeze<string[]>([
 	'**',
-	// GEMINI-FORK: fork files carry their own header, checked by ESLint
+	// GEMINI-FORK: fork files carry their own header, checked by ESLint; so do the files the fork adds under src/vs
 	'!extensions/gemini/**',
 	'!gemini/**',
+	...readFileSync(join(import.meta.dirname, '..', 'gemini', 'patches', 'ADDED'), 'utf8').split(/\r?\n/).filter(line => line.startsWith('src/vs/')).map(line => `!${line}`),
 	'!**/*.desktop',
 	'!**/*.json',
 	'!**/*.jsonc',

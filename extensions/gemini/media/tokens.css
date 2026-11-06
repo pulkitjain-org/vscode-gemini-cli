@@ -10,6 +10,12 @@
  * page writes var(--gc-...) and never a size of its own, which
  * test/webview/designTokens.test.ts checks. Colours stay the theme's, named by
  * role in each page's --gemini-* variables.
+ *
+ * Below the scale, the controls every page shares, defined once: the pill,
+ * the button set (primary, secondary, quiet, link, icon, small) and the tabs.
+ * They are classes, so a page's own stylesheet, loaded after this one, adds
+ * only its colour modifiers; the older class names the pages' scripts use
+ * are aliases of the same rules.
  */
 
 :root {
@@ -45,9 +51,11 @@
 	--gc-radius-lg: 10px;
 	--gc-radius-pill: 999px;
 
-	/* Heights: a control, a control on Home, a list row, a menu row. */
+	/* Heights: a control, a control on Home, a control inline in text, a list row, a menu row. */
 	--gc-control: 26px;
 	--gc-control-lg: 28px;
+	--gc-control-sm: 22px;
+	--gc-pill: 18px;
 	--gc-row: 32px;
 	--gc-menu-row: 26px;
 
@@ -81,4 +89,231 @@
 :where(button, [role="button"], [role="switch"], [role="tab"], [role="menuitem"], [role="option"], a[href], input, select, textarea, [tabindex]):focus-visible {
 	outline: none;
 	box-shadow: var(--gc-focus-ring);
+}
+
+/* ---- The controls every page shares. ---- */
+
+/*
+ * A state in a pill: one padding and line height, a hairline in the tone's colour, the
+ * smallest text. The pages' older names (.dash-pill, .state-pill, .plan-pill,
+ * .permission-pill) are the same pill.
+ */
+.pill,
+.dash-pill,
+.state-pill,
+.plan-pill,
+.permission-pill {
+	display: inline-flex;
+	align-items: center;
+	flex: none;
+	gap: var(--gc-space-1);
+	box-sizing: border-box;
+	height: var(--gc-pill);
+	padding: 0 var(--gc-space-2);
+	border: 1px solid var(--gemini-border);
+	border-radius: var(--gc-radius-pill);
+	font-size: var(--gc-text-xs);
+	font-weight: var(--gc-weight-medium);
+	line-height: 1;
+	color: var(--gemini-muted);
+	white-space: nowrap;
+}
+
+:is(.pill, .dash-pill, .state-pill, .plan-pill, .permission-pill).ok {
+	color: var(--gemini-ok);
+	border-color: color-mix(in srgb, var(--gemini-ok) 40%, transparent);
+}
+
+:is(.pill, .dash-pill, .state-pill, .plan-pill, .permission-pill).warn {
+	color: var(--gemini-warn);
+	border-color: color-mix(in srgb, var(--gemini-warn) 40%, transparent);
+}
+
+:is(.pill, .dash-pill, .state-pill, .plan-pill, .permission-pill).error {
+	color: var(--gemini-error);
+	border-color: color-mix(in srgb, var(--gemini-error) 40%, transparent);
+}
+
+:is(.pill, .dash-pill, .state-pill, .plan-pill, .permission-pill).info {
+	color: var(--vscode-textLink-foreground);
+	border-color: color-mix(in srgb, var(--vscode-textLink-foreground) 40%, transparent);
+}
+
+:is(.pill, .dash-pill, .state-pill, .plan-pill, .permission-pill).muted {
+	color: var(--gemini-muted);
+}
+
+/*
+ * The button set. Every button is one control high; the one primary action in a card
+ * (Home's Start agent) is the taller control, which its page says. A secondary button is
+ * a surface with a hairline, the pages' plain button (panels.css); the primary one is the
+ * accent fill; a quiet one shows its box only when pointed at; a link button is text in
+ * the link colour; an icon button is a square around its icon.
+ */
+.primary,
+.secondary,
+.quiet {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--gc-space-1);
+	box-sizing: border-box;
+	height: var(--gc-control);
+	padding: 0 var(--gc-space-3);
+	border: 1px solid var(--gemini-border-strong);
+	border-radius: var(--gc-radius-md);
+	background: var(--gemini-surface);
+	color: var(--vscode-foreground);
+	font-family: inherit;
+	font-size: var(--gc-text-sm);
+	font-weight: var(--gc-weight-regular);
+	line-height: 1;
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+:is(.primary, .secondary, .quiet):disabled {
+	opacity: 0.5;
+	cursor: default;
+}
+
+:is(.primary, .secondary, .quiet) .codicon {
+	font-size: var(--gc-text-md);
+}
+
+.secondary:hover:not(:disabled) {
+	background: var(--gemini-hover);
+}
+
+.primary {
+	border-color: var(--gemini-accent);
+	background: var(--gemini-accent);
+	color: var(--gemini-on-accent);
+	font-weight: var(--gc-weight-medium);
+}
+
+.primary:hover:not(:disabled) {
+	background: var(--vscode-button-hoverBackground, var(--gemini-accent));
+}
+
+.quiet {
+	border-color: transparent;
+	background: none;
+	color: var(--gemini-muted);
+}
+
+.quiet:hover:not(:disabled) {
+	border-color: var(--gemini-border-strong);
+	background: var(--gemini-hover);
+	color: var(--vscode-foreground);
+}
+
+/* Text in the link colour, underlined when pointed at; .link, .work-show and .usage-more are the pages' older names for it. */
+.link-button,
+button.link,
+.work-show,
+.usage-more {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--gc-space-1);
+	box-sizing: border-box;
+	height: auto;
+	min-height: 0;
+	padding: 0 var(--gc-space-1);
+	border: none;
+	border-radius: var(--gc-radius-sm);
+	background: none;
+	color: var(--vscode-textLink-foreground);
+	font: inherit;
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+:is(.link-button, button.link, .work-show, .usage-more):hover:not(:disabled) {
+	background: none;
+	text-decoration: underline;
+	text-underline-offset: 2px;
+}
+
+:is(.link-button, button.link, .work-show, .usage-more):disabled {
+	color: var(--gemini-faint);
+	cursor: default;
+}
+
+/* A square around one icon, lit when pointed at; a page may size it to its row. */
+.icon-button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: none;
+	box-sizing: border-box;
+	width: var(--gc-control);
+	height: var(--gc-control);
+	padding: 0;
+	border: 1px solid transparent;
+	border-radius: var(--gc-radius-md);
+	background: none;
+	color: var(--gemini-faint);
+	cursor: pointer;
+}
+
+.icon-button:hover:not(:disabled) {
+	background: var(--gemini-hover);
+	color: var(--vscode-foreground);
+}
+
+.icon-button:disabled {
+	opacity: 0.5;
+	cursor: default;
+}
+
+/* Smaller text; on a button, a narrower one too. */
+.small {
+	font-size: var(--gc-text-sm);
+}
+
+button.small {
+	padding: 0 var(--gc-space-2);
+}
+
+/*
+ * Tabs: a row of quiet labels, the chosen one in the foreground with a line under it in
+ * the focus colour. Agent Setup's .page-tab, the composer's and the comment box's
+ * .composer-tab are the same tab.
+ */
+.tabs,
+.page-tabs,
+.composer-tabs {
+	display: flex;
+	align-items: flex-end;
+	gap: var(--gc-space-1);
+}
+
+.tab,
+.page-tab,
+.composer-tab {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--gc-space-1);
+	box-sizing: border-box;
+	height: var(--gc-control-lg);
+	padding: 0 var(--gc-space-3);
+	border: none;
+	border-bottom: 2px solid transparent;
+	border-radius: 0;
+	background: none;
+	color: var(--gemini-muted);
+	font-family: inherit;
+	font-size: var(--gc-text-md);
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+:is(.tab, .page-tab, .composer-tab):hover {
+	color: var(--vscode-foreground);
+}
+
+:is(.tab, .page-tab, .composer-tab):is([aria-selected="true"], .active) {
+	color: var(--vscode-foreground);
+	border-bottom-color: var(--vscode-focusBorder);
 }

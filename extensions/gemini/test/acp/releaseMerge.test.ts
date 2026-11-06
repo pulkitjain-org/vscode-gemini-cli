@@ -7,7 +7,7 @@ import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { branchWorktree, UnpushedCommitsError } from '../../src/acp/releaseMerge';
+import { branchWorktree, diffFiles, reviewWorktree, splitDiff, UnpushedCommitsError } from '../../src/acp/releaseMerge';
 import { commitAll, currentBranch, git } from '../../src/acp/worktrees';
 
 // A clone of a bare "GitLab" with a merge request's branch on it, as Fix and a review see them.
@@ -77,5 +77,50 @@ describe('Fix on a merge request\'s branch', () => {
 		await git(author, ['push', '--quiet', 'origin', 'feature/gift']);
 		const moved = await branchWorktree(clone, 'origin', 'feature/gift', { home });
 		expect(await head(moved.folder)).toBe(await head(author));
+	});
+});
+
+describe('a review\'s worktree', () => {
+	it('refuses to reset a review branch checked out anywhere GeminiCode did not make', async () => {
+		// The user checked GeminiCode's review branch out in their own clone and changed a file there.
+		await git(clone, ['checkout', '--quiet', '-b', 'review/7-gift', 'origin/feature/gift']);
+		await fs.writeFile(path.join(clone, 'gift.ts'), 'export const gift = "mine";\n');
+		await fs.writeFile(path.join(author, 'gift.ts'), 'export const gift = false;\n');
+		await commitAll(author, 'Review fix');
+		await git(author, ['push', '--quiet', 'origin', 'feature/gift']);
+		const before = await head(clone);
+		const failure = await reviewWorktree(clone, 'origin', 'feature/gift', 'review/7-gift', { home }).catch((err: unknown) => err);
+		expect((failure as Error).message).toBe(`review/7-gift is checked out in ${clone}, which GeminiCode didn't make. Switch branches there first.`);
+		expect({ head: await head(clone), file: await fs.readFile(path.join(clone, 'gift.ts'), 'utf8') }).toEqual({ head: before, file: 'export const gift = "mine";\n' });
+	});
+
+	it('moves its own checkout to the branch\'s new head', async () => {
+		const first = await reviewWorktree(clone, 'origin', 'feature/gift', 'review/7-gift', { home });
+		await fs.writeFile(path.join(author, 'gift.ts'), 'export const gift = false;\n');
+		await commitAll(author, 'Review fix');
+		await git(author, ['push', '--quiet', 'origin', 'feature/gift']);
+		const again = await reviewWorktree(clone, 'origin', 'feature/gift', 'review/7-gift', { home, inUse: () => true });
+		expect({ folder: again.folder, head: await head(again.folder) }).toEqual({ folder: first.folder, head: await head(author) });
+	});
+});
+
+describe('the files a range changes', () => {
+	it('reads every file\'s diff in one git diff, with names as they are', async () => {
+		const base = await head(author, 'refs/heads/main');
+		await git(author, ['mv', 'cart.ts', 'basket.ts']);
+		await fs.writeFile(path.join(author, 'gift.ts'), 'export const gift = false;\n');
+		await fs.writeFile(path.join(author, 'caf\u00e9 "menu".ts'), 'export const menu = 1;\n');
+		await fs.writeFile(path.join(author, 'logo.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 1, 2]));
+		await commitAll(author, 'Changes');
+		await fs.rm(path.join(author, 'gift.ts'));
+		await commitAll(author, 'Drop the gift');
+		const files = await diffFiles(author, base, 'HEAD');
+		expect(files.map(({ diff, ...rest }) => ({ ...rest, hunk: diff.split('\n')[0] }))).toEqual([
+			{ oldPath: 'cart.ts', newPath: 'basket.ts', newFile: false, deletedFile: false, hunk: 'diff --git a/cart.ts b/basket.ts' },
+			{ oldPath: 'caf\u00e9 "menu".ts', newPath: 'caf\u00e9 "menu".ts', newFile: true, deletedFile: false, hunk: '@@ -0,0 +1 @@' },
+			{ oldPath: 'logo.png', newPath: 'logo.png', newFile: true, deletedFile: false, hunk: 'diff --git a/logo.png b/logo.png' },
+		]);
+		expect(files[1].diff).toBe('@@ -0,0 +1 @@\n+export const menu = 1;\n');
+		expect(splitDiff('diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-diff --git a/y b/y\n+b\ndiff --git a/y b/y\n')).toEqual(['diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-diff --git a/y b/y\n+b\n', 'diff --git a/y b/y\n']);
 	});
 });

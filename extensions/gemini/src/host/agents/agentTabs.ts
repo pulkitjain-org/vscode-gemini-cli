@@ -91,6 +91,8 @@ export class AgentTabs implements vscode.Disposable {
 	private sharedPanel: SharedPanel | undefined;
 	/** Looks for agents long without a tab, while there are any. */
 	private releaseTimer: ReturnType<typeof setInterval> | undefined;
+	/** Each agent's open in progress: a second click meanwhile (a double-click on its row) joins it rather than making a second tab. */
+	private readonly opening = new Map<string, Promise<void>>();
 
 	constructor(private readonly host: AgentTabsHost) { }
 
@@ -161,7 +163,22 @@ export class AgentTabs implements vscode.Disposable {
 	 * the agent it showed (whose turn carries on). With `own`, in a tab of its
 	 * own: Keep in Own Tab, which also makes the shared tab the agent's own.
 	 */
-	async open(id: string, own = false): Promise<void> {
+	open(id: string, own = false): Promise<void> {
+		// Opening a project agent waits seconds for its servers and trust; two opens meanwhile made two tabs for one chat.
+		const pending = this.opening.get(id);
+		if (pending) {
+			return pending;
+		}
+		const opened = this.openNow(id, own).finally(() => {
+			if (this.opening.get(id) === opened) {
+				this.opening.delete(id);
+			}
+		});
+		this.opening.set(id, opened);
+		return opened;
+	}
+
+	private async openNow(id: string, own: boolean): Promise<void> {
 		const host = this.host;
 		const record = host.model.agent(id);
 		const workspace = record && host.model.workspace(record.workspaceId);

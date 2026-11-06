@@ -15,6 +15,7 @@ import { filterSettings, helpSegments, sameValue } from '../src/acp/settingsMode
 import { button, el, format, icon } from './panelDom';
 import { bootPage } from './panelBoot';
 import { selectMenu, type SelectMenu } from './selectMenu';
+import { setTip } from './tooltip';
 
 const { strings, post, main: page, start } = bootPage<ToSettingsPage, FromSettingsPage, SettingsPageStrings>();
 
@@ -43,7 +44,7 @@ function switchButton(on: boolean, label: string, title: string, onChange: (on: 
 	toggle.type = 'button';
 	toggle.setAttribute('role', 'switch');
 	toggle.setAttribute('aria-label', label);
-	toggle.title = title;
+	setTip(toggle, title);
 	setSwitch(toggle, on);
 	toggle.addEventListener('click', () => {
 		const next = !toggle.classList.contains('on');
@@ -337,6 +338,8 @@ function contextSection(cost: ContextCostView, developer: boolean): HTMLElement 
 interface RowControl {
 	readonly element: HTMLElement;
 	set(value: unknown): void;
+	/** Lets go of what the control holds outside its row, such as a menu's document listeners. */
+	dispose?(): void;
 }
 
 /** A text or number field; the value goes to the host when it is committed (change), not on every keystroke. */
@@ -374,7 +377,7 @@ function fieldControl(row: SettingRowView): RowControl {
 	};
 }
 
-/** An enum setting as a themed select; a choice's help is its title. */
+/** An enum setting as a themed select; a choice's help is its row's tooltip, and the chosen one's the button's. */
 function pickerControl(row: SettingRowView): RowControl {
 	const select = el('select', 'select');
 	select.setAttribute('aria-label', row.label);
@@ -383,7 +386,7 @@ function pickerControl(row: SettingRowView): RowControl {
 		const option = el('option', undefined, choice.label);
 		option.value = String(i);
 		if (choice.help) {
-			option.title = choice.help;
+			option.dataset.tip = choice.help;
 		}
 		select.append(option);
 	});
@@ -399,9 +402,9 @@ function pickerControl(row: SettingRowView): RowControl {
 		set: value => {
 			const index = choices.findIndex(choice => sameValue(choice.value, value));
 			select.value = index >= 0 ? String(index) : '';
-			menu.element.title = choices[index]?.help ?? '';
 			menu.sync();
 		},
+		dispose: () => menu.dispose(),
 	};
 }
 
@@ -477,6 +480,8 @@ interface SettingRowNode {
 	readonly node: HTMLElement;
 	/** Shows the row as the host last sent it, touching only what changed. */
 	apply(row: SettingRowView): void;
+	/** For a row that is gone: its control's menu stops listening to the document. */
+	dispose(): void;
 }
 
 /** One gemini.* setting: its name and key, its help, a note when it is saved for the workspace, its control and Reset. */
@@ -537,6 +542,7 @@ function settingRow(first: SettingRowView): SettingRowNode {
 			reset.hidden = !row.modified;
 			setNote(row.target);
 		},
+		dispose: () => control.dispose?.(),
 	};
 }
 
@@ -663,6 +669,7 @@ function patchSettings(sections: readonly SettingSectionView[]): void {
 	for (const [key, entry] of rowNodes) {
 		if (!keep.has(key)) {
 			entry.node.remove();
+			entry.dispose();
 			rowNodes.delete(key);
 		}
 	}

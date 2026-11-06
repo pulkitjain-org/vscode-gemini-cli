@@ -128,7 +128,8 @@ export class AgentFeatures {
 				},
 				onDidChangeAgent: this.host.onDidChangeTurnEmitter.event,
 			});
-			this.host.disposables.push(this.planReviewsLoaded, this.host.onDidChangeTurnEmitter);
+			// The emitter is the pane's, disposed with it, not only once Plan Review has loaded.
+			this.host.disposables.push(this.planReviewsLoaded);
 		}
 		return this.planReviewsLoaded;
 	}
@@ -200,7 +201,9 @@ export class AgentFeatures {
 	}
 
 	get merge(): AgentMerge {
-		return this.mergeLoaded ??= new (this.onDemand().AgentMerge)(this.host.model, this.host.live, (id, deleteBranch) => this.host.removeAgent(id, deleteBranch), inRepository, folder => writeCommitMessage(folder, undefined, this.host.view.direct));
+		return this.mergeLoaded ??= new (this.onDemand().AgentMerge)(this.host.model, this.host.live, (id, deleteBranch) => this.host.removeAgent(id, deleteBranch), inRepository, folder => writeCommitMessage(folder, undefined, this.host.view.direct),
+			// Take Back and Merge: tried work leaves the checkout quietly before the merge.
+			id => this.tries.takeBack(id, true));
 	}
 
 	get tries(): AgentTries {

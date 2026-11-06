@@ -120,18 +120,20 @@ describe('Plan Review page', () => {
 
 	it('edits a section from the keyboard, and not while Gemini works', () => {
 		sendToPage({ type: 'view', view: view() });
+		// The section's text is a plain block, so the links in it are the only controls there; Edit beside the + is a real button.
 		const content = query('.plan-sec[data-section="h:risks"] .plan-content')!;
-		const reachable = { role: content.getAttribute('role'), tabIndex: content.tabIndex };
-		key(content, 'Enter');
+		const edit = query<HTMLButtonElement>('.plan-sec[data-section="h:risks"] button.plan-edit')!;
+		const reachable = { contentRole: content.getAttribute('role'), contentTabIndex: content.getAttribute('tabindex'), named: !!edit.getAttribute('aria-label') };
+		edit.click();
 		const opened = query<HTMLTextAreaElement>('.plan-editor textarea')?.value;
 		key(query('.plan-editor textarea')!, 'Escape');
 		sendToPage({ type: 'view', view: view({ busy: true }) });
-		const busy = query('.plan-sec[data-section="h:risks"] .plan-content')!;
-		key(busy, ' ');
-		expect({ reachable, opened, busy: { disabled: busy.getAttribute('aria-disabled'), editor: !!query('.plan-editor') } }).toEqual({
-			reachable: { role: 'button', tabIndex: 0 },
+		const busy = query<HTMLButtonElement>('.plan-sec[data-section="h:risks"] button.plan-edit')!;
+		busy.click();
+		expect({ reachable, opened, busy: { disabled: busy.disabled, editor: !!query('.plan-editor') } }).toEqual({
+			reachable: { contentRole: null, contentTabIndex: null, named: true },
 			opened: '## Risks\nA server that never answers blocks the start.',
-			busy: { disabled: 'true', editor: false },
+			busy: { disabled: true, editor: false },
 		});
 	});
 

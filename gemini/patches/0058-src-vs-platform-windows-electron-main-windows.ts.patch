@@ -1,13 +1,15 @@
 diff --git a/src/vs/platform/windows/electron-main/windows.ts b/src/vs/platform/windows/electron-main/windows.ts
-index fed0318cc1caa96f62ab96dab6ddb5a4a3a39cee..0a7982782812b214ab88f761df1d228380d12e70 100644
+index fed0318cc1caa96f62ab96dab6ddb5a4a3a39cee..d9153fe8b7ee63dcd359605c1dbc1c57df8d0c10 100644
 --- a/src/vs/platform/windows/electron-main/windows.ts
 +++ b/src/vs/platform/windows/electron-main/windows.ts
-@@ -151,7 +151,7 @@ export function defaultBrowserWindowOptions(accessor: ServicesAccessor, windowSt
+@@ -151,7 +151,9 @@ export function defaultBrowserWindowOptions(accessor: ServicesAccessor, windowSt
  		height: windowState.height,
  		webPreferences: {
  			...webPreferences,
 -			spellcheck: false,
-+			spellcheck: true, // GEMINI-FORK: for the chat composers, which opt in; upstream's inputs opt out (geminiSpellCheck.ts)
++			// GEMINI-FORK: for the chat composers, which opt in; upstream's inputs opt out (geminiSpellCheck.ts). Only where
++			// the system's checker is used: on Windows and Linux Chromium would fetch Hunspell dictionaries from Google's CDN.
++			spellcheck: isMacintosh,
  			zoomFactor: zoomLevelToZoomFactor(windowState.zoomLevel ?? windowSettings?.zoomLevel),
  			autoplayPolicy: 'user-gesture-required',
  			// Enable experimental css highlight api https://chromestatus.com/feature/5436441440026624

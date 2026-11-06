@@ -17,23 +17,35 @@ export const proxyVariables = ['HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http
 /** GeminiCode's own MCP servers listen on this machine; a proxy GeminiCode sets never handles them. */
 const loopback = ['localhost', '127.0.0.1'];
 
-/** Names that look like a credential: a token, a secret, a password or a key. */
-const secretName = /TOKEN|SECRET|PASSWORD|PASSWD|_KEY$|_KEY_|CREDENTIAL/i;
+/**
+ * Names that look like a credential: a token, a secret, a password (`PASSWORD`, `DB_PASS`, `MYSQL_PWD`),
+ * a key, an auth setting (`NPM_CONFIG__AUTH`), a personal access token (`GITHUB_PAT`) or a private key.
+ */
+const secretName = /TOKEN|SECRET|PASSWORD|PASSWD|(?:^|_)PASS(?:$|_)|_PWD(?:$|_)|_KEY$|_KEY_|CREDENTIAL|_AUTH(?:$|_)|^AUTH(?:$|_)|_PAT(?:$|_)|PRIVATE/i;
+
+/** A value that is a URL with a password in it: `postgres://user:secret@host/db`. */
+const secretValue = /^[a-z][a-z0-9+.-]*:\/\/[^/@\s]*:[^/@\s]*@/i;
 
 /** The CLI's own variables, which it needs however their names look (its API key, its Google settings). */
 const cliOwn = /^(GEMINI|GOOGLE)_/;
 
+/** Whether the variable `name` with `value` looks like a credential: by its name, or by a URL value that carries a password. */
+export function isSecretVariable(name: string, value: string | undefined): boolean {
+	return !cliOwn.test(name) && (secretName.test(name) || (value !== undefined && secretValue.test(value)));
+}
+
 /**
- * `base` without the variables whose names look like credentials, except the
- * Gemini CLI's own. The agent's shell inherits its process environment, and a
- * tool it runs could print it, so a token meant for another program never
- * reaches the agent. A program the agent needs a token for gets it from the
- * user, as the environment denial's message says (toolPolicy.ts).
+ * `base` without the variables whose names look like credentials, or whose
+ * value is a URL with a password, except the Gemini CLI's own. The agent's
+ * shell inherits its process environment, and a tool it runs could print it,
+ * so a token meant for another program never reaches the agent. A program
+ * the agent needs a token for gets it from the user, as the environment
+ * denial's message says (toolPolicy.ts).
  */
 export function withoutSecrets(base: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
 	const env: NodeJS.ProcessEnv = {};
 	for (const [name, value] of Object.entries(base)) {
-		if (!secretName.test(name) || cliOwn.test(name)) {
+		if (!isSecretVariable(name, value)) {
 			env[name] = value;
 		}
 	}

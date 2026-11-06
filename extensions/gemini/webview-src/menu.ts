@@ -10,7 +10,7 @@
 // menu items; with one, a popup whose field is a combobox over a listbox of
 // options, as screen readers expect of a field that filters a list.
 
-import { el, icon } from './panelDom';
+import { el, icon, markTip } from './panelDom';
 
 export interface MenuRow {
 	readonly icon?: string;
@@ -64,7 +64,7 @@ export interface MenuOptions {
 	/** Where focus goes once the menu closes; the anchor by default. */
 	readonly returnFocus?: () => HTMLElement;
 	readonly onOpen?: () => void;
-	/** Sets a row's tooltip, such as the themed `setTip`; the native title by default, so pages without the tooltip module stay small. */
+	/** Sets a row's tooltip; by default it is marked for the page's themed tooltip (`markTip`). */
 	readonly tip?: (node: HTMLElement, tip: string) => void;
 }
 
@@ -294,12 +294,7 @@ export class Menu {
 		if (end.childElementCount) {
 			node.append(end);
 		}
-		const tip = row.tooltip ?? (row.detail ? `${row.name}: ${row.detail}` : row.name);
-		if (this.options.tip) {
-			this.options.tip(node, tip);
-		} else {
-			node.title = tip;
-		}
+		(this.options.tip ?? markTip)(node, row.tooltip ?? (row.detail ? `${row.name}: ${row.detail}` : row.name));
 		node.addEventListener('mousemove', () => {
 			if (this.active !== index) {
 				this.active = index;

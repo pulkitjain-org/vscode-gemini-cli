@@ -227,20 +227,18 @@ function sectionNode(v: PlanView, section: PlanSection): HTMLElement {
 	if (editing?.section === section.id) {
 		node.append(editor());
 	} else {
+		// The text is a plain block, so the links in it are the only controls there; a click on it edits, and Edit
+		// beside the + is the keyboard's way in, off while Gemini works.
+		const edit = button('plan-edit', '', () => startEdit(section), 'edit');
+		edit.disabled = locked();
+		edit.setAttribute('aria-label', strings.editTip);
+		setTip(edit, locked() ? strings.editBusy : strings.editTip);
+		node.append(edit);
 		const content = el('div', 'plan-content');
 		content.append(...renderMarkdown ? renderMarkdown(section.markdown) : [el('pre', 'plan-source', section.markdown)]);
-		content.tabIndex = 0;
-		content.setAttribute('role', 'button');
-		content.setAttribute('aria-disabled', String(locked()));
 		content.addEventListener('click', event => {
 			// A link, or the end of a text selection, is not a request to edit.
 			if (!(event.target as HTMLElement).closest('a') && !String(getSelection() ?? '').trim()) {
-				startEdit(section);
-			}
-		});
-		content.addEventListener('keydown', event => {
-			if ((event.key === 'Enter' || event.key === ' ') && event.target === content) {
-				event.preventDefault();
 				startEdit(section);
 			}
 		});
@@ -478,7 +476,10 @@ function footer(v: PlanView, open: number): HTMLElement {
 		send.append(el('span', 'plan-n', String(open)));
 	}
 	send.disabled = !open;
-	foot.append(build, send);
+	// Together, so a narrow page moves both under the text rather than one; the primary last.
+	const actions = el('span', 'plan-foot-actions');
+	actions.append(build, send);
+	foot.append(actions);
 	return foot;
 }
 

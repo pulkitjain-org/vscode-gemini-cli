@@ -389,8 +389,18 @@ function renderToolCall(item: ItemOf<'toolCall'>, toggleToolCall: ToggleToolCall
 		const named = !item.details.some(detail => detail.type === 'text' || detail.type === 'terminal') && item.locations.length === 1 && item.title.includes(basename(location.path));
 		const open = () => vscode.postMessage({ type: 'openLocation', path: location.path, line: location.line });
 		if (named) {
+			// As markdownExtras.toFileLink: a link, reachable from the keyboard, named by the path it opens.
 			title.classList.add('tool-link');
+			title.setAttribute('role', 'link');
+			title.tabIndex = 0;
+			title.setAttribute('aria-label', location.path);
 			title.addEventListener('click', open);
+			title.addEventListener('keydown', event => {
+				if (event.key === 'Enter') {
+					event.preventDefault();
+					open();
+				}
+			});
 			setTip(title, location.path);
 			continue;
 		}
@@ -502,19 +512,20 @@ function appendToolBody(card: HTMLElement, row: HTMLElement, item: ItemOf<'toolC
 	const open = expanded.has(item.id);
 	card.classList.add('expandable');
 	card.classList.toggle('expanded', open);
-	row.prepend(icon('chevron-right', 'chevron'));
-	row.tabIndex = 0;
-	row.dataset.focusKey = `tool:${item.id}`;
-	row.setAttribute('role', 'button');
-	row.setAttribute('aria-expanded', String(open));
-	row.addEventListener('click', () => toggleToolCall(item));
-	row.addEventListener('keydown', event => {
-		// Not when a file or diff chip inside the row has focus.
-		if (event.target === row && (event.key === 'Enter' || event.key === ' ')) {
-			event.preventDefault();
-			toggleToolCall(item);
-		}
+	// The chevron, the kind's icon and the title are one real button, so the file and diff chips beside
+	// it stay buttons of their own rather than controls inside a control; Return and Space are the button's.
+	const toggle = el('button', 'tool-toggle');
+	toggle.type = 'button';
+	toggle.dataset.focusKey = `tool:${item.id}`;
+	toggle.setAttribute('aria-expanded', String(open));
+	toggle.append(icon('chevron-right', 'chevron'), ...[...row.children].filter(child => child.classList.contains('kind-icon') || child.classList.contains('tool-title')));
+	toggle.addEventListener('click', event => {
+		event.stopPropagation();
+		toggleToolCall(item);
 	});
+	row.prepend(toggle);
+	// The rest of the line opens it too; a chip's click stops before it gets here.
+	row.addEventListener('click', () => toggleToolCall(item));
 	if (open) {
 		card.append(toolBody(item));
 	}
@@ -523,7 +534,7 @@ function appendToolBody(card: HTMLElement, row: HTMLElement, item: ItemOf<'toolC
 /** Opens or closes a tool call's output in place, so its row keeps focus; the output is built the first time it opens. */
 export function setToolCallOpen(card: HTMLElement, item: ItemOf<'toolCall'>, open: boolean): void {
 	card.classList.toggle('expanded', open);
-	card.querySelector(':scope > .tool-row')?.setAttribute('aria-expanded', String(open));
+	card.querySelector(':scope > .tool-row > .tool-toggle')?.setAttribute('aria-expanded', String(open));
 	let body = card.querySelector(':scope > .tool-body');
 	if (open) {
 		body ??= card.appendChild(toolBody(item));
@@ -562,7 +573,7 @@ function renderPermission(item: ItemOf<'permission'>): HTMLElement {
 	const team = teamToolTitle(item.title, strings.teamToolVerbs);
 	header.append(team ? toolLogo(team.tool, 14) : icon(item.answer ? 'shield' : 'question'), el('span', undefined, team?.title ?? item.title));
 	if (item.confirm && !item.answer) {
-		header.append(el('span', 'permission-pill', strings.confirmClass));
+		header.append(el('span', 'permission-pill warn', strings.confirmClass));
 	}
 	card.append(header);
 	// Which MCP server asks, as the CLI names it; a team tool's logo already says whose it is.
@@ -843,7 +854,8 @@ function renderCompact(item: ItemOf<'compact'>): HTMLElement {
 	} else if (item.state === 'undone') {
 		label.append(icon('discard'), el('span', undefined, text.undone));
 	} else {
-		label.append(icon('fold'), el('span', undefined, format(text.done, formatTokens(item.before ?? 0), formatTokens(item.after ?? 0))));
+		// The figure is the CLI's own context count for the session compacted, when it had reported one; never an estimate.
+		label.append(icon('fold'), el('span', undefined, item.before === undefined ? text.done : format(text.doneFrom, formatTokens(item.before))));
 		setTip(label, item.kept === 0 ? text.keptNone : item.kept === 1 ? text.keptOne : format(text.kept, item.kept ?? 0));
 	}
 	line.append(el('span', 'compact-rule'), label);
@@ -909,7 +921,7 @@ function restoreCard(): HTMLElement | undefined {
 		const text = el('div', 'restore-text');
 		text.append(el('span', 'restore-title', session.title), el('span', 'restore-detail', session.detail));
 		setTip(text, session.title);
-		row.append(text, button('restore-button', strings.restore, () => vscode.postMessage({ type: 'restoreSession', id: session.id })));
+		row.append(text, button('secondary restore-button', strings.restore, () => vscode.postMessage({ type: 'restoreSession', id: session.id })));
 		card.append(row);
 	}
 	if (total > sessions.length) {

@@ -355,7 +355,7 @@ export class ConnectionsPage implements vscode.Disposable {
 			tokenHintSonar: vscode.l10n.t("A user token. The link opens your SonarQube account's Security page."),
 			createToken: vscode.l10n.t("Create Token"),
 			keychainNote: vscode.l10n.t("The token is kept in your macOS keychain. It is never written to settings files, and agents never see it. GeminiCode calls {0} from this Mac only."),
-			checking: vscode.l10n.t("Checking…"),
+			checking: vscode.l10n.t("Checking..."),
 			connected: vscode.l10n.t("Connected"),
 			snykConnectHint: vscode.l10n.t("Uses the Snyk CLI on this Mac, signed in with snyk auth and pointed at your team's Snyk. GeminiCode never sees a Snyk token."),
 			figmaConnectHint: vscode.l10n.t("Uses the Figma desktop app with your Dev seat. Turn on the Dev Mode MCP server in Figma's Preferences; no token needed."),
@@ -388,7 +388,7 @@ function stateLabel(tool: TeamToolId, state: ConnectionState): string {
 		case 'off':
 			return vscode.l10n.t("Not connected");
 		case 'checking':
-			return vscode.l10n.t("Checking…");
+			return vscode.l10n.t("Checking...");
 		case 'connected':
 			return vscode.l10n.t("Connected");
 		case 'unreachable':

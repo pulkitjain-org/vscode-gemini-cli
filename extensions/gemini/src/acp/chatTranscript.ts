@@ -223,7 +223,7 @@ export interface CompactItem {
 	readonly state: CompactState;
 	/** How full the context was when compacting was suggested, in whole percent. */
 	readonly percent?: number;
-	/** About how many tokens the session sent with each request before and after. */
+	/** The context's use the CLI had saved for the session before it was compacted, when it had; never an estimate. `after` is only in transcripts saved before 1.8 and is no longer shown. */
 	readonly before?: number;
 	readonly after?: number;
 	/** How many of the latest prompts were kept as they were. */

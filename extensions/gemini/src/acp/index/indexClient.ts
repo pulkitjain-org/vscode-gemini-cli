@@ -27,6 +27,8 @@ export interface IndexClientOptions {
 	readonly restartDelaysMs?: readonly number[];
 	/** After giving up, how long before the process may start again. */
 	readonly cooldownMs?: number;
+	/** How long a stopped process gets to close its indexes before it is signalled. */
+	readonly stopGraceMs?: number;
 	readonly fork?: typeof fork;
 	readonly now?: () => number;
 }
@@ -34,6 +36,7 @@ export interface IndexClientOptions {
 const defaultIdleStopMs = 10 * 60 * 1000;
 const defaultRestartDelaysMs = [1_000, 4_000, 16_000];
 const defaultCooldownMs = 10 * 60 * 1000;
+const defaultStopGraceMs = 5_000;
 /** A process that ran this long resets the crash count. */
 const healthyAfterMs = 5 * 60 * 1000;
 const heapMb = 512;
@@ -54,7 +57,7 @@ const answerTimeoutMs: Partial<Record<IndexerMethod, number>> = {
 	docsStatus: 30_000, docsSearch: 30_000, docsValidators: 30_000, pause: 30_000, resume: 30_000, remove: 60_000,
 };
 
-/** Unanswered requests from one process before it is ended. */
+/** Unanswered requests in a row from one process before it is ended. */
 const maxTimeouts = 3;
 
 export class IndexClient {
@@ -82,9 +85,7 @@ export class IndexClient {
 	private stoppedAt = 0;
 	private cooldownTimer: ReturnType<typeof setTimeout> | undefined;
 	private disposed = false;
-	/** The process is being stopped on purpose, so its exit is no crash. */
-	private expectedExit = false;
-	/** Answers that never came since the process last started; after a few the process is ended, and the crash path starts it again. */
+	/** Answers that never came since the last one that did; after a few in a row the process is ended, and the crash path starts it again. */
 	private timeouts = 0;
 
 	private readonly now: () => number;
@@ -207,6 +208,8 @@ export class IndexClient {
 
 	private receive(message: IndexerMessage): void {
 		if (message.kind === 'answer') {
+			// It answers: slow answers hours apart are no reason to end it.
+			this.timeouts = 0;
 			const pending = this.pending.get(message.id);
 			this.pending.delete(message.id);
 			if (message.error !== undefined) {
@@ -238,8 +241,7 @@ export class IndexClient {
 			pending.reject(new Error('The indexer stopped while answering.'));
 		}
 		this.pending.clear();
-		if (this.disposed || this.expectedExit) {
-			this.expectedExit = false;
+		if (this.disposed) {
 			return;
 		}
 		this.options.log(`Indexer exited (code ${code}, signal ${signal}).`);
@@ -270,12 +272,39 @@ export class IndexClient {
 		}
 	}
 
+	/**
+	 * Stops the process the way the host's own exit does: the channel closes,
+	 * and the process closes its indexes (checkpointing their files, releasing
+	 * their locks) and exits. A signal would end it at once, leaving every
+	 * lock with a dead pid and every file with an unmerged write-ahead log;
+	 * one goes only when it hasn't exited within the grace, and SIGKILL after
+	 * as long again. It is no longer this client's process from here, so its
+	 * exit is no crash and the next request starts a fresh one.
+	 */
 	private stop(): void {
 		clearInterval(this.idleTimer);
 		this.idleTimer = undefined;
 		const child = this.child;
-		if (child) {
-			this.expectedExit = true;
+		if (!child) {
+			return;
+		}
+		this.child = undefined;
+		for (const pending of this.pending.values()) {
+			pending.reject(new Error('The indexer stopped while answering.'));
+		}
+		this.pending.clear();
+		const grace = this.options.stopGraceMs ?? defaultStopGraceMs;
+		const term = setTimeout(() => child.kill('SIGTERM'), grace);
+		const kill = setTimeout(() => child.kill('SIGKILL'), grace * 2);
+		term.unref?.();
+		kill.unref?.();
+		child.once('exit', () => {
+			clearTimeout(term);
+			clearTimeout(kill);
+		});
+		if (child.connected) {
+			child.disconnect();
+		} else {
 			child.kill('SIGTERM');
 		}
 	}

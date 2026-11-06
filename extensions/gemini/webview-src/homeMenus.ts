@@ -201,7 +201,11 @@ export function createHomeMenus(host: HomeMenusHost): HomeMenus {
 			composerMenus[anchors.indexOf(anchor)]?.open();
 		},
 		openRow(anchor, items) {
-			if (rowMenu.isOpen && rowAnchor === anchor) {
+			// The menu's anchor is the row's own button from here on: the mousedown of a click on it then leaves the menu
+			// to this toggle, and the button carries the menu's state (aria-expanded) as the composer's buttons do.
+			const here = rowMenu.isOpenFrom(anchor);
+			rowMenu.setAnchor(anchor);
+			if (here) {
 				rowMenu.close();
 				return;
 			}

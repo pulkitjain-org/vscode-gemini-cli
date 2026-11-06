@@ -27,7 +27,7 @@ import { identifierWords, splitIdentifier } from './identifiers';
 import type { ParsedFile } from './parse';
 
 /** Raise when the tables change; an index with another version is rebuilt. */
-export const schemaVersion = 1;
+export const schemaVersion = 2;
 
 /**
  * The bounds of every path under `prefix`, for `path >= ? AND path < ?`,
@@ -39,6 +39,24 @@ export function prefixRange(prefix: string): readonly [string, string] {
 }
 /** Pages the backup copies per step, between which queries run. */
 const backupPagesPerStep = 256;
+/** Names one `unresolvedImports` query asks about, within SQLite's bound on parameters. */
+const maxNamesPerQuery = 400;
+
+/**
+ * The parts of an import specifier a file name can match: its last name
+ * (`Cart` in `com.acme.Cart`, `service` in `./cart.service`, `h` in
+ * `cart.h`) and the stem of its last path segment (`cart` in `./cart.service`
+ * and `cart.h`, `com` in `com.acme.Cart`). Together they cover every
+ * specifier `importNames` (indexer.ts) can name.
+ */
+export function importParts(spec: string): { readonly last: string; readonly stem: string } {
+	const parts = spec.split(/[/\\.:]+/).filter(Boolean);
+	const last = parts[parts.length - 1] ?? '';
+	const segments = spec.split(/[/\\]+/).filter(Boolean);
+	const segment = (segments[segments.length - 1] ?? '').replace(/^\.+/, '');
+	const stem = segment.split(/[.:]/)[0] ?? '';
+	return { last, stem };
+}
 
 const schema = `
 CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -49,9 +67,11 @@ CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(text, idents, path, sym
 CREATE TABLE IF NOT EXISTS symbols(id INTEGER PRIMARY KEY, path TEXT NOT NULL, name TEXT NOT NULL, kind TEXT NOT NULL, line INTEGER NOT NULL, end_line INTEGER NOT NULL, container TEXT, exported INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS symbols_name ON symbols(name COLLATE NOCASE);
 CREATE INDEX IF NOT EXISTS symbols_path ON symbols(path);
-CREATE TABLE IF NOT EXISTS imports(id INTEGER PRIMARY KEY, path TEXT NOT NULL, spec TEXT NOT NULL, target TEXT);
+CREATE TABLE IF NOT EXISTS imports(id INTEGER PRIMARY KEY, path TEXT NOT NULL, spec TEXT NOT NULL, target TEXT, last TEXT NOT NULL, stem TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS imports_path ON imports(path);
 CREATE INDEX IF NOT EXISTS imports_target ON imports(target);
+CREATE INDEX IF NOT EXISTS imports_last ON imports(last) WHERE target IS NULL;
+CREATE INDEX IF NOT EXISTS imports_stem ON imports(stem) WHERE target IS NULL;
 CREATE TABLE IF NOT EXISTS cochange(a TEXT NOT NULL, b TEXT NOT NULL, count INTEGER NOT NULL, PRIMARY KEY(a, b)) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS cochange_b ON cochange(b);
 `;
@@ -226,7 +246,8 @@ export class IndexStore {
 				.run(record.path, symbol.name, symbol.kind, symbol.line, symbol.endLine, symbol.container ?? null, symbol.exported ? 1 : 0);
 		}
 		parsed.imports.forEach((spec, index) => {
-			this.statement('INSERT INTO imports(path, spec, target) VALUES (?, ?, ?)').run(record.path, spec, targets[index] ?? null);
+			const { last, stem } = importParts(spec);
+			this.statement('INSERT INTO imports(path, spec, target, last, stem) VALUES (?, ?, ?, ?, ?)').run(record.path, spec, targets[index] ?? null, last, stem);
 		});
 	}
 
@@ -273,18 +294,23 @@ export class IndexStore {
 	}
 
 	/**
-	 * Imports not pointing at a file, whose specifier holds one of `names` as
-	 * a part (`./cart`, `com.acme.Cart`, `cart.h`): the ones a newly added
-	 * file can resolve. Only id and specifier are read for the rest.
+	 * Imports not pointing at a file, whose specifier ends in one of `names`
+	 * (`./cart`, `com.acme.Cart`, `cart.h`, `./cart.service`): the ones a
+	 * newly added file can resolve. The indexed `last` and `stem` columns
+	 * answer it; a repository of hundreds of thousands of unresolved imports
+	 * (every package import is one) is never read through.
 	 */
 	unresolvedImports(names: ReadonlySet<string>): { readonly id: number; readonly path: string; readonly spec: string; readonly lang: string }[] {
-		const ids: number[] = [];
-		for (const row of this.statement('SELECT id, spec FROM imports WHERE target IS NULL').iterate() as Iterable<{ id: number; spec: string }>) {
-			if (row.spec.split(/[/\\.:]+/).some(part => names.has(part))) {
-				ids.push(row.id);
-			}
+		type Row = { id: number; path: string; spec: string; lang: string };
+		const rows: Row[] = [];
+		const all = [...names];
+		for (let at = 0; at < all.length; at += maxNamesPerQuery) {
+			const batch = all.slice(at, at + maxNamesPerQuery);
+			const marks = batch.map(() => '?').join(', ');
+			rows.push(...this.statement(`SELECT imports.id AS id, imports.path AS path, imports.spec AS spec, files.lang AS lang FROM imports JOIN files ON files.path = imports.path WHERE imports.target IS NULL AND (imports.last IN (${marks}) OR imports.stem IN (${marks})) ORDER BY imports.id`).all(...batch, ...batch) as Row[]);
 		}
-		return ids.flatMap(id => (this.statement('SELECT imports.id AS id, imports.path AS path, imports.spec AS spec, files.lang AS lang FROM imports JOIN files ON files.path = imports.path WHERE imports.id = ?').get(id) as { id: number; path: string; spec: string; lang: string } | undefined) ?? []);
+		const seen = new Set<number>();
+		return rows.filter(row => !seen.has(row.id) && seen.add(row.id));
 	}
 
 	setImportTarget(id: number, target: string): void {

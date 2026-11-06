@@ -39,6 +39,21 @@ describe('design tokens', () => {
 		expect(missing).toEqual([]);
 	});
 
+	it.each(own.filter(file => file !== 'glass.css'))('%s defines no control, radius alias or focus ring of its own', file => {
+		// The pill, the button set and the tabs are tokens.css's, as is the focus ring; a page adds colour modifiers
+		// (`.plan-pill.cm`, `.permission-actions button.reject`) and scoped sizes (`.dash-row > button.secondary`) only.
+		// glass.css is the one sheet that restyles them, for every page at once.
+		const css = readFileSync(path.join(media, file), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+		const shared = /^(button)?\.(pill|dash-pill|state-pill|plan-pill|permission-pill|primary|secondary|quiet|link-button|link|icon-button|small|tabs|tab|page-tab|composer-tab)(:hover(:not\(:disabled\))?|:disabled|\.(ok|warn|error|info|muted|active)|\[aria-selected="true"\])?$/;
+		const selectors = [...css.matchAll(/([^{}]+)\{[^{}]*\}/g)].flatMap(match => match[1].split(',').map(selector => selector.trim().replace(/\s+/g, ' ')));
+		const offenders = [
+			...selectors.filter(selector => shared.test(selector)).map(selector => `control: ${selector}`),
+			...selectors.filter(selector => /:focus(-visible)?$/.test(selector) && new RegExp(`${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^{]*\\{[^}]*outline:\\s*(?!\\s*none)`).test(css)).map(selector => `focus ring: ${selector}`),
+			...declarations(css, '--gemini-radius(-small|-large)?').map(value => `radius alias: ${value}`),
+		];
+		expect(offenders).toEqual([]);
+	});
+
 	it.each(own)('%s writes no size, radius, shadow or duration of its own', file => {
 		const css = readFileSync(path.join(media, file), 'utf8');
 		// A size relative to its text (em, %) scales a reply's headings and the like with the page; absolute ones come from the scale.

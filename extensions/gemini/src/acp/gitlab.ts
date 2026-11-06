@@ -93,6 +93,8 @@ export interface DiffRefs {
 
 /** Pages of a list GitLab reads, at most; 100 items a page. */
 const maxListPages = 10;
+/** How much of a job's trace is asked for: its last 256 KB, which hold the failure and the steps before it. */
+const traceTailBytes = 256 * 1024;
 
 export interface GitLabJob {
 	readonly id: number;
@@ -404,12 +406,24 @@ export class GitLabClient {
 		return listed(jobs.map(j => ({ id: j.id, name: j.name, stage: j.stage, status: j.status, url: j.web_url })), jobs.total);
 	}
 
-	/** The end of a job's log, where the failure usually is, without terminal colour codes. */
+	/**
+	 * The end of a job's log, where the failure usually is, without terminal colour codes. A trace
+	 * can run to tens of megabytes, so only its last `traceTailBytes` are asked for (GitLab honours
+	 * `Range` on a trace); a server that refuses the range (416) sends the whole log on a second
+	 * request, and one that ignores it answers with the whole log, which is cut here as before.
+	 */
 	async jobLogTail(project: string | number, job: number, maxChars = 12_000): Promise<string> {
 		const id = await this.projectId(project);
-		const log = await this.request<string>(`/projects/${id}/jobs/${job}/trace`, { text: true, timeoutMs: 15_000 });
+		const trace = `/projects/${id}/jobs/${job}/trace`;
+		const log = await this.request<string>(trace, { text: true, timeoutMs: 15_000, headers: { Range: `bytes=-${traceTailBytes}` } })
+			.catch((err: unknown) => err instanceof TeamToolError && err.status === 416 ? this.request<string>(trace, { text: true, timeoutMs: 15_000 }) : Promise.reject(err));
+		// As long as the range asked for: the server sent the end of a longer log.
+		const partial = (log ?? '').length >= traceTailBytes;
 		const clean = stripAnsi(log ?? '');
-		return clean.length > maxChars ? `… (${clean.length - maxChars} earlier characters cut)\n${clean.slice(-maxChars)}` : clean;
+		if (clean.length > maxChars) {
+			return `… (${clean.length - maxChars} earlier characters cut${partial ? ', and more before them' : ''})\n${clean.slice(-maxChars)}`;
+		}
+		return partial ? `… (earlier output cut)\n${clean}` : clean;
 	}
 
 	async issue(project: string | number, iid: number): Promise<{ title: string; description: string; state: string; url: string; labels: readonly string[] }> {

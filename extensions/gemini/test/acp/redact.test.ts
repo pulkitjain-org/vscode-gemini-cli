@@ -32,6 +32,25 @@ describe('redact', () => {
 		]);
 	});
 
+	it('takes out a credential whose variable name runs into the key word, a Basic header, and the team tools\' own token shapes', () => {
+		const text = [
+			'JIRA_API_TOKEN=ATATT3xFfGF0T2v8q-ZkXlAbCdEfGhIjKlMnOpQrStUvWxYz0123456789=1A2B3C4D',
+			'SONAR_TOKEN=squ_0123456789abcdef0123456789abcdef01234567',
+			'Authorization: Basic dXNlcjpwYXNz',
+			'GITLAB_TOKEN=abc123def456',
+			'token ATATT3xFfGF0T2v8q-ZkXlAbCdEfGhIjKlMnOpQrStUvWxYz0123456789=1A2B3C4D in the log',
+			'key sqp_0123456789abcdef0123456789abcdef01234567 and xoxb-1234567890-abcdefghij too',
+		].join('\n');
+		expect(redact(text).split('\n')).toEqual([
+			'JIRA_API_TOKEN=[redacted]',
+			'SONAR_TOKEN=[redacted]',
+			'Authorization: Basic [redacted]',
+			'GITLAB_TOKEN=[redacted]',
+			'token [redacted] in the log',
+			'key [redacted] and [redacted] too',
+		]);
+	});
+
 	it('leaves ordinary log lines alone', () => {
 		const line = '2026-10-30 09:34:38.045 [info] Agent ready (gemini 0.66.0); session 7f3a ready in 812 ms; mode autoEdit';
 		expect(redact(line, { names: ['ab'], home: '/Users/sam' })).toBe(line);

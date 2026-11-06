@@ -24,6 +24,7 @@ import { MIN_CLI_VERSION } from '../acp/protocol';
 import { AgentSidecar } from '../acp/sidecar';
 import { AgentStatus, describeAgentStatus, describeRuntimeStatus } from '../acp/status';
 import { isTeamWriteToolCall } from '../acp/teamTools';
+import { background } from './background';
 import { agentErrorText } from './chatStatus';
 import { agentLaunchSettings, configSection, getAgentCommand, getApprovalPolicy, getCliResolution, getProjectSettings, getWorkspaceCwd, includedFolderPaths } from './configuration';
 import { sessionModel, sessionModelList } from './modelPreference';
@@ -133,14 +134,13 @@ export class AgentService implements vscode.Disposable {
 			folderProcess: {
 				needed: cwd => this.needsOwnProcess(cwd),
 				sidecar: cwd => {
-					// One restart: its sessions open again on the fresh process; a second crash fails them, and the user hears why.
-					const sidecar = new AgentSidecar({ command: async () => getAgentCommand({ cli: this._cli ?? await this.resolveCli() }), cwd, restartDelaysMs: [1_000] });
+					// No restart of its own: a process that stops is ended by the runtime, and its chats reopen their sessions on a fresh one with the next prompt.
+					const sidecar = new AgentSidecar({ command: async () => getAgentCommand({ cli: this._cli ?? await this.resolveCli() }), cwd, restartDelaysMs: [] });
 					sidecar.onStderr(line => log.info(`[agent ${path.basename(cwd)}] ${line}`));
 					sidecar.onDidChangeState(state => {
-						if (state.kind === 'restarting') {
-							void vscode.window.showWarningMessage(vscode.l10n.t("The agent process for {0} stopped (exit code {1}) and is starting again. Its chats open a new session with the next prompt.", path.basename(cwd), String(state.exitCode ?? 'none')));
-						} else if (state.kind === 'failed') {
-							void vscode.window.showErrorMessage(vscode.l10n.t("The agent process for {0} stopped again: {1}. Its chats fall back to the window's agent process; use Gemini: Restart Agent to try its own again.", path.basename(cwd), state.message));
+						if (state.kind === 'failed') {
+							log.warn(`The agent process for ${cwd} stopped (${state.reason}: ${state.message})`);
+							void vscode.window.showWarningMessage(vscode.l10n.t("The agent process for {0} stopped: {1}. Its chats reopen their sessions on a fresh process with the next prompt.", path.basename(cwd), state.message));
 						}
 					});
 					return sidecar;
@@ -258,7 +258,7 @@ export class AgentService implements vscode.Disposable {
 	 */
 	private recycleIfIdle(): void {
 		const sessions = this.runtime.sessionCount;
-		if (!this.started || this.runtime.busy || sessions < recycleSessions || Date.now() - this.idleSince < recycleIdleMs) {
+		if (!this.started || !this.runtime.idle || sessions < recycleSessions || Date.now() - this.idleSince < recycleIdleMs) {
 			return;
 		}
 		this._lastRecycle = { at: Date.now(), sessions };
@@ -299,16 +299,15 @@ export class AgentService implements vscode.Disposable {
 		return this.runtime.busy;
 	}
 
-	/** Restarts the agent now, or once the running prompts end, so no turn is cut off. */
+	/** Restarts the agent now, or once the running prompts and CLI commands end (`AgentRuntime.idle`), so no turn is cut off. */
 	restartWhenIdle(reason = 'restarting on the new Gemini CLI'): void {
 		this.idleRestart?.dispose();
 		this.idleRestart = undefined;
-		if (!this.runtime.busy) {
+		if (this.runtime.idle) {
 			this.restart();
 			return;
 		}
-		this.idleRestart = this.runtime.onDidBecomeIdle(() => {
-			this.idleRestart?.dispose();
+		this.idleRestart = this.runtime.onceIdle(() => {
 			this.idleRestart = undefined;
 			this.log.info(`No agent is working; ${reason}`);
 			this.restart();
@@ -494,7 +493,7 @@ export class AgentService implements vscode.Disposable {
 			this.log.warn(`Gemini CLI ${cli.missingVersion} is set in ${configSection}.cli.version but not installed; using ${where}`);
 			if (cli.missingVersion !== this.offeredVersion) {
 				this.offeredVersion = cli.missingVersion;
-				void this.offerInstall(cli.missingVersion);
+				background(`Offering to install Gemini CLI ${cli.missingVersion}`, this.offerInstall(cli.missingVersion));
 			}
 		}
 		return cli;
@@ -509,7 +508,7 @@ export class AgentService implements vscode.Disposable {
 			this.log.info(`Agent ready (${agent ? `${agent.name} ${agent.version}` : 'unknown agent'})`);
 			if (agent?.version && agent.version !== this.warnedVersion && isOlderThan(agent.version, MIN_CLI_VERSION)) {
 				this.warnedVersion = agent.version;
-				void this.showOldCli(agent.version);
+				background(`Warning about Gemini CLI ${agent.version}`, this.showOldCli(agent.version));
 			}
 		}
 		this.fireStatus();
@@ -533,7 +532,7 @@ export class AgentService implements vscode.Disposable {
 		}
 		this.shownError = key;
 		this.log.error(`Agent error (${error.kind}): ${error.message}`);
-		void this.showError(error);
+		background('Showing the agent error', this.showError(error));
 	}
 
 	private async showOldCli(version: string): Promise<void> {
@@ -605,7 +604,7 @@ export class AgentService implements vscode.Disposable {
 		}
 
 		switch (await vscode.window.showErrorMessage(message, ...actions)) {
-			case setUpInTerminal: void this.completeSetupInTerminal(); break;
+			case setUpInTerminal: background('Opening the setup terminal', this.completeSetupInTerminal()); break;
 			case setProject: await vscode.commands.executeCommand('gemini.setProjectId'); break;
 			case setCliPath: await vscode.commands.executeCommand('workbench.action.openSettings', `${configSection}.cliPath`); break;
 			case installCli: await vscode.commands.executeCommand('gemini.installCli'); break;

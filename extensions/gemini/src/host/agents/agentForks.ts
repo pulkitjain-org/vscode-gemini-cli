@@ -17,9 +17,10 @@
 // changes, opened in place of the agent, which is then archived. Its
 // decisions are in `src/acp/moveToBranch.ts`.
 
+import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
-import type { AgentChanges } from '../../acp/agentChanges';
+import { reviewBase, type AgentChanges, type EditedFile } from '../../acp/agentChanges';
 import type { AgentProjectRole, AgentRecord, AgentsModel } from '../../acp/agents';
 import { branchDefaults } from '../branchDefaults';
 import { branchNameFrom, isValidBranchName } from '../../acp/branchNames';
@@ -125,12 +126,16 @@ export class AgentForks {
 		}
 		// Its saved chat and change list may still be on their way in.
 		await live.controller.whenRestored;
-		const undoable = live.changes.files.filter(file => file.original !== undefined).length;
-		const choices = moveChoices(undoable);
+		const undoable = live.changes.files.filter(file => file.original !== undefined);
+		const choices = moveChoices(undoable.length);
 		const buttons = choices.map(choice => ({ title: choice === 'move' ? vscode.l10n.t("Move") : vscode.l10n.t("Move and undo here"), choice }));
+		// Edits made after the agent's go too, as the Changes panel's Undo All says: name the files.
+		const foreign = choices.includes('moveAndUndo') ? await foreignEdits(undoable) : [];
 		const detail = [
 			vscode.l10n.t("The chat and your uncommitted changes move to a new branch in a worktree of their own. The changes stay in this checkout too."),
-			...choices.includes('moveAndUndo') ? [vscode.l10n.t("Move and undo here also puts back the {0} files the agent changed in this checkout, once they are on the new branch.", undoable)] : [],
+			...choices.includes('moveAndUndo') ? [vscode.l10n.t("Move and undo here also puts back the {0} files the agent changed in this checkout, once they are on the new branch.", undoable.length)] : [],
+			...foreign.length === 1 ? [vscode.l10n.t("{0} has edits that aren't from {1}. Move and undo here restores it as it was before {1}, losing those edits here too.", foreign[0], record.title)]
+				: foreign.length ? [vscode.l10n.t("{0} have edits that aren't from {1}. Move and undo here restores them as they were before {1}, losing those edits here too.", foreign.join(', '), record.title)] : [],
 		].join('\n\n');
 		const picked = await vscode.window.showWarningMessage(vscode.l10n.t("Move \"{0}\" to its own branch?", record.title), { modal: true, detail }, ...buttons);
 		if (!picked) {
@@ -343,4 +348,22 @@ function refusalText(refusal: MoveRefusal): string {
 		case 'busy':
 			return vscode.l10n.t("Wait for the agent to finish its turn, or stop it, before moving it to its own branch.");
 	}
+}
+
+/**
+ * The names of the files among `files` that have edits made after the
+ * agent's, which undoing the agent's changes would lose too: the open
+ * document's text (unsaved edits included), else the file on disk, judged
+ * as the Changes panel's Undo All judges it (`reviewBase`).
+ */
+async function foreignEdits(files: readonly EditedFile[]): Promise<string[]> {
+	const names = await Promise.all(files.map(async file => {
+		if (file.created) {
+			return undefined;
+		}
+		const open = vscode.workspace.textDocuments.find(document => document.uri.scheme === 'file' && document.uri.fsPath === file.path);
+		const current = open ? open.getText() : await fs.readFile(file.path, 'utf8').catch(() => undefined);
+		return current !== undefined && reviewBase(file, current)?.foreign ? path.basename(file.path) : undefined;
+	}));
+	return names.filter((name): name is string => !!name);
 }

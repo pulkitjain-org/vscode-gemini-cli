@@ -271,6 +271,9 @@ describe('Indexer', () => {
 	});
 
 	it('drops a deleted folder\'s files when only the folder is reported', async () => {
+		// On its own too: the index this needs is built here, not by an earlier test.
+		await indexer.ensure({ root: repo, settings, build: true });
+		await ready(repo);
 		write(repo, 'src/legacy/a.ts', 'export function legacyA() {}\n');
 		write(repo, 'src/legacy/deep/b.ts', 'export function legacyB() {}\n');
 		write(repo, 'src/legacyKeep.ts', 'export function legacyKeep() {}\n');
@@ -281,7 +284,7 @@ describe('Indexer', () => {
 		await eventually(async () => (await indexer.findSymbol({ root: repo, name: 'legacyB' })).result.definitions.length === 0);
 		const files = await indexer.files({ root: repo });
 		expect(files?.filter(f => f.includes('legacy'))).toEqual(['src/legacyKeep.ts']);
-		// The counts kept by each write match a fresh count.
+		// The counts kept by each write match a fresh count, as soon as the removal is in the store.
 		const status = (await indexer.status({ roots: [repo] }))[0];
 		const store = await IndexStore.open(path.join(indexes, 'code', await workspaceId(repo), 'index.db'), { readOnly: true });
 		try {
@@ -339,6 +342,84 @@ describe('Indexer', () => {
 	it('removes an index', async () => {
 		await indexer.remove({ root: path.join(base, 'damaged') });
 		expect(existsSync(path.join(indexes, 'code', await workspaceId(path.join(base, 'damaged'))))).toBe(false);
+	});
+
+	it('checks saves against the ignore rules as they are after a .gitignore change', async () => {
+		const folder = path.join(base, 'ignoring');
+		write(folder, '.gitignore', 'build/\n');
+		write(folder, 'src/app.ts', 'export function app() {}\n');
+		git(folder, 'init', '-q');
+		git(folder, 'add', '-A');
+		git(folder, 'commit', '-qm', 'start');
+		const own = new Indexer({ baseDir: path.join(base, 'ignoring-indexes') });
+		try {
+			await own.ensure({ root: folder, settings, build: true });
+			await eventually(async () => (await own.findSymbol({ root: folder, name: 'app' })).result.definitions.length === 1);
+			// A save under build/ is checked with git, which starts a long-lived check-ignore.
+			write(folder, 'build/out.ts', 'export function fromBuild() {}\n');
+			await own.update({ root: folder, paths: ['build/out.ts'] });
+			await new Promise(resolve => setTimeout(resolve, 200));
+			expect((await own.findSymbol({ root: folder, name: 'fromBuild' })).result.definitions).toHaveLength(0);
+			// build/ stops being ignored: the reconcile takes the file in, and so must the next save of it.
+			write(folder, '.gitignore', 'dist/\n');
+			await own.update({ root: folder, paths: ['.gitignore'] });
+			await eventually(async () => (await own.findSymbol({ root: folder, name: 'fromBuild' })).result.definitions.length === 1);
+			write(folder, 'build/out.ts', 'export function fromBuild() {}\nexport function fromBuildToo() {}\n');
+			await own.update({ root: folder, paths: ['build/out.ts'] });
+			await eventually(async () => (await own.findSymbol({ root: folder, name: 'fromBuildToo' })).result.definitions.length === 1);
+			expect((await own.findSymbol({ root: folder, name: 'fromBuild' })).result.definitions).toHaveLength(1);
+			// And a folder newly ignored is not taken back in by a save.
+			write(folder, '.gitignore', 'dist/\nbuild/\n');
+			await own.update({ root: folder, paths: ['.gitignore'] });
+			await eventually(async () => (await own.findSymbol({ root: folder, name: 'fromBuild' })).result.definitions.length === 0);
+			write(folder, 'build/out.ts', 'export function fromBuild() {}\nexport function fromBuildThree() {}\n');
+			await own.update({ root: folder, paths: ['build/out.ts'] });
+			await new Promise(resolve => setTimeout(resolve, 300));
+			expect((await own.findSymbol({ root: folder, name: 'fromBuildThree' })).result.definitions).toHaveLength(0);
+		} finally {
+			await own.dispose();
+		}
+	});
+
+	it('waits for the index another window is building rather than writing it without the lock', async () => {
+		const folder = path.join(base, 'theirs');
+		write(folder, 'a.ts', 'export function fromTheirs() {}\n');
+		const indexBase = path.join(base, 'theirs-indexes');
+		const dir = path.join(indexBase, 'code', await workspaceId(folder));
+		mkdirSync(dir, { recursive: true });
+		// A live process (this one's parent) holds the lock and hasn't written the file yet.
+		const theirs = await IndexLock.acquire(dir, process.ppid);
+		const own = new Indexer({ baseDir: indexBase });
+		try {
+			const status = await own.ensure({ root: folder, settings, build: true });
+			expect(status.state).toEqual({ kind: 'failed', message: 'Another window is building this index.' });
+			expect(existsSync(path.join(dir, 'index.db'))).toBe(false);
+			// The lock goes (that window closed): the retry opens and builds it.
+			await theirs!.release();
+			await own.reconcile({ root: folder });
+			await eventually(async () => (await own.status({ roots: [folder] }))[0].state.kind === 'ready');
+			expect((await own.findSymbol({ root: folder, name: 'fromTheirs' })).result.definitions).toHaveLength(1);
+		} finally {
+			await own.dispose();
+		}
+	});
+
+	it('rebuilds while a build runs without reporting the build as failed', async () => {
+		const folder = path.join(base, 'rebuilding');
+		for (let i = 0; i < 300; i++) {
+			write(folder, `src/f${i}.ts`, `export function fn${i}() {}\n`);
+		}
+		const seen: IndexStatus[] = [];
+		const own = new Indexer({ baseDir: path.join(base, 'rebuilding-indexes'), onStatus: status => seen.push(status) });
+		try {
+			await own.ensure({ root: folder, settings, build: true });
+			expect((await own.rebuild({ root: folder, settings })).state.kind).toBe('building');
+			await eventually(async () => (await own.status({ roots: [folder] }))[0].state.kind === 'ready');
+			expect(seen.filter(status => status.state.kind === 'failed')).toEqual([]);
+			expect((await own.findSymbol({ root: folder, name: 'fn299' })).result.definitions).toHaveLength(1);
+		} finally {
+			await own.dispose();
+		}
 	});
 });
 

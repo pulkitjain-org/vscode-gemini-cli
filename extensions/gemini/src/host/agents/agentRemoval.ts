@@ -175,8 +175,10 @@ export class AgentRemoval {
 		const statuses = await Promise.all(parts.map(part => worktreeStatus(part.worktree, part.worktree.base).catch(() => undefined)));
 		const unsaved = parts.map((part, i) => {
 			const status = statuses[i];
+			// A count git couldn't give (its base branch gone, say) is named as such, never as no work.
 			const text = [
-				status?.commits === 1 ? vscode.l10n.t("1 commit not in {0}", part.worktree.base) : status?.commits ? vscode.l10n.t("{0} commits not in {1}", status.commits, part.worktree.base) : undefined,
+				status?.commits === 1 ? vscode.l10n.t("1 commit not in {0}", part.worktree.base) : status?.commits ? vscode.l10n.t("{0} commits not in {1}", status.commits, part.worktree.base)
+					: !status || status.commits === undefined ? vscode.l10n.t("commits that could not be counted against {0}", part.worktree.base) : undefined,
 				status?.uncommitted === 1 ? vscode.l10n.t("1 uncommitted changed file") : status?.uncommitted ? vscode.l10n.t("{0} uncommitted changed files", status.uncommitted) : undefined,
 			].filter(Boolean).join(', ');
 			return text && part.key ? `${part.key}: ${text}` : text;

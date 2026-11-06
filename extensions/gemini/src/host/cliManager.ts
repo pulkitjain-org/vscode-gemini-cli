@@ -9,7 +9,8 @@
 // exists. Installing always waits for the user.
 
 import * as vscode from 'vscode';
-import { cliCopiesToKeep, cliRegistry, fetchCliVersions, Fetch, installCli, pruneCliVersions } from '../acp/cliInstall';
+import { extensionChunk } from './lazyFeature';
+import { cliCopiesToKeep, cliRegistry, fetchCliVersions, Fetch, pruneCliVersions } from '../acp/cliInstall';
 import { isOlderThan, listManagedVersions } from '../acp/cliResolution';
 import { shouldCheckForUpdate, updateToOffer } from '../acp/cliUpdates';
 import { errorMessage } from '../acp/errors';
@@ -52,7 +53,7 @@ export class CliManager implements vscode.Disposable {
 						background('Pruning old Gemini CLI versions', this.prune());
 						background('Checking for a Gemini CLI update', this.checkForUpdate());
 					}, 5_000);
-					this.updateTimer = setInterval(() => void this.checkForUpdate(), updateCheckPoll);
+					this.updateTimer = setInterval(() => background('Checking for a Gemini CLI update', this.checkForUpdate()), updateCheckPoll);
 				}
 			}),
 		);
@@ -105,7 +106,8 @@ export class CliManager implements vscode.Disposable {
 			}, (_progress, token) => {
 				const abort = new AbortController();
 				token.onCancellationRequested(() => abort.abort());
-				return installCli({ fetch: fetch as Fetch, registry: registry(), managedDir, version, signal: abort.signal });
+				// The installer (the streamed download and its tar reader) loads with the first install (dist/onDemand.js).
+				return extensionChunk<typeof import('../onDemand')>('onDemand')().installCli({ fetch: fetch as Fetch, registry: registry(), managedDir, version, signal: abort.signal });
 			});
 		} catch (err) {
 			if (!(err instanceof Error && err.name === 'AbortError')) {

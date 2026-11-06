@@ -84,7 +84,10 @@ export class ChatController implements vscode.Disposable {
 	private readonly transcript = new ChatTranscript();
 	/** Streams item changes to the webview at most about 30 times a second. */
 	private readonly textDeltas = new TextDeltas();
-	private readonly items = new UpdateBatcher<TranscriptItem>(items => this.post({ type: 'items', items: this.textDeltas.toUpdates(items) }), visibleBatchMs);
+	private readonly items = new UpdateBatcher<TranscriptItem>(items => {
+		this.post({ type: 'items', items: this.textDeltas.toUpdates(items) });
+		this.onDidChangeConversationEmitter.fire();
+	}, visibleBatchMs);
 	private readonly disposables: vscode.Disposable[] = [];
 	private webview: vscode.Webview | undefined;
 	private webviewListener: vscode.Disposable | undefined;
@@ -122,6 +125,10 @@ export class ChatController implements vscode.Disposable {
 	private readonly onDidSendPromptEmitter = new vscode.EventEmitter<string>();
 	/** The text of each prompt sent. */
 	readonly onDidSendPrompt = this.onDidSendPromptEmitter.event;
+
+	private readonly onDidChangeConversationEmitter = new vscode.EventEmitter<void>();
+	/** The conversation changed: once per burst of item updates (at most about 30 a second while the view shows), so a save can follow a streaming reply. */
+	readonly onDidChangeConversation = this.onDidChangeConversationEmitter.event;
 
 	// The chat's features, each with its own webview messages and state.
 	private readonly files: ChatFileLinks;
@@ -270,6 +277,7 @@ export class ChatController implements vscode.Disposable {
 			this.onDidEditFilesEmitter,
 			this.onDidSendPromptEmitter,
 			this.onDidRestoreSessionEmitter,
+			this.onDidChangeConversationEmitter,
 			this.follow,
 			this.git,
 			this.attachments,
