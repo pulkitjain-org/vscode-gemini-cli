@@ -1164,9 +1164,12 @@ class TreeViewIdentityProvider implements IIdentityProvider<ITreeItem> {
 	}
 }
 
-// GEMINI-FORK: GeminiCode's agent list has roomier rows than other trees (geminiModes.css draws them).
+// GEMINI-FORK: GeminiCode's agent list has roomier rows than other trees, and 14px more above each
+// workspace heading (the rows with the folder icon), so each workspace's agents read as a group.
+// geminiModes.css draws them.
 const geminiAgentListId = 'gemini.agents';
 const geminiAgentListItemHeight = 30;
+const geminiAgentListWorkspaceHeight = 44;
 
 class TreeViewDelegate implements IListVirtualDelegate<ITreeItem> {
 
@@ -1174,7 +1177,10 @@ class TreeViewDelegate implements IListVirtualDelegate<ITreeItem> {
 	constructor(private readonly viewId?: string) { }
 
 	getHeight(element: ITreeItem): number {
-		return this.viewId === geminiAgentListId ? geminiAgentListItemHeight : TreeRenderer.ITEM_HEIGHT;
+		if (this.viewId === geminiAgentListId) {
+			return element.themeIcon?.id === 'folder' ? geminiAgentListWorkspaceHeight : geminiAgentListItemHeight;
+		}
+		return TreeRenderer.ITEM_HEIGHT;
 	}
 
 	getTemplateId(element: ITreeItem): string {

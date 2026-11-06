@@ -417,6 +417,11 @@
 	background-clip: padding-box;
 }
 
+.monaco-workbench .pane:has(> .pane-header > .icon.view-gemini-agents) .customview-tree .monaco-list-row:has(.custom-view-tree-node-item-icon.codicon-folder) {
+	/* A workspace heading's row is 44px (treeView.ts): the 14px above it sets its agents apart from the last workspace's. */
+	padding-top: 14px;
+}
+
 .monaco-workbench .pane:has(> .pane-header > .icon.view-gemini-agents) .customview-tree .monaco-list-row .custom-view-tree-node-item {
 	height: 100%;
 	line-height: 28px;
@@ -439,6 +444,11 @@
 /* Room above the first heading; the hidden header leaves more than this free below the list. */
 .monaco-workbench.gemini-agents-mode .part.sidebar .pane:has(> .pane-header > .icon.view-gemini-agents) > .pane-body {
 	margin-top: 10px;
+}
+
+/* A workspace heading brings its own room above it (its 44px row), so the list needs none of its own. */
+.monaco-workbench.gemini-agents-mode .part.sidebar .pane:has(> .pane-header > .icon.view-gemini-agents):has(.monaco-list-row[aria-level="1"] .codicon-folder) > .pane-body {
+	margin-top: 0;
 }
 
 /*

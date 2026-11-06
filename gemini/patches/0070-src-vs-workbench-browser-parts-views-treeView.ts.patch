@@ -1,5 +1,5 @@
 diff --git a/src/vs/workbench/browser/parts/views/treeView.ts b/src/vs/workbench/browser/parts/views/treeView.ts
-index ffe46acce2e3f286c60146d7f180402cfdeb5672..179b1e2cdd2c71e35675e646a1a89857cf9744dc 100644
+index ffe46acce2e3f286c60146d7f180402cfdeb5672..9ebe17c31fd4acbf68e84a166f71ea8fd79e970e 100644
 --- a/src/vs/workbench/browser/parts/views/treeView.ts
 +++ b/src/vs/workbench/browser/parts/views/treeView.ts
 @@ -700,7 +700,7 @@ abstract class AbstractTreeView extends Disposable implements ITreeView {
@@ -11,13 +11,16 @@ index ffe46acce2e3f286c60146d7f180402cfdeb5672..179b1e2cdd2c71e35675e646a1a89857
  			dataSource, {
  			identityProvider: new TreeViewIdentityProvider(),
  			accessibilityProvider: {
-@@ -1164,10 +1164,17 @@ class TreeViewIdentityProvider implements IIdentityProvider<ITreeItem> {
+@@ -1164,9 +1164,22 @@ class TreeViewIdentityProvider implements IIdentityProvider<ITreeItem> {
  	}
  }
  
-+// GEMINI-FORK: GeminiCode's agent list has roomier rows than other trees (geminiModes.css draws them).
++// GEMINI-FORK: GeminiCode's agent list has roomier rows than other trees, and 14px more above each
++// workspace heading (the rows with the folder icon), so each workspace's agents read as a group.
++// geminiModes.css draws them.
 +const geminiAgentListId = 'gemini.agents';
 +const geminiAgentListItemHeight = 30;
++const geminiAgentListWorkspaceHeight = 44;
 +
  class TreeViewDelegate implements IListVirtualDelegate<ITreeItem> {
  
@@ -25,8 +28,9 @@ index ffe46acce2e3f286c60146d7f180402cfdeb5672..179b1e2cdd2c71e35675e646a1a89857
 +	constructor(private readonly viewId?: string) { }
 +
  	getHeight(element: ITreeItem): number {
--		return TreeRenderer.ITEM_HEIGHT;
-+		return this.viewId === geminiAgentListId ? geminiAgentListItemHeight : TreeRenderer.ITEM_HEIGHT;
++		if (this.viewId === geminiAgentListId) {
++			return element.themeIcon?.id === 'folder' ? geminiAgentListWorkspaceHeight : geminiAgentListItemHeight;
++		}
+ 		return TreeRenderer.ITEM_HEIGHT;
  	}
  
- 	getTemplateId(element: ITreeItem): string {
