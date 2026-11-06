@@ -44,6 +44,9 @@
 	position: relative;
 }
 
+/* The note beside the date that Home's data is out of date: a pill, whose display would otherwise draw it empty. */
+#stale[hidden] { display: none; }
+
 /* Refresh, beside the gear: hidden with nothing connected, spinning while the cards' data is read again. */
 .dash-tools #refresh[hidden] { display: none; }
 
