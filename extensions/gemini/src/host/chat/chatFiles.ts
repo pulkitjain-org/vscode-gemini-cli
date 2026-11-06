@@ -18,7 +18,7 @@ import * as vscode from 'vscode';
 import { BoundedStore, diffBytes, ToolOutputStore } from '../../acp/chatMemory';
 import { maxRemembered } from '../../acp/chatTurns';
 import { isInside } from '../../acp/fileAccess';
-import { fileNamePattern } from '../../acp/folderFiles';
+import { fileNamePattern, knownFileNamed } from '../../acp/folderFiles';
 import { isTraceFile } from '../../acp/hostAllowlists';
 import { background } from '../background';
 import { traceFolders } from '../traceCommand';
@@ -60,6 +60,8 @@ export class ChatFileLinks {
 		private readonly rebuildPlan?: (file: string) => Promise<void>,
 		/** The session is in Plan mode, whose plan opens from Review Plan rather than by itself. */
 		private readonly inPlanMode?: () => boolean,
+		/** The plans this chat's turns wrote, oldest first, which live in the CLI's session folder rather than the agent's. */
+		private readonly planFiles?: () => readonly string[],
 	) { }
 
 	onMessage(message: FileLinkMessage): void {
@@ -177,6 +179,19 @@ export class ChatFileLinks {
 				return;
 			}
 			return this.openLocation(direct, line);
+		}
+		// A file the chat wrote outside the folder, such as Plan mode's plan, opens as its chip does.
+		const known = knownFileNamed(name, [...this.planFiles?.() ?? [], ...this.createdMarkdown]);
+		if (known) {
+			if (isMarkdown(known)) {
+				await this.rebuildPlan?.(known);
+			}
+			if (await isFile(known)) {
+				if (line === undefined && isMarkdown(known) && (this.openPlan?.(known) || await this.openMarkdown(known, false))) {
+					return;
+				}
+				return this.openLocation(known, line);
+			}
 		}
 		const matches = await vscode.workspace.findFiles(new vscode.RelativePattern(folder, fileNamePattern(name)), '**/{node_modules,.git}/**', 20);
 		if (matches.length === 1) {

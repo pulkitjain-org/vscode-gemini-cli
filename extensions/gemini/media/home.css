@@ -299,13 +299,20 @@ button.start-as-option[aria-checked="true"] {
 	min-width: 0;
 }
 
-/* Each card is as tall as its rows: a short one (Pending on you, Agents) leaves no empty space under them. */
+/* Each card is as tall as its rows, and each column stacks its cards on their own, so a short card leaves no gap under it beside a taller one. */
 .dash-cards {
 	display: grid;
 	grid-template-columns: repeat(2, minmax(0, 1fr));
 	align-items: start;
 	gap: var(--gc-space-4);
 	margin-top: var(--gc-space-4);
+}
+
+.dash-col {
+	display: flex;
+	flex-direction: column;
+	gap: var(--gc-space-4);
+	min-width: 0;
 }
 
 .dash-card.stale .dash-rows {
@@ -539,6 +546,11 @@ button.dash-row-title:hover {
 @media (max-width: 760px) {
 	.dash-cards {
 		grid-template-columns: minmax(0, 1fr);
+	}
+
+	/* One column: the cards join the grid and take their listed order back. */
+	.dash-col {
+		display: contents;
 	}
 
 	.dash-steps {

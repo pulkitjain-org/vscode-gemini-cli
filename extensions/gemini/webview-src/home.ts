@@ -313,7 +313,7 @@ function drawKeyed<T extends { readonly id: string }>(parent: HTMLElement, cache
 	kept.forEach((entry, id) => cache.set(id, entry));
 }
 
-const dashCards: Drawn = new Map();
+const dashCards: readonly [Drawn, Drawn] = [new Map(), new Map()];
 
 function render(next: HomeView): void {
 	view = next;
@@ -422,6 +422,9 @@ const customizeButton = document.getElementById('customize') as HTMLButtonElemen
 const banners = document.getElementById('banners')!;
 const setup = document.getElementById('setup')!;
 const cardsSection = document.getElementById('cards')!;
+// Two columns that stack on their own, so a short card leaves no gap under it when its neighbour is taller.
+const cardColumns = [el('div', 'dash-col'), el('div', 'dash-col')] as const;
+cardsSection.append(...cardColumns);
 
 setTip(customizeButton, strings.customize);
 customizeButton.setAttribute('aria-label', strings.customize);
@@ -563,7 +566,12 @@ function renderDashboard(dash: HomeDashboard): void {
 		setup.append(steps);
 	}
 
-	drawKeyed(cardsSection, dashCards, dash.cards, dashCard);
+	// Cards alternate between the columns, left to right as they are listed; `order` keeps that order when a narrow window stacks them.
+	dashCards.forEach((cache, column) => {
+		const items = dash.cards.filter((_, i) => i % 2 === column);
+		drawKeyed(cardColumns[column], cache, items, dashCard);
+		items.forEach((card, i) => cache.get(card.id)!.node.style.order = String(i * 2 + column));
+	});
 	popups?.update(dash);
 }
 

@@ -232,7 +232,7 @@ export class IndexMcpServer {
 		if (this.backend.researchOn?.() && !route.startsWith(researchWorkerPrefix)) {
 			tools.push({
 				name: 'research',
-				description: 'Answers a broad question about this folder\'s code by reading many parts of it at once: it splits the question by area, several read-only readers each read one part with these tools, and it returns one report with file:line evidence. Use it for questions such as where something happens everywhere, or an audit of every place that does X; it takes a minute or two. For one lookup, use code_search or find_symbol instead.',
+				description: 'Answers a broad question about this folder\'s code by reading many parts of it at once: it splits the question by area, several read-only readers each read one part with these tools, and it returns one report with file:line evidence. Use it for questions such as where something happens everywhere, or an audit of every place that does X; it takes several minutes (at most about ten). For one lookup, use code_search or find_symbol instead.',
 				inputSchema: {
 					type: 'object',
 					properties: { question: { type: 'string', description: 'The question, in full, as the user would ask it.' } },

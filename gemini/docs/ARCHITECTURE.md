@@ -637,7 +637,7 @@ Upstream's Integrated Browser ships with agent tools, but they reach only Copilo
 
 #### The server and its tools
 
-`src/acp/browserMcp.ts` is an MCP server on 127.0.0.1 (Streamable HTTP with plain JSON replies), with one path and its own bearer token (an HMAC of a random key) per agent. `src/host/browserTools.ts` passes it to each agent session in ACP's `mcpServers`, only when the CLI advertises `mcpCapabilities.http` (the bundled CLI does), and disposes the server when `gemini.browser.enabled` is turned off.
+`src/acp/browserMcp.ts` is an MCP server on 127.0.0.1 (Streamable HTTP, on `localMcpServer.ts` below), with one path and its own bearer token (an HMAC of a random key) per agent. `src/host/browserTools.ts` passes it to each agent session in ACP's `mcpServers`, only when the CLI advertises `mcpCapabilities.http` (the bundled CLI does), and disposes the server when `gemini.browser.enabled` is turned off.
 
 Its tools are `browser_navigate`, `_snapshot`, `_click`, `_hover`, `_type`, `_select`, `_press_key`, `_scroll`, `_back`, `_forward`, `_reload`, `_wait`, `_screenshot`, `_dialog`, `_console`, `_network` and `_dev_servers`. They call the fork-only workbench commands in `contrib/gemini/electron-browser/geminiBrowser.ts`, which use upstream's browser view and Playwright services directly. Each agent has a Playwright session `gemini-agent:<id>` and owns the pages it opens. The commands run only fixed actions, never code from the extension.
 
@@ -720,7 +720,7 @@ The model, branch and folder menus replace the system select menu and quick pick
 
 GeminiCode runs four MCP servers of its own: the browser's `geminicode-browser`, the team tools' `geminicode-tools` (`src/acp/teamToolsMcp.ts`), a project's `geminicode-project` and the index's `geminicode-index`, which are `ownServers` in `configuration.ts`. Debug mode, off by default, adds `geminicode-debug` ([DEBUG_MODE.md](DEBUG_MODE.md)). All are built on `localMcpServer.ts`:
 
-- Streamable HTTP with plain JSON replies on `127.0.0.1`;
+- Streamable HTTP on `127.0.0.1`, with plain JSON replies except to a `tools/call` from a client that accepts an event stream, which is answered as one at once and kept alive with a comment (or a progress notice, given a progress token) every minute until the answer;
 - one URL and HMAC bearer token per route;
 - a request with an `Origin` header, or a `Host` other than the server's own loopback address, refused before the token is looked at, so a page in a browser can't reach it;
 - a JSON-RPC error for a request that fails, and an error result the model can read for a tool that throws.
@@ -1145,6 +1145,7 @@ What was learnt the hard way, kept with the design it belongs to. [AGENTS.md](..
 - One CLI process serves every agent of a window, started in its first folder. A new session reads its own folder's settings, but `session/load` reopens one with the settings the process read in its folder at launch (still so in 0.65 and the 0.67 nightly). `AgentRuntime` reopens a session whose folder's project settings differ on a process started in that folder, made on first need and ended when its sessions are gone (`folderProcess`, `needsOwnProcess` in `agentService.ts`). `test/acp/realAgentFolders.test.ts` shows the CLI's behaviour: when a CLI release fixes it, that test fails and the folder processes can go.
 - Never ask an agent for a whole diff or log in one command. Give it the file list and have it read a few files at a time, as `reviewPrompt` in `src/acp/teamFlowLogic.ts` does.
 - A policy rule's `commandRegex` is matched by gemini-cli 0.67 against the call's arguments as JSON (`"command":"<text>`), anchored at the command's start, and a quantified `(?:...)` group is rejected as a nested quantifier. A rule that must match anywhere in the command starts with `([^"]|\\")*` (`toolPolicy.ts`); `test/acp/toolPolicy.test.ts` applies each regex the way the CLI does.
+- A long MCP tool call fails twice over. The CLI's fetch (undici) gives up on a reply whose headers take 5 minutes, reported as "fetch failed", so `localMcpServer.ts` answers a tool call as an event stream with its headers at once. gemini-cli 0.67 also ends any MCP tool call after 10 minutes (`MCP_DEFAULT_TIMEOUT_MSEC`), passing no progress handler, so progress notices don't extend it: a tool that may run long must stop itself in time, as agents' `research` does at `agentResearchMs` (`src/acp/research.ts`) and merges what it has.
 
 ### Where pages open
 

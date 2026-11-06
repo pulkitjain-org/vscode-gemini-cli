@@ -23,6 +23,26 @@ export function fileNamePattern(name: string): string {
 	return `**/${name.replace(/^(\.\.?\/)+/, '').replace(/[[\]{}*?!]/g, '?')}`;
 }
 
+/**
+ * The file among `known` (oldest first) that a reply names as `name`: the latest whose path ends in
+ * it, part for part. For files the chat wrote outside its folder, such as Plan mode's plan in the
+ * CLI's session folder, which a folder search never finds.
+ */
+export function knownFileNamed(name: string, known: Iterable<string>): string | undefined {
+	const parts = name.replace(/^(\.\.?[\\/])+/, '').split(/[\\/]+/).filter(Boolean);
+	if (!parts.length || parts.some(part => part === '..' || part === '.')) {
+		return undefined;
+	}
+	let found: string | undefined;
+	for (const file of known) {
+		const fileParts = file.split(/[\\/]+/);
+		if (fileParts.length >= parts.length && parts.every((part, i) => fileParts[fileParts.length - parts.length + i] === part)) {
+			found = file;
+		}
+	}
+	return found;
+}
+
 export interface FileMatch {
 	readonly path: string;
 	/** Folder-relative, for display. */

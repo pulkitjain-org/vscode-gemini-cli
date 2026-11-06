@@ -5,8 +5,8 @@
 
 // The `geminicode-project` MCP server: the tools a project's coordinator uses
 // to start and steer threads, and the one a thread uses to report back. The
-// same shape as the browser's server (browserMcp.ts): Streamable HTTP with
-// plain JSON replies on 127.0.0.1, one URL and HMAC token per caller, so a
+// same shape as the browser's server (browserMcp.ts, on localMcpServer.ts):
+// Streamable HTTP on 127.0.0.1, one URL and HMAC token per caller, so a
 // thread's token can't act as the coordinator. Nothing runs until a project
 // opens, and every call is answered from memory.
 

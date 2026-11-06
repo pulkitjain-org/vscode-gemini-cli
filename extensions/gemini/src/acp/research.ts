@@ -50,6 +50,12 @@ export interface ResearchProgress {
 
 export const maxSlices = 8;
 export const defaultConcurrency = 4;
+/**
+ * How long an agent's research tool reads before it stops the readers and merges what they found:
+ * the CLI ends an MCP tool call after 10 minutes, whatever the server sends meanwhile, and the
+ * merge needs time of its own.
+ */
+export const agentResearchMs = 8 * 60_000;
 /** The most serious findings the verifier rereads. */
 const maxVerified = 6;
 const maxQuestion = 2_000;
