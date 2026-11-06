@@ -117,14 +117,6 @@
 	background: var(--vscode-button-secondaryHoverBackground, var(--vscode-toolbar-hoverBackground));
 }
 
-.debug-button:focus-visible,
-.debug-summary:focus-visible,
-.debug-where:focus-visible,
-.evidence-where:focus-visible {
-	outline: var(--gc-focus-ring);
-	outline-offset: var(--gc-focus-offset);
-}
-
 .debug-heading,
 .debug-card-title {
 	font-weight: var(--gc-weight-semibold);

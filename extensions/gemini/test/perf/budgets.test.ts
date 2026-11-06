@@ -49,11 +49,13 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	'media/changes.js': 16_000,
 	// The team flows, about 32 KB: Open Merge Request, Move Ticket and Log Time, Review and Checks, with the
 	// review's comments, threads and suggested changes. Loaded only with a flow's page.
-	'media/teamFlow.js': 36_000,
+	// The select menu's headings and the options' tips added about 1 KB.
+	'media/teamFlow.js': 37_000,
 	// Settings, about 19.4 KB before 1.8; every contributed setting on the page, with its control, search and the side index, added about 7 KB.
 	'media/settings.js': 28_000,
 	// Connections, about 17.5 KB: the Jira sites after the first and Confluence's per-site Connect dialog added about 4 KB.
-	'media/connections.js': 20_000,
+	// The themed tooltip module and keepFocus took it to about 20.7 KB.
+	'media/connections.js': 21_500,
 	// The Review Page for Confluence drafts, about 27 KB: the in-place editor, its floating toolbar, the marked changes
 	// and the merge when the page changed meanwhile. The Markdown parser comes from draftMarkdown.js, loaded on open.
 	// Keeping what Markdown can't write (mentions, macros, tables) with the agent's version beside it, checking pasted
@@ -70,7 +72,8 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// with the shared select menu and tooltips.
 	'media/indexPage.js': 22_000,
 	// The rich Jira comment box, about 22.5 KB, loaded the first time a page opens one.
-	'media/commentBox.js': 26_000,
+	// The themed Visible-to menu (menu.ts and selectMenu.ts) took it to about 31 KB.
+	'media/commentBox.js': 32_000,
 	// About 158 KB.
 	'media/highlight.js': 180_000,
 	// About 265 KB, loaded only when a reply has math.
@@ -111,7 +114,10 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// language servers' tools and research added about 18 KB; the docs crawler moving to dist/onDemand.js took 9 KB off.
 	// The ACP SDK and zod (about 250 KB) moved to dist/connection.js, loaded when the first agent process starts:
 	// from about 1,212 KB to about 955 KB.
-	'dist/extension.js': 1_010_000,
+	// The 1.8 review: ask rules for every team write, network git commands and variable expansion in approvals, the Run
+	// button's wrapper and download checks, the folder processes' restart handling and the restart hold, about 4 KB net
+	// once the CLI installer moved to dist/onDemand.js.
+	'dist/extension.js': 1_020_000,
 	// The agent's connection with the ACP SDK and zod (English messages only), and the benchmark's own ACP client,
 	// about 254 KB (src/connection.ts), loaded when the first agent process starts, seconds after activation.
 	'dist/connection.js': 270_000,
@@ -151,7 +157,9 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// index tools (editorToolsHost.ts), about 4 KB, loaded the first time an agent asks one. The research engine
 	// (research.ts), about 9 KB, loaded with the first side question that reads the code. The docs crawler (docs/crawler.ts), about 9 KB,
 	// moved here from dist/extension.js and loaded with the first docs fetch.
-	'dist/onDemand.js': 170_000,
+	// The CLI installer with its streamed download and tar reader (cliInstall.ts), about 9 KB, moved here from
+	// dist/extension.js: it runs only when a copy is installed.
+	'dist/onDemand.js': 185_000,
 	// The indexer process, about 66 KB: parsing, SQLite queries and docs conversion, forked on first use, never
 	// loaded in the extension host.
 	'dist/indexer.js': 120_000,

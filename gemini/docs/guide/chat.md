@@ -275,9 +275,9 @@ When a session's history reaches half of the model's context window, the Gemini 
 
 GeminiCode's **Compress** summarises when you ask, and keeps the result. Type `/compress`, or click **Compress** in the usage popover, which offers it while the agent is idle and has answered enough to compress. Once the context passes 40%, the chat suggests it once, with **Compress** and **Not Now**.
 
-Gemini writes a summary of the work so far (the goal, decisions and constraints, files, current state and next steps), and the chat moves to a new session made of that summary and your latest prompts, kept as they were. A line across the chat shows the tokens before and after, with **View Summary** and **Undo**. **Undo** goes back to the full session, even after a restart. The conversation above the line stays in the chat either way.
+Gemini writes a summary of the work so far (the goal, decisions and constraints, files, current state and next steps), and the chat moves to a new session made of that summary and your latest prompts, kept as they were. A line across the chat marks the place, with **View Summary** and **Undo**; when the CLI had counted the session's context, the line says how many tokens it held. **Undo** goes back to the full session, even after a restart. The conversation above the line stays in the chat either way.
 
-![A chat after /compress, with the Compressed line showing the tokens before and after, View Summary and Undo](../../site/media/compact-line-dark.webp)
+![A chat after /compress, with the Compressed line, View Summary and Undo](../../site/media/compact-line-dark.webp)
 
 Writing the summary is a model turn, so it counts toward your quota.
 

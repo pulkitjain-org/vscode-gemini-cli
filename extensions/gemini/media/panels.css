@@ -8,9 +8,6 @@
 :root {
 	/* The process tier (see chat.css): the quietest text, for meta lines. */
 	--gemini-process: color-mix(in srgb, var(--gemini-muted) 85%, transparent);
-	--gemini-radius: 10px;
-	--gemini-radius-small: 6px;
-	--gemini-radius-large: 12px;
 	/* Soft: the theme's own colours, named by their role (as in chat.css). */
 	--gemini-surface: var(--vscode-editor-background);
 	/* Cards and the composer: a step above the page. */
@@ -107,36 +104,7 @@ button .codicon {
 	font-size: var(--gc-text-md);
 }
 
-button:focus-visible,
-[tabindex]:focus-visible,
-select:focus-visible {
-	outline: 1px solid var(--vscode-focusBorder);
-	outline-offset: -1px;
-}
-
-button.primary {
-	border-color: var(--gemini-accent);
-	background: var(--gemini-accent);
-	color: var(--gemini-on-accent);
-	font-weight: var(--gc-weight-medium);
-}
-
-button.primary:hover:not(:disabled) {
-	background: var(--vscode-button-hoverBackground, var(--gemini-accent));
-}
-
-button.icon-button {
-	padding: 4px;
-	border-color: transparent;
-	border-radius: var(--gc-radius-md);
-	background: none;
-	color: var(--gemini-faint);
-}
-
-button.icon-button:hover:not(:disabled) {
-	color: var(--vscode-foreground);
-	background: var(--gemini-hover);
-}
+/* The primary, secondary, quiet, link and icon buttons, the pills and the tabs are in tokens.css. */
 
 .muted {
 	color: var(--gemini-muted);
@@ -221,12 +189,25 @@ button.icon-button:hover:not(:disabled) {
 	background: var(--gemini-hover);
 }
 
+/* The name is a button drawn as the header's own text. */
 .file-name {
 	display: flex;
 	align-items: center;
 	gap: 6px;
 	min-width: 0;
 	flex: 1;
+	height: auto;
+	padding: 0;
+	border: none;
+	background: none;
+	color: inherit;
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
+}
+
+.file-name:hover:not(:disabled) {
+	background: none;
 }
 
 .file-name .codicon {
@@ -750,39 +731,11 @@ button.option-button .codicon-chevron-down {
 	color: var(--gemini-faint);
 }
 
-/* Agent Setup's tab strip, above the page: Loads, Index & Docs, Connections, Storage & Audit. */
+/* Agent Setup's tab strip, above the page: Loads, Index & Docs, Connections, Storage & Audit (the tabs are tokens.css's). */
 .page-tabs {
-	display: flex;
-	gap: 4px;
 	max-width: 760px;
 	margin: 0 auto;
 	padding: 16px 24px 0;
-}
-
-.page-tab {
-	height: 28px;
-	padding: 0 12px;
-	border: none;
-	border-bottom: 2px solid transparent;
-	background: none;
-	color: var(--gemini-muted);
-	font: inherit;
-	font-size: var(--gc-text-md);
-	cursor: pointer;
-}
-
-.page-tab:hover {
-	color: var(--vscode-foreground);
-}
-
-.page-tab.active {
-	color: var(--vscode-foreground);
-	border-bottom-color: var(--vscode-focusBorder);
-}
-
-.page-tab:focus-visible {
-	outline: 1px solid var(--vscode-focusBorder);
-	outline-offset: -1px;
 }
 
 /* The Agent Setup pages' main column; the Settings page (.setup-page) is wider, for its side index. */
@@ -1204,41 +1157,13 @@ button.option-button .codicon-chevron-down {
 	}
 }
 
-/* Write and Preview in Agent Home's composer (markdownPreview.ts), as in the chat's: tabs once there is a draft. */
+/* Write and Preview in Agent Home's composer (markdownPreview.ts), as in the chat's: tokens.css's tabs, once there is a draft. */
 .home-composer .composer-tabs {
-	display: flex;
-	gap: 12px;
-	margin: -2px 0 4px;
-	font-size: var(--gc-text-sm);
+	margin: 0 0 var(--gc-space-1);
 }
 
 .home-composer:has(textarea:placeholder-shown) .composer-tabs {
 	display: none;
-}
-
-.composer-tab {
-	padding: 1px 0;
-	border: none;
-	border-bottom: 2px solid transparent;
-	background: none;
-	color: var(--gemini-faint);
-	font: inherit;
-	cursor: pointer;
-}
-
-.composer-tab:hover,
-.composer-tab[aria-selected="true"] {
-	color: var(--vscode-foreground);
-}
-
-.composer-tab[aria-selected="true"] {
-	border-bottom-color: var(--vscode-foreground);
-}
-
-.composer-tab:focus-visible {
-	outline: 1px solid var(--vscode-focusBorder);
-	outline-offset: 2px;
-	border-radius: var(--gc-radius-sm);
 }
 
 .composer-preview {
@@ -1402,14 +1327,6 @@ button.option-button .codicon-chevron-down {
 	padding: 0;
 }
 
-.index-page button.link-button {
-	padding: 2px 4px;
-	border: none;
-	background: none;
-	color: var(--vscode-textLink-foreground);
-	cursor: pointer;
-}
-
 .index-page .hint .select-menu {
 	display: inline-flex;
 	vertical-align: middle;
@@ -1466,11 +1383,6 @@ button.option-button .codicon-chevron-down {
 	color: var(--vscode-input-foreground);
 	background: var(--vscode-input-background);
 	font: inherit;
-}
-
-.index-input:focus {
-	outline: 1px solid var(--vscode-focusBorder);
-	outline-offset: -1px;
 }
 
 .index-inline {

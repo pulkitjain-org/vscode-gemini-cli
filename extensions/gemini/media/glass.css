@@ -93,7 +93,7 @@ button.primary,
 	box-shadow: none;
 }
 
-.permission-actions button.secondary,
+.secondary,
 .status-action,
 .plus-button,
 .mode-chip,
@@ -108,7 +108,7 @@ button.primary,
 	background: var(--gemini-accent);
 }
 
-.permission-actions button.secondary:hover,
+.secondary:hover:not(:disabled),
 .status-action:hover,
 .plus-button:hover,
 .plus-button[aria-expanded="true"] {
@@ -139,8 +139,10 @@ button.primary,
 
 .pill,
 .dash-pill,
-.settings .tag,
-.state-pill {
+.state-pill,
+.plan-pill,
+.permission-pill,
+.settings .tag {
 	background: var(--gemini-glass-fill);
 }
 

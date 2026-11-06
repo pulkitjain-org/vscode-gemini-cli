@@ -11,7 +11,7 @@
 // by the block's text, so a block drawn again keeps its result.
 
 import type { RunAction, RunState, RunView } from '../src/host/chatProtocol';
-import { format, formatDuration } from './chatLogic';
+import { format } from './chatLogic';
 import { button, el, icon, setLabel, setTip } from './dom';
 import { Menu } from './menu';
 import { strings, vscode } from './view';
@@ -127,22 +127,30 @@ function show(wrapper: HTMLElement, state: RunState, asked: boolean): void {
 	wrapper.querySelector('.run-bar')?.remove();
 	const header = wrapper.querySelector('.code-header')!;
 	const runButton = header.querySelector('.code-run')!;
+	wrapper.querySelector('.run-send')?.remove();
 	if (state.kind === 'running' || state.kind === 'done') {
+		// How the run went, as text beside the language ("sh - exit 0"), so the right side keeps only the actions.
+		// The exit code is the one the terminal reported; the shell reports no time, so none is shown.
 		const status = el('span', 'run-status');
 		if (state.kind === 'running') {
 			status.append(icon('loading', 'codicon-modifier-spin'));
 			setTip(status, strings.run.running);
-		} else if (state.exitCode === 0 || state.exitCode === undefined) {
+		} else if (state.exitCode === undefined) {
+			// A shell without integration says only that it ended.
 			status.append(icon('check'));
 			status.classList.add('passed');
-			setTip(status, format(strings.run.passed, formatDuration(state.ms ?? 0)));
+			setTip(status, strings.run.ended);
+		} else if (state.exitCode === 0) {
+			status.append(el('span', undefined, format(strings.run.exit, '0')));
+			status.classList.add('passed');
+			setTip(status, strings.run.passed);
 		} else {
-			status.append(icon('error'), el('span', undefined, String(state.exitCode)));
+			status.append(el('span', undefined, format(strings.run.exit, String(state.exitCode))));
 			status.classList.add('failed');
-			setTip(status, format(strings.run.failed, state.exitCode, formatDuration(state.ms ?? 0)));
-			status.append(button('run-send', strings.run.sendOutput, () => vscode.postMessage({ type: 'sendRunOutput', text: block.text })));
+			setTip(status, format(strings.run.failed, String(state.exitCode)));
+			runButton.before(button('secondary small run-send', strings.run.sendOutput, () => vscode.postMessage({ type: 'sendRunOutput', text: block.text })));
 		}
-		runButton.before(status);
+		header.querySelector('.code-language')!.append(status);
 		return;
 	}
 	if (state.kind !== 'confirm' && state.kind !== 'pick') {

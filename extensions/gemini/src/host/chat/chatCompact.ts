@@ -17,7 +17,7 @@ import type { ChatTranscript, CompactItem } from '../../acp/chatTranscript';
 import { shouldSuggestCompact } from '../../acp/chatTurns';
 import { isPrompt, MessageRecord, readSessionMessages, readSessionTokens, rewindCliSession, textOf } from '../../acp/cliSessions';
 import { errorMessage } from '../../acp/errors';
-import { compactedMessages, compactMinPrompts, compactSplit, estimateTokens, summaryMarker, summaryPrompt, writeSessionCopy } from '../../acp/sessionSnapshot';
+import { compactedMessages, compactMinPrompts, compactSplit, summaryMarker, summaryPrompt, writeSessionCopy } from '../../acp/sessionSnapshot';
 import type { SlashCommand } from '../../acp/slashCommands';
 import { coordinatorSummaryNote } from '../../acp/projectHub';
 import type { FromWebview } from '../chatProtocol';
@@ -97,7 +97,7 @@ export class ChatCompact {
 		}
 	}
 
-	private async run(): Promise<Pick<CompactItem, 'before' | 'after' | 'kept' | 'summary' | 'from' | 'to'>> {
+	private async run(): Promise<Pick<CompactItem, 'before' | 'kept' | 'summary' | 'from' | 'to'>> {
 		await this.service.ensureReady();
 		const client = this.service.client;
 		const from = this.sessions.current();
@@ -107,8 +107,8 @@ export class ChatCompact {
 		}
 		const { messages } = saved;
 		const split = compactSplit(messages);
-		const tokens = await readSessionTokens(client.cwd, from).catch(() => undefined);
-		const before = Math.max(estimateTokens(messages), tokens?.context ?? 0);
+		// The card's figure is the CLI's own count of the context, saved with its last reply; none when it saved none.
+		const before = (await readSessionTokens(client.cwd, from).catch(() => undefined))?.context;
 		const summary = await this.summarize();
 		// The summary's own turn goes again, so Undo comes back to the session as it was.
 		await rewindCliSession(client.cwd, from, summaryMarker, 0).catch(() => false);
@@ -116,7 +116,7 @@ export class ChatCompact {
 		const to = await writeSessionCopy(client.cwd, compacted);
 		await this.switchTo(to, from);
 		this.host.movedSession();
-		return { before, after: estimateTokens(compacted), kept: compacted.filter(isPromptMessage).length - 1, summary, from, to };
+		return { ...(before === undefined ? {} : { before }), kept: compacted.filter(isPromptMessage).length - 1, summary, from, to };
 	}
 
 	/**

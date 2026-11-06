@@ -60,26 +60,14 @@ button.plan-file:hover {
 	flex: 1;
 }
 
-.plan-pill {
-	display: inline-flex;
-	align-items: center;
-	gap: 5px;
-	padding: 1px 8px;
-	border-radius: var(--gc-radius-pill);
-	font-size: var(--gc-text-xs);
-	font-weight: var(--gc-weight-medium);
-	white-space: nowrap;
-	background: var(--gemini-hover);
-	color: var(--gemini-muted);
-}
-
+/* The page's pills are tokens.css's, in the plan's and the comments' colours. */
 .plan-pill.plan {
-	background: color-mix(in srgb, var(--plan-edit) 16%, transparent);
+	border-color: color-mix(in srgb, var(--plan-edit) 40%, transparent);
 	color: var(--vscode-foreground);
 }
 
 .plan-pill.cm {
-	background: var(--plan-comment-soft);
+	border-color: color-mix(in srgb, var(--plan-comment) 40%, transparent);
 	color: var(--plan-comment);
 }
 
@@ -184,12 +172,6 @@ button.plan-file:hover {
 	line-height: 1.55;
 }
 
-.plan-content:focus-visible,
-.plan-cm-text:focus-visible {
-	outline: 1px solid var(--vscode-focusBorder);
-	outline-offset: 2px;
-}
-
 /* While the agent works on the plan. */
 .plan-content[aria-disabled="true"] {
 	cursor: default;
@@ -282,13 +264,32 @@ button.plan-add {
 	position: absolute;
 	left: -30px;
 	top: 6px;
-	width: 22px;
-	height: 22px;
+	width: var(--gc-control-sm);
+	height: var(--gc-control-sm);
 	padding: 0;
 	justify-content: center;
 	border-color: var(--gemini-border-strong);
 	border-radius: var(--gemini-radius-small);
 	opacity: 0;
+}
+
+/* Edit, under the +: the keyboard's way into a section, shown with it. */
+button.plan-edit {
+	position: absolute;
+	left: -30px;
+	top: 32px;
+	width: var(--gc-control-sm);
+	height: var(--gc-control-sm);
+	padding: 0;
+	justify-content: center;
+	border-color: var(--gemini-border-strong);
+	border-radius: var(--gemini-radius-small);
+	opacity: 0;
+}
+
+.plan-sec:hover button.plan-edit,
+button.plan-edit:focus-visible {
+	opacity: 1;
 }
 
 .plan-sec:hover button.plan-add,
@@ -440,19 +441,6 @@ button.plan-add:focus-visible {
 	gap: 4px;
 }
 
-button.link-button {
-	padding: 1px 8px;
-	border: none;
-	background: none;
-	color: var(--gemini-muted);
-	font-size: var(--gc-text-sm);
-}
-
-button.link-button:hover {
-	color: var(--vscode-foreground);
-	background: var(--gemini-hover);
-}
-
 .plan-foot {
 	position: sticky;
 	bottom: 0;
@@ -470,6 +458,14 @@ button.link-button:hover {
 	margin-right: auto;
 	color: var(--gemini-muted);
 	font-size: var(--gc-text-sm);
+}
+
+/* The two buttons wrap as one, to the end of their line, the primary last. */
+.plan-foot-actions {
+	display: flex;
+	flex: none;
+	gap: var(--gc-space-2);
+	margin-left: auto;
 }
 
 .plan-foot .short {

@@ -118,7 +118,7 @@ describe('thread card', () => {
 		const removed = draw({ ...base, removed: true });
 		expect([paused, discarded, removed].map(({ step, line, buttons }) => ({ step, line, buttons }))).toEqual([
 			{ step: 'Trying in your workspace', line: 'Updating is paused: header.tsx has conflict markers to resolve.', buttons: ['Open the Conflict', 'Send My Edits to the Thread', 'Take Back', 'More'] },
-			{ step: null, line: 'Discarded. Its folder is back where it started; the work is saved.', buttons: ['Restore Discarded Work', 'Open', 'Remove Thread…'] },
+			{ step: null, line: 'Discarded. Its folder is back where it started; the work is saved.', buttons: ['Restore Discarded Work', 'Open', 'Remove Thread...'] },
 			{ step: null, line: 'Removed: its branch and folder are gone', buttons: [] },
 		]);
 	});
@@ -141,7 +141,7 @@ describe('thread card', () => {
 		}).toEqual({
 			tips: ['Make these changes yours and finish the thread', 'Remove this thread\'s changes from your workspace', 'Open the thread\'s chat to ask for changes', 'More'],
 			posted: [{ type: 'threadAction', thread: 't1', action: 'keep' }, { type: 'threadAction', thread: 't1', action: 'checks' }],
-			rows: ['How Trying Works', 'Open Terminal in Thread Folder', 'Run Checks There', 'Discard Changes…', 'Remove Thread…'],
+			rows: ['How Trying Works', 'Open Terminal in Thread Folder', 'Run Checks There', 'Discard Changes...', 'Remove Thread...'],
 			placed: { className: 'thread-menu', top: '4px', left: '8px' },
 			open: false,
 		});
@@ -159,7 +159,7 @@ describe('thread card', () => {
 	it('offers work discarded before later turns from the ⋯ menu', () => {
 		const { card } = draw({ ...base, restorable: true });
 		(card.querySelector('.thread-more') as HTMLButtonElement).click();
-		expect(menu.rows.map(row => row.name)).toEqual(['Open Terminal in Thread Folder', 'Run Checks There', 'Discard Changes…', 'Restore Discarded Work', 'Remove Thread…']);
+		expect(menu.rows.map(row => row.name)).toEqual(['Open Terminal in Thread Folder', 'Run Checks There', 'Discard Changes...', 'Restore Discarded Work', 'Remove Thread...']);
 		menu.rows.find(row => row.name === 'Restore Discarded Work')!.run();
 		expect(posted.at(-1)).toEqual({ type: 'threadAction', thread: 't1', action: 'restore' });
 	});
@@ -170,6 +170,6 @@ describe('thread card', () => {
 
 	it('offers the merge commit instead when the repository\'s remembered choice is Merge Back, and says Open Merge Request when it is one', () => {
 		expect(draw({ ...base, tryChoice: 'mr' }).primary).toBe('Open Merge Request');
-		expect(draw({ ...base, tryChoice: 'merge' }).buttons).toEqual(['Merge Back', 'Other Ways to Take the Work', 'Review Changes', 'Remove Thread…']);
+		expect(draw({ ...base, tryChoice: 'merge' }).buttons).toEqual(['Merge Back', 'Other Ways to Take the Work', 'Review Changes', 'Remove Thread...']);
 	});
 });

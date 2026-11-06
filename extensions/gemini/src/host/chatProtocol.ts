@@ -24,7 +24,7 @@ import type { DebugAction, DebugBarView } from './debug/debugProtocol';
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 55;
+export const chatProtocolVersion = 56;
 /** The hash of the messages below (sourceHash.ts); test/acp/chatProtocolHash.test.ts fails when they change without a bump, and names the new value. */
 export const chatProtocolHash = 'b33406811d90';
 
@@ -231,8 +231,9 @@ export interface ForkView {
 	readonly fromHere?: { readonly before?: string; readonly answered: string };
 	/** The fork's first message, filled in: a side question that needs tools. */
 	readonly message?: string;
-	/** About how many tokens each choice sends with every request; `compact` is unset when it can't be made now, with `compactWhy`. */
-	readonly tokens: { readonly whole: number; readonly compact?: number; readonly conversation: number };
+	/** The context's use the CLI saved for the whole session, when it reported one; nothing is estimated. */
+	readonly contextTokens?: number;
+	/** Why Compressed can't be made now, when it can't. */
 	readonly compactWhy?: string;
 	readonly context: ForkContext;
 	/** Whether the fork can have a branch of its own, the parent's branch it would start from, and the name suggested. */

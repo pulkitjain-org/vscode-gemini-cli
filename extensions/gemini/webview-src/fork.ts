@@ -52,14 +52,15 @@ export function openForkDialog(view: ForkView): void {
 	// What it starts with: the cheaper choices are for large sessions.
 	const contexts = el('fieldset', 'fork-choices');
 	contexts.append(el('legend', undefined, text.context));
+	// Only the whole session has a figure, the CLI's own; the other choices show none rather than an estimate.
 	const choices: readonly { readonly id: ForkContext; readonly name: string; readonly hint: string; readonly tokens?: number; readonly why?: string }[] = [
-		{ id: 'whole', name: text.whole, hint: view.tokens.whole > largeSession ? `${text.wholeHint} ${text.wholeLarge}` : text.wholeHint, tokens: view.tokens.whole },
-		{ id: 'compact', name: text.compact, hint: text.compactHint, tokens: view.tokens.compact, why: view.compactWhy },
-		{ id: 'conversation', name: text.conversation, hint: text.conversationHint, tokens: view.tokens.conversation },
+		{ id: 'whole', name: text.whole, hint: view.contextTokens !== undefined && view.contextTokens > largeSession ? `${text.wholeHint} ${text.wholeLarge}` : text.wholeHint, ...(view.contextTokens !== undefined ? { tokens: view.contextTokens } : {}) },
+		{ id: 'compact', name: text.compact, hint: text.compactHint, ...(view.compactWhy ? { why: view.compactWhy } : {}) },
+		{ id: 'conversation', name: text.conversation, hint: text.conversationHint },
 	];
 	const contextRadios = choices.map(choice => {
-		const radio = choiceRow(contexts, 'fork-context', choice.id, choice.name, choice.tokens === undefined ? choice.why ?? '' : choice.hint, choice.tokens === undefined ? undefined : format(text.tokens, formatTokens(choice.tokens)));
-		radio.disabled = choice.tokens === undefined;
+		const radio = choiceRow(contexts, 'fork-context', choice.id, choice.name, choice.why ?? choice.hint, choice.tokens === undefined ? undefined : format(text.tokens, formatTokens(choice.tokens)));
+		radio.disabled = choice.why !== undefined;
 		radio.checked = choice.id === view.context && !radio.disabled;
 		return radio;
 	});

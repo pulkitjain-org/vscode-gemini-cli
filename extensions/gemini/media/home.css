@@ -57,18 +57,6 @@
 	width: 300px;
 }
 
-button.link-button {
-	gap: 4px;
-	padding: 2px 8px;
-	border-color: transparent;
-	background: none;
-	color: var(--vscode-textLink-foreground);
-}
-
-button.link-button:hover {
-	background: var(--gemini-hover);
-}
-
 /* One banner per team server that is down (warn) or refused the token (error), above the composer. */
 .dash-banners {
 	display: grid;
@@ -175,7 +163,7 @@ button.start-as-chevron[aria-expanded="true"] {
 }
 
 button.start-as-option {
-	height: 22px;
+	height: var(--gc-control-sm);
 	padding: 0 8px;
 	border: none;
 	border-radius: var(--gemini-radius-small);
@@ -192,16 +180,6 @@ button.start-as-option:hover {
 button.start-as-option[aria-checked="true"] {
 	background: color-mix(in srgb, var(--vscode-foreground) 14%, transparent);
 	color: var(--vscode-foreground);
-}
-
-/* The filled choice is the selection; the focus ring shows only for the keyboard. */
-button.start-as-option:focus {
-	outline: none;
-}
-
-button.start-as-option:focus-visible {
-	outline: 1px solid var(--vscode-focusBorder);
-	outline-offset: -1px;
 }
 
 /* The composer's bar: folder, mode and model, then From Your Tools and Start Agent; every control the same height, set apart by space alone. */
@@ -248,8 +226,10 @@ button.start-as-option:focus-visible {
 	width: 380px;
 }
 
+/* The page's one primary action, the taller control. */
 .home-composer-bar button.primary {
-	padding: 4px 8px;
+	height: var(--gc-control-lg);
+	padding: 0 var(--gc-space-2);
 }
 
 /* Get started and the cards: panels with a hairline, a step above the page. */
@@ -319,11 +299,13 @@ button.start-as-option:focus-visible {
 	min-width: 0;
 }
 
+/* Each card is as tall as its rows: a short one (Pending on you, Agents) leaves no empty space under them. */
 .dash-cards {
 	display: grid;
 	grid-template-columns: repeat(2, minmax(0, 1fr));
-	gap: 14px;
-	margin-top: 16px;
+	align-items: start;
+	gap: var(--gc-space-4);
+	margin-top: var(--gc-space-4);
 }
 
 .dash-card.stale .dash-rows {
@@ -525,34 +507,11 @@ button.dash-row-title:hover {
 	background: var(--gemini-gradient);
 }
 
-/* A state in a pill: a hairline in the state's colour. */
-.dash-pill {
-	flex: none;
-	padding: 1px 8px;
-	border: 1px solid var(--gemini-border);
-	border-radius: var(--gc-radius-pill);
-	font-size: var(--gc-text-xs);
-	font-weight: var(--gc-weight-medium);
-	color: var(--gemini-muted);
-	white-space: nowrap;
-}
-
-.dash-pill.ok { color: var(--gemini-ok); border-color: color-mix(in srgb, var(--gemini-ok) 40%, transparent); }
-.dash-pill.warn { color: var(--gemini-warn); border-color: color-mix(in srgb, var(--gemini-warn) 40%, transparent); }
-.dash-pill.error { color: var(--gemini-error); border-color: color-mix(in srgb, var(--gemini-error) 40%, transparent); }
-.dash-pill.info { color: var(--vscode-textLink-foreground); border-color: color-mix(in srgb, var(--vscode-textLink-foreground) 40%, transparent); }
-
+/* A row's state is tokens.css's pill; its action, a secondary button, so the state carries the colour. */
 .dash-row > button.secondary,
-.dash-row > button.primary {
-	flex: none;
-	padding: 1px 8px;
-	font-size: var(--gc-text-xs);
-}
-
+.dash-row > button.primary,
 .dash-row > button.link-button {
 	flex: none;
-	padding: 0 4px;
-	font-size: var(--gc-text-sm);
 }
 
 .dash-row .codicon-circle-filled {
@@ -728,25 +687,15 @@ html:has(.dash-comment-dialog[open]) {
 	border-bottom: 1px solid var(--gemini-border);
 }
 
-/* Write and Preview: tabs as tall as the bar, the chosen one underlined on its edge. */
+/* Write and Preview: tokens.css's tabs, as tall as the bar. */
 .dash-comment-tabs {
-	display: flex;
 	flex: none;
 	align-items: stretch;
-	gap: 16px;
 	margin: 0;
-	font-size: var(--gc-text-sm);
 }
 
 .dash-comment-tabs .composer-tab {
-	display: flex;
-	align-items: center;
-	padding: 0 2px;
-	border-radius: 0;
-}
-
-.dash-comment-tabs .composer-tab:hover {
-	background: none;
+	height: auto;
 }
 
 .dash-comment-toolbar {

@@ -103,9 +103,10 @@ function render(view: ChangesPanelView): void {
 function renderFile(file: ChangedFileView): HTMLElement {
 	const section = el('section', 'file');
 	const header = el('div', 'file-header');
-	header.tabIndex = 0;
-	header.setAttribute('role', 'button');
-	header.setAttribute('aria-expanded', String(!isFolded(file)));
+	// The name is the button that folds the file, so Open, Undo and Keep beside it are not controls inside a control.
+	const name = el('button', 'file-name');
+	name.type = 'button';
+	name.setAttribute('aria-expanded', String(!isFolded(file)));
 	const toggle = () => {
 		if (isFolded(file)) {
 			folded.delete(file.path);
@@ -116,12 +117,14 @@ function renderFile(file: ChangedFileView): HTMLElement {
 		}
 		vscode.setState({ folded: [...folded], unfolded: [...unfolded] });
 		section.classList.toggle('folded', isFolded(file));
-		header.setAttribute('aria-expanded', String(!isFolded(file)));
+		name.setAttribute('aria-expanded', String(!isFolded(file)));
 	};
+	// The whole header folds it with the pointer; the buttons in it stop their clicks before they get here.
 	header.addEventListener('click', toggle);
-	// Only the header itself: Enter on one of its buttons should press that button.
-	header.addEventListener('keydown', e => e.target === header && (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), toggle()));
-	const name = el('span', 'file-name');
+	name.addEventListener('click', e => {
+		e.stopPropagation();
+		toggle();
+	});
 	const label = el('span', 'name', file.name);
 	// The name may be cut in a narrow panel.
 	setTip(label, file.name);
