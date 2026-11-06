@@ -36,6 +36,18 @@ describe('workingChanges', () => {
 	});
 });
 
+describe('workingChanges with a huge diff', () => {
+	it('stops reading a little past the cut and names the changed files, rather than holding the whole diff', async () => {
+		await fs.writeFile(path.join(repo, 'a.ts'), 'two\n');
+		await fs.writeFile(path.join(repo, 'big.ts'), Array.from({ length: 60_000 }, (_, i) => `export const line${i} = ${i};`).join('\n'));
+		execFileSync('git', ['add', 'big.ts'], { cwd: repo });
+		const changes = await workingChanges(repo);
+		expect(changes.diff.length).toBeGreaterThan(maxReviewDiff);
+		expect(changes.diff.length).toBeLessThan(maxReviewDiff * 4);
+		expect(changes.files).toEqual(['a.ts', 'big.ts']);
+	});
+});
+
 describe('reviewRequest', () => {
 	it('asks for a review without edits, attaches the diff and lists new files', () => {
 		const request = reviewRequest({ diff: 'diff --git a/a.ts b/a.ts\n-one\n+two\n', untracked: ['b.ts'] });
@@ -44,9 +56,12 @@ describe('reviewRequest', () => {
 		expect(request.attachments).toEqual([{ kind: 'document', name: 'uncommitted.diff', mimeType: 'text/x-diff', text: 'diff --git a/a.ts b/a.ts\n-one\n+two\n' }]);
 	});
 
-	it('cuts a long diff and says how to read the rest', () => {
-		const request = reviewRequest({ diff: 'x'.repeat(maxReviewDiff + 10), untracked: [] });
+	it('cuts a long diff and has the rest read a file at a time, never whole', () => {
+		const request = reviewRequest({ diff: 'x'.repeat(maxReviewDiff + 10), untracked: [], files: ['a.ts', 'big.ts'] });
 		expect(request.text).toContain('was cut');
+		expect(request.text).toContain('`git diff HEAD -- <file>`');
+		expect(request.text).toContain('The changed files:\n- a.ts\n- big.ts');
+		expect(request.text).not.toMatch(/Run `git diff HEAD`/);
 		expect(request.attachments[0]).toMatchObject({ text: 'x'.repeat(maxReviewDiff) });
 	});
 

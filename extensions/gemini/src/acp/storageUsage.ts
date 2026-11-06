@@ -172,7 +172,7 @@ export async function cleanupPlan(input: CleanupInput): Promise<CleanupItem[]> {
 	await add({ area: 'cliLogs', path: own('cli-debug.log'), reason: 'oldDebugLog' });
 	for (const candidate of input.worktrees ?? []) {
 		// Never a worktree with uncommitted changes, or work its repository doesn't have.
-		if (candidate.status && !candidate.status.uncommitted && !candidate.status.commits) {
+		if (candidate.status && !candidate.status.uncommitted && candidate.status.commits === 0) {
 			await add({ area: 'worktrees', path: candidate.worktree.folder, reason: worktreeReasons[candidate.kind ?? 'merged'], agent: candidate.agent, worktree: { repository: candidate.repository, worktree: candidate.worktree } });
 		}
 	}

@@ -78,7 +78,7 @@ When the thread and you changed the same lines of a file, the file gets conflict
 The card's **More** menu holds **How Trying Works**, **Open Terminal in Thread Folder**, **Run Checks There**, **Discard Changes…**, **Restore Discarded Work** and **Remove Thread…**.
 
 - **Discard Changes…** puts the thread's folder back where it started and takes its changes out of your workspace. The work is saved in git, under `refs/geminicode/discarded/`, so **Restore Discarded Work** brings it back until you remove the thread.
-- **Remove Thread…** deletes the thread with its folder and branch. While you're trying its work, it first asks whether to keep the changes or take them back.
+- **Remove Thread…** deletes the thread with its folder and, unless you choose **Remove, Keep Branch**, its branch. While you're trying its work, it also asks whether to keep the changes or take them back.
 
 A thread that finished without changes, such as an assessment, offers **Open** to read its answer. Once a thread is kept, the coordinator starts a new thread for further work, and reopens a finished one only when you ask.
 

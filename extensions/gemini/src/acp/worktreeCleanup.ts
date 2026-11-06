@@ -14,7 +14,10 @@ import * as path from 'node:path';
 import type { AgentRecord } from './agents';
 import { samePath } from './fsUtil';
 import { foldersTwoDown, type WorktreeCandidate } from './storageUsage';
-import { allReviewsHome, type AgentWorktree, currentBranch, git, mainRepository, pathExists, worktreeStatus, type WorktreeStatus } from './worktrees';
+import { allReviewsHome, type AgentWorktree, currentBranch, git, inBatches, mainRepository, pathExists, worktreeStatus, type WorktreeStatus } from './worktrees';
+
+/** How many agents' worktrees are asked of git at once. */
+const batchSize = 8;
 
 export interface CleanupAgents {
 	readonly records: readonly AgentRecord[];
@@ -28,12 +31,10 @@ export interface CleanupAgents {
 
 /** What Clean Up may offer of the agents' worktrees; `home` holds ~/.geminicode. */
 export async function cleanupWorktrees(agents: CleanupAgents, home: string = os.homedir()): Promise<WorktreeCandidate[]> {
-	const found: WorktreeCandidate[] = [];
-	const statusOf = (worktree: AgentWorktree, into: string | undefined) => into ? worktreeStatus(worktree, into).catch(() => undefined) : Promise.resolve(undefined);
-	for (const record of agents.records) {
-		if (agents.running(record.id)) {
-			continue;
-		}
+	// A count git couldn't give is no status at all: such a worktree is never offered.
+	const statusOf = (worktree: AgentWorktree, into: string | undefined) => into ? worktreeStatus(worktree, into).then(status => status.commits === undefined ? undefined : status, () => undefined) : Promise.resolve(undefined);
+	const ofRecord = async (record: AgentRecord): Promise<WorktreeCandidate[]> => {
+		const found: WorktreeCandidate[] = [];
 		const project = record.project;
 		if (project?.role === 'thread' && project.resolved) {
 			const parts = record.repos?.length
@@ -52,16 +53,16 @@ export async function cleanupWorktrees(agents: CleanupAgents, home: string = os.
 				found.push({ agent: record.id, kind: 'review', repository, worktree: record.worktree, status: await statusOf(record.worktree, record.worktree.branch) });
 			}
 		}
-	}
+		return found;
+	};
+	const found = (await inBatches(agents.records.filter(record => !agents.running(record.id)), batchSize, ofRecord)).flat();
 	const known = agents.records.flatMap(record => [record.worktree?.folder, ...(record.repos ?? []).map(repo => repo.folder)].filter((folder): folder is string => !!folder));
 	// Review checkouts are in ~/.geminicode/reviews, and were in ~/.geminicode/worktrees before.
 	const leftOver = (await Promise.all([path.join(home, '.geminicode', 'worktrees'), allReviewsHome(home)].map(root => foldersTwoDown(root)))).flat();
-	for (const folder of leftOver) {
-		if (!known.some(each => samePath(each, folder))) {
-			const removed = await removedWorktree(folder);
-			if (removed) {
-				found.push({ agent: folder, kind: 'removed', ...removed });
-			}
+	const unknown = leftOver.filter(folder => !known.some(each => samePath(each, folder)));
+	for (const [i, removed] of (await inBatches(unknown, batchSize, removedWorktree)).entries()) {
+		if (removed) {
+			found.push({ agent: unknown[i], kind: 'removed', ...removed });
 		}
 	}
 	return found;

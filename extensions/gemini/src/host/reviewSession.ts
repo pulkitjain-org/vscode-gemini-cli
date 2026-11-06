@@ -8,7 +8,7 @@ import { errorMessage } from '../acp/errors';
 import { samePath } from '../acp/fsUtil';
 import type { GitLabClient, GitLabDiffFile, GitLabDiscussion, GitLabMr } from '../acp/gitlab';
 import { jiraKeyIn } from '../acp/jira';
-import { fetchBranches, reviewWorktree } from '../acp/releaseMerge';
+import { diffFiles, fetchBranches, reviewWorktree } from '../acp/releaseMerge';
 import {
 	commentableRanges, draftFieldPattern, editableText, fileLabels, foldFields, Hunk, inOneHunk, lineInDiff, mergeFindings, moveDraft, parseHunks,
 	postItems, ReviewDraft, shortPath, splitSuggestion, threadPlace, withoutPosted,
@@ -804,19 +804,12 @@ export class ReviewSession implements vscode.Disposable, ReviewDiffHost {
 		}
 	}
 
-	/** The diff of the version the draft was written on, read from the clone, when the merge request moved past it. */
+	/** The diff of the version the draft was written on, read from the clone in one git diff, when the merge request moved past it. */
 	private async filesAt(head: string, latest: readonly GitLabDiffFile[]): Promise<GitLabDiffFile[]> {
 		const refs = this.saved.refs!;
 		await this.ensureCommits();
 		try {
-			const names = (await git(this.saved.repository, ['diff', '--name-status', '-M', refs.baseSha, head])).trim().split('\n').filter(Boolean);
-			return await Promise.all(names.map(async line => {
-				const [status, first, second] = line.split('\t');
-				const oldPath = first;
-				const newPath = second ?? first;
-				const diff = await git(this.saved.repository, ['diff', '-M', '--unified=3', refs.baseSha, head, '--', ...new Set([oldPath, newPath])]);
-				return { oldPath, newPath, diff: diff.slice(Math.max(0, diff.indexOf('\n@@') + 1)), newFile: status === 'A', deletedFile: status === 'D' };
-			}));
+			return await diffFiles(this.saved.repository, refs.baseSha, head);
 		} catch {
 			return [...latest];
 		}

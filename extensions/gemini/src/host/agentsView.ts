@@ -326,6 +326,7 @@ export class AgentsView implements vscode.Disposable {
 			},
 		});
 		// From the workbench: the comments the user left on an agent's Markdown file, in the rich Markdown editor.
+		this.disposables.push(this.onDidChangeTurnEmitter);
 		this.disposables.push(vscode.commands.registerCommand('_gemini.sendFileComments', (args: unknown) => this.features.sendFileComments(args)));
 		this.sideLinks = new AgentSideLinks({ model: this.model, live: this.live, terminals: this.terminals, view: this, features: this.features });
 		this.starter = new AgentStarter({

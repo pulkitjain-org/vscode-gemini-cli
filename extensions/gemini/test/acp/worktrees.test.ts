@@ -7,7 +7,7 @@ import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { branchExists, commitAll, createWorktree, createWorktreeFrom, currentBranch, folderInRepository, folderSize, freeFolder, git, mainRepository, mergeBranch, mergeRefusal, pathExists, removeWorktree, repositoryRoot, restoreWorktree, unfinishedOperation, worktreesHome, worktreeStatus } from '../../src/acp/worktrees';
+import { branchExists, commitAll, createWorktree, createWorktreeFrom, currentBranch, folderInRepository, folderSize, freeFolder, git, inBatches, mainRepository, mergeBranch, mergeRefusal, pathExists, removeWorktree, repositoryRoot, restoreWorktree, unfinishedOperation, worktreesHome, worktreeStatus } from '../../src/acp/worktrees';
 
 let root: string;
 let repo: string;
@@ -72,6 +72,20 @@ describe('worktrees', () => {
 		expect(await mergeBranch(repo, worktree.branch)).toEqual({ kind: 'merged' });
 		expect(await fs.readFile(path.join(repo, 'src', 'cart.ts'), 'utf8')).toBe('export const total = 2;\n');
 		expect(await worktreeStatus(worktree, 'main')).toEqual({ uncommitted: 0, commits: 0 });
+	});
+
+	it('never counts a branch\'s commits as none when its base is gone', async () => {
+		const worktree = await createWorktree(repo, 'gemini/fix-total', '', home);
+		await fs.writeFile(path.join(worktree.folder, 'src', 'cart.ts'), 'export const total = 2;\n');
+		await commitAll(worktree.folder, 'Fix the total');
+		// The base was renamed since: what no other branch has is what deleting the branch would lose.
+		await git(repo, ['branch', '-m', 'main', 'trunk']);
+		expect(await worktreeStatus(worktree, 'main')).toEqual({ uncommitted: 0, commits: 1 });
+		await mergeBranch(repo, worktree.branch);
+		expect(await worktreeStatus(worktree, 'main')).toEqual({ uncommitted: 0, commits: 0 });
+		// Not even the branch itself: unknown, never 0.
+		await git(repo, ['update-ref', '-d', 'refs/heads/gemini/fix-total']);
+		expect((await worktreeStatus(worktree, 'main')).commits).toBeUndefined();
 	});
 
 	it('leaves a conflicting merge for the user to finish', async () => {
@@ -174,9 +188,31 @@ describe('cleaning up a merged worktree', () => {
 		expect(await restoreWorktree(repo, worktree)).toBe(true);
 	});
 
+	it('puts the folder back when only a plain folder is left where the worktree was', async () => {
+		const worktree = await createWorktree(repo, 'gemini/fix', '', home);
+		await removeWorktree(repo, worktree, false);
+		await fs.mkdir(worktree.folder, { recursive: true });
+		expect(await restoreWorktree(repo, worktree)).toBe(true);
+		expect({ top: (await git(worktree.folder, ['rev-parse', '--show-toplevel'])).trim(), branch: await currentBranch(worktree.folder) }).toEqual({ top: worktree.folder, branch: 'gemini/fix' });
+	});
+
 	it('cannot put a folder back once its branch is gone', async () => {
 		const worktree = await createWorktree(repo, 'gemini/gone', '', home);
 		await removeWorktree(repo, worktree, true);
 		expect(await restoreWorktree(repo, worktree)).toBe(false);
+	});
+});
+
+describe('inBatches', () => {
+	it('runs a batch at a time, keeping the order', async () => {
+		let running = 0;
+		let most = 0;
+		const results = await inBatches([1, 2, 3, 4, 5], 2, async n => {
+			most = Math.max(most, ++running);
+			await new Promise(resolve => setTimeout(resolve, 5 * (3 - n % 3)));
+			running--;
+			return n * 10;
+		});
+		expect({ results, most }).toEqual({ results: [10, 20, 30, 40, 50], most: 2 });
 	});
 });

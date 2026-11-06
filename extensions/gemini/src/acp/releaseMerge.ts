@@ -10,7 +10,8 @@
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import { isInside } from './fileAccess';
-import { AgentWorktree, branchExists, checkoutOf, freeFolder, git, pathExists, reviewsHome, worktreesHome } from './worktrees';
+import type { GitLabDiffFile } from './gitlab';
+import { AgentWorktree, allReviewsHome, branchExists, checkoutOf, freeFolder, git, pathExists, reviewsHome, worktreesHome } from './worktrees';
 
 /** Fetches `branches` from `remote`, so checks see what GitLab has. */
 export async function fetchBranches(repository: string, remote: string, branches: readonly string[]): Promise<void> {
@@ -29,7 +30,9 @@ export async function fetchBranches(repository: string, remote: string, branches
  * user's, since the reviewer only reads. One left in the agents' worktrees
  * folder by an earlier version, which is trusted with the repository, is made
  * again in the reviews folder, unless `inUse` says an agent works there.
- * Only a name GeminiCode owns is ever reset like this.
+ * Only a folder GeminiCode made is ever reset like this: the branch checked
+ * out anywhere else (the user's own checkout, say) is refused, since a
+ * reset there would drop their work.
  */
 export async function reviewWorktree(repository: string, remote: string, branch: string, local: string, options: { readonly subfolder?: string; readonly home?: string; readonly inUse?: (folder: string) => boolean } = {}): Promise<AgentWorktree> {
 	if (!local.startsWith('review/')) {
@@ -40,6 +43,9 @@ export async function reviewWorktree(repository: string, remote: string, branch:
 	const existing = await checkoutOf(repository, local);
 	if (existing && await pathExists(existing)) {
 		const trusted = isInside(path.dirname(worktreesHome(repository, options.home)), existing);
+		if (!trusted && !isInside(allReviewsHome(options.home), existing)) {
+			throw new Error(`${local} is checked out in ${existing}, which GeminiCode didn't make. Switch branches there first.`);
+		}
 		const moved = trusted && !options.inUse?.(existing) && await git(repository, ['worktree', 'remove', '--force', existing]).then(() => true, () => false);
 		if (!moved) {
 			await git(existing, ['reset', '--quiet', '--hard', `${remote}/${branch}`]);
@@ -106,6 +112,50 @@ export async function branchWorktree(repository: string, remote: string, branch:
 /** Pushes `branch` from `folder` to `remote`, setting it as upstream. */
 export async function pushBranch(folder: string, remote: string, branch: string): Promise<void> {
 	await git(folder, ['push', '--quiet', '-u', remote, `HEAD:refs/heads/${branch}`]);
+}
+
+/**
+ * The files `head` changes since `base`, each with its own diff from its
+ * first hunk on, in the shape GitLab lists a merge request's diff: one
+ * `git diff` for the lot, split per file, with the paths from
+ * `--name-status -z` (never quoted, whatever the name). Renames are
+ * followed. A file whose block can't be told apart (the two listings
+ * disagree, which they shouldn't) is diffed on its own.
+ */
+export async function diffFiles(folder: string, base: string, head: string): Promise<GitLabDiffFile[]> {
+	const [names, whole] = await Promise.all([
+		git(folder, ['diff', '--name-status', '-z', '-M', base, head]),
+		git(folder, ['diff', '-M', '--unified=3', base, head]),
+	]);
+	const files = nameStatus(names);
+	const blocks = splitDiff(whole);
+	return Promise.all(files.map(async (file, i) => {
+		const diff = blocks.length === files.length ? blocks[i] : await git(folder, ['diff', '-M', '--unified=3', base, head, '--', ...new Set([file.oldPath, file.newPath])]);
+		return { ...file, diff: fromFirstHunk(diff) };
+	}));
+}
+
+/** `git diff --name-status -z`: a status, then the path, and for a rename or copy the old path first, each NUL-ended. */
+function nameStatus(text: string): Omit<GitLabDiffFile, 'diff'>[] {
+	const fields = text.split('\0');
+	const files: Omit<GitLabDiffFile, 'diff'>[] = [];
+	for (let i = 0; i + 1 < fields.length && fields[i]; i += 2) {
+		const status = fields[i][0];
+		const first = fields[i + 1];
+		const second = status === 'R' || status === 'C' ? fields[++i + 1] : undefined;
+		files.push({ oldPath: first, newPath: second ?? first, newFile: status === 'A', deletedFile: status === 'D' });
+	}
+	return files;
+}
+
+/** A diff's per-file blocks, each from its `diff --git` line. */
+export function splitDiff(whole: string): string[] {
+	return whole.split(/^(?=diff --git )/m).filter(block => block.startsWith('diff --git '));
+}
+
+/** A file's diff from its first hunk header, as GitLab gives it; the whole block when it has none (a binary file). */
+function fromFirstHunk(diff: string): string {
+	return diff.slice(Math.max(0, diff.indexOf('\n@@') + 1));
 }
 
 /** The commits, diffstat and diff of `HEAD` against `remote/target`, for a merge request's description. */
