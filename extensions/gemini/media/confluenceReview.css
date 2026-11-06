@@ -210,7 +210,7 @@ body.review-page {
 .review-content h3 { font-size: var(--gc-text-md); margin: 16px 0 4px; font-weight: var(--gc-weight-semibold); }
 .review-content p { margin: 0 0 8px; }
 .review-content ul, .review-content ol { margin: 0 0 8px; padding-left: 24px; }
-.review-content blockquote { margin: 0 0 8px; padding-left: 12px; border-left: 3px solid var(--gemini-border-strong); color: var(--gemini-muted); }
+.review-content blockquote { margin: 0 0 8px; padding-left: 12px; border-left: 3px solid var(--gemini-border-strong); background: none; color: var(--gemini-muted); }
 .review-content pre { margin: 0 0 8px; padding: 8px 12px; border-radius: var(--gemini-radius-small); background: var(--vscode-textCodeBlock-background, var(--gemini-hover)); overflow-x: auto; }
 .review-content code { font-family: var(--vscode-editor-font-family); font-size: 0.92em; }
 .review-content :not(pre) > code { padding: 0 4px; border-radius: var(--gc-radius-sm); background: var(--vscode-textCodeBlock-background, var(--gemini-hover)); }

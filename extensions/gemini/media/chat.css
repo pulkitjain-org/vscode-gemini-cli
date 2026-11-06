@@ -639,6 +639,8 @@ kbd {
 	margin: 0.5em 0;
 	padding-left: 8px;
 	border-left: 3px solid var(--gemini-border);
+	/* A quote is its rule and muted text; the webview's default fill would sit flush around the text. */
+	background: none;
 	color: var(--gemini-muted);
 }
 

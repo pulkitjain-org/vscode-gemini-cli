@@ -1227,6 +1227,7 @@ button.option-button .codicon-chevron-down {
 	margin: 0.5em 0;
 	padding-left: 8px;
 	border-left: 3px solid var(--gemini-border);
+	background: none;
 	color: var(--gemini-muted);
 }
 
