@@ -61,7 +61,8 @@ describe('surface budgets', () => {
 
 	it('keeps the Agents list\'s right-click menus within budget', () => {
 		const entries = contributes.menus['view/item/context'].filter(entry => !entry.group?.startsWith('inline'));
-		const on = (row: RegExp) => entries.filter(entry => row.test(entry.when ?? '')).length;
+		// Entries in the same slot are alternatives a row shows one of (Remove Agent, or Remove Project on a project's row).
+		const on = (row: RegExp) => new Set(entries.filter(entry => row.test(entry.when ?? '')).map(entry => entry.group)).size;
 		expect(on(/viewItem =~ \/\^agent|viewItem =~ \/\\\.(project|changes|forkable|worktree|trying)/)).toBeLessThanOrEqual(surfaceBudgets.agentRowMenu);
 		expect(on(/viewItem =~ \/\^workspace/)).toBeLessThanOrEqual(surfaceBudgets.workspaceRowMenu);
 	});
