@@ -700,7 +700,7 @@ abstract class AbstractTreeView extends Disposable implements ITreeView {
 
 		const widgetAriaLabel = this._title;
 
-		this.tree = this.treeDisposables.add(this.instantiationService.createInstance(Tree, this.id, this.treeContainer!, new TreeViewDelegate(), [renderer],
+		this.tree = this.treeDisposables.add(this.instantiationService.createInstance(Tree, this.id, this.treeContainer!, new TreeViewDelegate(this.id), [renderer],
 			dataSource, {
 			identityProvider: new TreeViewIdentityProvider(),
 			accessibilityProvider: {
@@ -1164,9 +1164,22 @@ class TreeViewIdentityProvider implements IIdentityProvider<ITreeItem> {
 	}
 }
 
+// GEMINI-FORK: GeminiCode's agent list has roomier rows than other trees, and 14px more above each
+// workspace heading (the rows with the folder icon), so each workspace's agents read as a group.
+// geminiModes.css draws them.
+const geminiAgentListId = 'gemini.agents';
+const geminiAgentListItemHeight = 30;
+const geminiAgentListWorkspaceHeight = 44;
+
 class TreeViewDelegate implements IListVirtualDelegate<ITreeItem> {
 
+	// GEMINI-FORK: the view, for the agent list's row height.
+	constructor(private readonly viewId?: string) { }
+
 	getHeight(element: ITreeItem): number {
+		if (this.viewId === geminiAgentListId) {
+			return element.themeIcon?.id === 'folder' ? geminiAgentListWorkspaceHeight : geminiAgentListItemHeight;
+		}
 		return TreeRenderer.ITEM_HEIGHT;
 	}
 

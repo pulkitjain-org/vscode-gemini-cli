@@ -7,8 +7,9 @@
 // icons. Every pick applies at once.
 
 import { randomBytes } from 'node:crypto';
+import { existsSync } from 'node:fs';
 import * as vscode from 'vscode';
-import { codeFontOf, codeFonts, themeIds, withoutOldAccents } from '../acp/appearance';
+import { availableCodeFonts, codeFontOf, codeFonts, themeIds, withoutOldAccents } from '../acp/appearance';
 
 const iconThemes = [
 	{ id: 'geminicode-icons', label: () => vscode.l10n.t("GeminiCode") },
@@ -27,7 +28,9 @@ type FromPage =
 	| { readonly type: 'theme'; readonly id: string }
 	| { readonly type: 'font'; readonly id: string }
 	| { readonly type: 'icons'; readonly id: string | null }
-	| { readonly type: 'moreThemes' };
+	| { readonly type: 'moreThemes' }
+	/** The page has loaded: on opening, and again each time it is shown after being hidden. */
+	| { readonly type: 'ready' };
 
 export class Appearance implements vscode.Disposable {
 
@@ -110,6 +113,10 @@ export class Appearance implements vscode.Disposable {
 			case 'moreThemes':
 				await vscode.commands.executeCommand('workbench.action.selectTheme');
 				break;
+			case 'ready':
+				// A hidden page is reloaded from its first HTML when shown again, and misses the changes made meanwhile.
+				this.postChoices();
+				break;
 		}
 	}
 
@@ -130,7 +137,7 @@ export class Appearance implements vscode.Disposable {
 				{ id: 'GeminiCode Dark', label: vscode.l10n.t("Dark"), kind: 'dark' },
 				{ id: 'GeminiCode Light', label: vscode.l10n.t("Light"), kind: 'light' },
 			],
-			fonts: codeFonts.map(({ id, label, family }) => ({ id, label, family })),
+			fonts: availableCodeFonts(existsSync).map(({ id, label, family }) => ({ id, label, family })),
 			icons: iconThemes.map(theme => ({ id: theme.id, label: theme.label() })),
 			iconUris: Object.fromEntries(['dark', 'light'].map(kind => [kind, Object.fromEntries(['folder-src', 'typescript', 'json', 'gemini'].map(name =>
 				[name, webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'icons', kind, `${name}.svg`)).toString()]))])),
@@ -202,6 +209,7 @@ function pageCss(font: (file: string) => string): string {
 @font-face { font-family: 'JetBrains Mono'; font-weight: 100 800; src: url('${font('jetbrains-mono-latin-wght-normal.woff2')}') format('woff2'); }
 @font-face { font-family: 'Geist Mono'; font-weight: 100 800; src: url('${font('geist-mono-latin-wght-normal.woff2')}') format('woff2'); }
 :root { --line: var(--vscode-widget-border); --muted: var(--vscode-descriptionForeground); --on: var(--vscode-focusBorder); }
+@media (min-resolution: 2dppx) { :root { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; } }
 body { margin: 0; padding: 34px 48px 48px; color: var(--vscode-foreground); font-family: var(--vscode-font-family); font-size: 13px; background: var(--vscode-editor-background); }
 h1 { font-size: 18px; font-weight: 600; margin: 0; }
 h2 { margin: 24px 0 8px; font-size: 11px; font-weight: 500; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
@@ -213,7 +221,7 @@ h2 { margin: 24px 0 8px; font-size: 11px; font-weight: 500; letter-spacing: .05e
 .preview .side { width: 30%; }
 .preview .main { flex: 1; padding: 12px; display: grid; gap: 7px; align-content: start; }
 .preview i { display: block; height: 6px; border-radius: 3px; }
-.theme.dark .side { background: #15161A; } .theme.dark .main { background: #1A1B1F; } .theme.dark i { background: #383A42; } .theme.dark i.on { background: #C2C6CF; }
+.theme.dark .side { background: #1F1F1F; } .theme.dark .main { background: #181818; } .theme.dark i { background: #383A42; } .theme.dark i.on { background: #C2C6CF; }
 .theme.light .side { background: #F5F5F6; } .theme.light .main { background: #FFFFFF; } .theme.light i { background: #D2D4D8; } .theme.light i.on { background: #41454E; }
 .theme .name { padding: 8px 11px; border-top: 1px solid var(--line); }
 .more { margin-top: 10px; background: none; border: none; color: var(--vscode-textLink-foreground); font: inherit; padding: 0; cursor: pointer; }
@@ -284,4 +292,5 @@ window.addEventListener('message', event => {
 	if (event.data?.type === 'choices') { choices = event.data.choices; render(); }
 });
 render();
+vscode.postMessage({ type: 'ready' });
 `;

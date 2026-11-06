@@ -794,7 +794,7 @@ button.option-button .codicon-chevron-down {
 }
 
 .settings .rows {
-	margin-top: 12px;
+	margin-top: var(--gc-space-4);
 	border: 1px solid var(--gemini-border);
 	border-radius: var(--gemini-radius);
 	overflow: hidden;
@@ -806,7 +806,7 @@ button.option-button .codicon-chevron-down {
 	gap: 12px;
 	min-height: var(--gc-row);
 	box-sizing: border-box;
-	padding: 8px 12px;
+	padding: var(--gc-space-3) var(--gc-space-4);
 	background: var(--gemini-surface);
 }
 
@@ -978,12 +978,12 @@ button.option-button .codicon-chevron-down {
 	top: var(--gc-space-4);
 	display: flex;
 	flex-direction: column;
-	gap: 2px;
+	gap: var(--gc-space-1);
 }
 
 .settings-index .index-link {
 	justify-content: flex-start;
-	height: var(--gc-control);
+	height: var(--gc-row);
 	padding: 0 var(--gc-space-2);
 	border-color: transparent;
 	background: none;
@@ -1030,6 +1030,8 @@ button.option-button .codicon-chevron-down {
 /* A setting's row: its name and key, help that wraps, a note when it is workspace-saved or invalid, the control, and Reset. */
 .settings .row.setting {
 	align-items: flex-start;
+	gap: var(--gc-space-4);
+	padding: var(--gc-space-4);
 }
 
 .settings .row.setting.toggle .switch {
@@ -1037,8 +1039,9 @@ button.option-button .codicon-chevron-down {
 }
 
 .settings .setting .row-detail {
+	margin-top: var(--gc-space-2);
 	white-space: normal;
-	line-height: var(--gc-leading-row);
+	line-height: var(--gc-leading-body);
 }
 
 .settings .setting-help code {
@@ -1227,6 +1230,7 @@ button.option-button .codicon-chevron-down {
 	margin: 0.5em 0;
 	padding-left: 8px;
 	border-left: 3px solid var(--gemini-border);
+	background: none;
 	color: var(--gemini-muted);
 }
 

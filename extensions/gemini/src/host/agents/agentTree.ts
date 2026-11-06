@@ -343,7 +343,11 @@ export class AgentTree implements vscode.TreeDataProvider<AgentTreeNode>, vscode
 	}
 }
 
-/** Each state's icon is a dot in its colour, or a spinner while the agent works. */
+/**
+ * Only a state that wants the user shows: a red dot for an error, yellow while it waits on them, green
+ * for a finished turn they have not read, and a spinner while it works. A quiet agent has an empty
+ * slot, so every title lines up.
+ */
 export function agentState(record: AgentRecord, live: LiveAgentView | undefined): { kind: AgentStateKind; icon: vscode.ThemeIcon; status: string } {
 	const step = live?.activity.step;
 	if (live?.session.status.phase === 'error') {
@@ -358,10 +362,10 @@ export function agentState(record: AgentRecord, live: LiveAgentView | undefined)
 	if (live?.unread) {
 		return { kind: 'done', icon: new vscode.ThemeIcon('circle-filled', new vscode.ThemeColor('charts.green')), status: vscode.l10n.t("Done") };
 	}
-	const quiet = new vscode.ThemeIcon('circle-filled', new vscode.ThemeColor('descriptionForeground'));
+	const quiet = new vscode.ThemeIcon('blank');
 	// Kept or merged: the one word every surface uses for an agent on a branch whose work was taken.
 	if (record.resolved) {
-		return { kind: 'kept', icon: new vscode.ThemeIcon('check', new vscode.ThemeColor('descriptionForeground')), status: record.resolved.kind === 'merged' ? vscode.l10n.t("Merged") : vscode.l10n.t("Kept") };
+		return { kind: 'kept', icon: quiet, status: record.resolved.kind === 'merged' ? vscode.l10n.t("Merged") : vscode.l10n.t("Kept") };
 	}
 	return live
 		? { kind: 'idle', icon: quiet, status: vscode.l10n.t("Done") }

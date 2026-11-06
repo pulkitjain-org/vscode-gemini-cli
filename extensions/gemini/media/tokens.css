@@ -80,6 +80,19 @@
 	}
 }
 
+/*
+ * Text drawn as the workbench draws it on a Retina screen (its default font
+ * aliasing, style.css). A webview is a frame of its own and inherits none of
+ * it; without this, macOS thickens every glyph, which blurs light text on
+ * dark backgrounds.
+ */
+@media (min-resolution: 2dppx) {
+	:root {
+		-webkit-font-smoothing: antialiased;
+		-moz-osx-font-smoothing: grayscale;
+	}
+}
+
 /* Counts, times and token figures line up when the digits share a width. */
 .gc-tabular {
 	font-variant-numeric: tabular-nums;

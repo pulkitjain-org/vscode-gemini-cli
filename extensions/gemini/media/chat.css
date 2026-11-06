@@ -510,7 +510,7 @@ kbd {
 	word-wrap: break-word;
 }
 
-/* The user's message, a graphite bubble on the right (#2b2b2b on #1f1f1f, and the same step in light), and under it its time and Copy. */
+/* The user's message, a graphite bubble on the right (#252525 on #181818, and the same step in light), and under it its time and Copy. */
 .user-turn {
 	margin: 32px 0 12px;
 }
@@ -639,6 +639,8 @@ kbd {
 	margin: 0.5em 0;
 	padding-left: 8px;
 	border-left: 3px solid var(--gemini-border);
+	/* A quote is its rule and muted text; the webview's default fill would sit flush around the text. */
+	background: none;
 	color: var(--gemini-muted);
 }
 

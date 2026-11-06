@@ -1011,6 +1011,8 @@
 		"--agents-window-corner-radius",
 		"--gemini-gradient",
 		"--gemini-soft-tint",
+		"--gemini-indent",
+		"--gemini-elbow-display",
 		"--gemini-glass-fill",
 		"--gemini-glass-fill-strong",
 		"--gemini-glass-rim-side",

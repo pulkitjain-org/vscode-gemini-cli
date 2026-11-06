@@ -6,7 +6,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { codeFontOf, codeFonts, themeIds, withoutOldAccents } from '../../src/acp/appearance';
+import { availableCodeFonts, codeFontOf, codeFonts, themeIds, withoutOldAccents } from '../../src/acp/appearance';
 
 const extensionDir = path.join(__dirname, '..', '..');
 
@@ -27,6 +27,13 @@ describe('codeFontOf', () => {
 		expect(codeFontOf(`'JetBrains Mono',  Menlo, Monaco, 'Courier New', monospace`)?.id).toBe('jetbrains');
 		expect(codeFontOf('Fira Code')).toBeUndefined();
 		expect(new Set(codeFonts.map(f => f.id)).size).toBe(codeFonts.length);
+	});
+});
+
+describe('availableCodeFonts', () => {
+	it('offers SF Mono only when one of its files is installed, and the bundled fonts always', () => {
+		expect(availableCodeFonts(() => false).map(f => f.id)).toEqual(['jetbrains', 'geist', 'menlo']);
+		expect(availableCodeFonts(file => file.endsWith('/Library/Fonts/SF-Mono-Regular.otf')).map(f => f.id)).toEqual(['jetbrains', 'geist', 'sf', 'menlo']);
 	});
 });
 
