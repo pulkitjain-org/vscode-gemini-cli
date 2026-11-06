@@ -3,10 +3,13 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { AgentCommand, spawnAgent } from './agentProcess';
 import { AgentErrorKind, FATAL_EXIT_CODES } from './errors';
 import { Emitter } from './events';
+import { stopProcess } from './processStop';
+
+export { stopProcess } from './processStop';
 
 /** The exit code the CLI uses to ask its parent wrapper to start it again. */
 export const RELAUNCH_EXIT_CODE = 199;
@@ -30,32 +33,9 @@ export interface SidecarOptions {
 }
 
 const defaultRestartDelaysMs = [1_000, 4_000, 15_000];
-/** How long a stopped CLI gets to exit on SIGTERM before it is killed. */
-const killAfterMs = 3_000;
 /** The longest stderr line kept while waiting for its end. */
 const maxStderrLine = 64 * 1024;
 
-/**
- * Ends the CLI. On Windows a `.cmd` shim runs it under cmd.exe, which `kill`
- * alone would end without the CLI, so the whole tree goes. Elsewhere a CLI
- * that ignores SIGTERM, for example while a shell tool runs, is killed.
- */
-function stopProcess(child: ChildProcessWithoutNullStreams): void {
-	if (process.platform === 'win32' && child.pid) {
-		try {
-			spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' }).on('error', () => child.kill());
-			return;
-		} catch {
-			// Fall through to kill.
-		}
-	}
-	child.kill();
-	if (child.exitCode === null && child.signalCode === null) {
-		const timer = setTimeout(() => child.kill('SIGKILL'), killAfterMs);
-		timer.unref?.();
-		child.once('exit', () => clearTimeout(timer));
-	}
-}
 
 /**
  * Agent processes still running. The CLI ends when its stdin closes, which

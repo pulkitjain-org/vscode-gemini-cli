@@ -76,12 +76,19 @@ export interface AgentRuntimeOptions {
 	};
 }
 
+/** The connection to a folder's own process, and the agent it answered `initialize` with. */
+interface FolderConnection {
+	readonly connection: AgentConnection;
+	readonly agent: acp.InitializeResponse;
+}
+
 /** A process of a folder's own (`AgentRuntimeOptions.folderProcess`), and the sessions open on it. */
 interface FolderProcess {
 	/** Its folder, as paths compare (`comparablePath`). */
 	readonly key: string;
 	readonly sidecar: AgentSidecar;
-	readonly ready: Promise<{ readonly connection: AgentConnection; readonly agent: acp.InitializeResponse }>;
+	/** Its connection once the process is up; a new, pending promise while the process restarts. */
+	ready: Promise<FolderConnection>;
 	readonly sessions: Set<string>;
 	/** Sessions being reopened on it now, which keep it up as open ones do. */
 	opening: number;
@@ -162,6 +169,11 @@ export class AgentRuntime {
 	private readonly onDidBecomeIdleEmitter = new Emitter<void>();
 	/** Fires when the last running prompt ends. */
 	readonly onDidBecomeIdle = this.onDidBecomeIdleEmitter.event;
+	/** Work other than a prompt the process must stay up for, such as a CLI command run for a page (cliCommands.ts); see `hold`. */
+	private holds = 0;
+	private readonly onDidReleaseEmitter = new Emitter<void>();
+	/** Fires when the last hold on the process ends (`hold`). */
+	readonly onDidRelease = this.onDidReleaseEmitter.event;
 	private _sessionHealth: SessionHealth = { opened: false };
 	private readonly onDidChangeSessionHealthEmitter = new Emitter<SessionHealth>();
 	/** Fires when a session opens or fails to open after a different outcome. */
@@ -196,18 +208,69 @@ export class AgentRuntime {
 		return this.turns;
 	}
 
-	/** Counts `turn` as running until it settles, for `busy`. */
-	async trackTurn<T>(turn: Promise<T>): Promise<T> {
+	/** Whether something holds the process (`hold`): it must not be ended, though no prompt counts as running. */
+	get held(): boolean {
+		return this.holds > 0;
+	}
+
+	/** Whether the process may be ended and started again now: no prompt runs, and nothing holds it. */
+	get idle(): boolean {
+		return this.turns === 0 && this.holds === 0;
+	}
+
+	/**
+	 * Keeps the process from being restarted until the result is disposed,
+	 * for work that is not a prompt and must not count as one (`busy` stays
+	 * as it is: a CLI command listing extensions keeps no Mac awake): a
+	 * restart that waits for the agents to be idle waits for this too.
+	 */
+	hold(): { dispose(): void } {
+		this.holds++;
+		let released = false;
+		return {
+			dispose: () => {
+				if (released) {
+					return;
+				}
+				released = true;
+				if (--this.holds === 0) {
+					this.onDidReleaseEmitter.fire();
+				}
+			},
+		};
+	}
+
+	/**
+	 * Calls `callback` once the process is idle (`idle`): at once when it is
+	 * now, else when the last prompt ends or the last hold is released,
+	 * whichever leaves it idle. The result cancels the wait.
+	 */
+	onceIdle(callback: () => void): { dispose(): void } {
+		if (this.idle) {
+			callback();
+			return { dispose: () => undefined };
+		}
+		const check = () => {
+			if (this.idle) {
+				dispose();
+				callback();
+			}
+		};
+		const listeners = [this.onDidBecomeIdle(check), this.onDidRelease(check)];
+		const dispose = () => listeners.forEach(listener => listener.dispose());
+		return { dispose };
+	}
+
+	/** Counts `turn` as running until it settles, for `busy`; `sessionId` names the session it runs in, so its process is marked healthy when it ends. */
+	async trackTurn<T>(turn: Promise<T>, sessionId?: string): Promise<T> {
 		if (this.turns++ === 0) {
 			this.onDidBecomeBusyEmitter.fire();
 		}
 		try {
 			const result = await turn;
-			// A served prompt is what makes the process healthy (sidecar.ts); a folder's own process counts the same.
-			this.sidecar.markHealthy();
-			for (const folder of this.folders.values()) {
-				folder.sidecar.markHealthy();
-			}
+			// A served prompt is what makes the process healthy (sidecar.ts): the one that served it, a folder's own or the shared one.
+			const folder = sessionId === undefined ? undefined : this.sessionFolders.get(sessionId);
+			(folder?.sidecar ?? this.sidecar).markHealthy();
 			return result;
 		} finally {
 			if (--this.turns === 0) {
@@ -395,11 +458,15 @@ export class AgentRuntime {
 				}
 				if (target.folder) {
 					this.sessionFolders.set(sessionId, target.folder);
+				} else {
+					this.sessionFolders.delete(sessionId);
 				}
 				this.sessionCwds.set(sessionId, cwd);
 				return { connection: target.connection, agent: target.agent, session: { ...response, sessionId }, mcpServers };
 			} catch (err) {
 				this.earlyUpdates.delete(sessionId);
+				this.sessionFolders.delete(sessionId);
+				this.sessionCwds.delete(sessionId);
 				throw err instanceof AgentError ? err : new AgentError(classifyAgentError(err));
 			} finally {
 				// Until the chat registers the session, which it does at once, or gives it up.
@@ -440,37 +507,62 @@ export class AgentRuntime {
 
 	private startFolder(cwd: string): FolderProcess {
 		const sidecar = this.options.folderProcess!.sidecar(cwd);
+		let settle = deferred<FolderConnection>();
+		const folder: FolderProcess = { key: comparablePath(cwd), sidecar, sessions: new Set(), opening: 0, ready: settle.promise };
 		let connection: AgentConnection | undefined;
-		const folder: FolderProcess = {
-			key: comparablePath(cwd),
-			sidecar,
-			sessions: new Set(),
-			opening: 0,
-			ready: new Promise((resolve, reject) => sidecar.onDidChangeState(async state => {
-				if (state.kind === 'running' && !connection) {
-					connection = this.createConnection(await this.loadConnectionModule(), state.process);
-					connection.initialize().then(agent => resolve({ connection: connection!, agent }), err => {
-						reject(err);
-						this.endFolder(folder);
-					});
-				} else if (state.kind === 'restarting') {
-					// The process is coming back; its sessions are gone with the old one, and open again on the new one.
-					connection = undefined;
-					for (const sessionId of folder.sessions) {
-						this.sessions.get(sessionId)?.onDidEnd?.();
-					}
-					folder.sessions.clear();
-				} else if (state.kind !== 'starting' && state.kind !== 'running') {
-					reject(new AgentError(state.kind === 'failed' ? { kind: state.reason, message: state.message } : { kind: 'agent-exited', message: 'The agent process stopped.' }));
-					this.endFolder(folder);
+		let connecting: ChildProcessWithoutNullStreams | undefined;
+		sidecar.onDidChangeState(state => {
+			if (state.kind === 'running') {
+				if (connecting === state.process) {
+					return;
 				}
-			})),
-		};
-		folder.ready.catch(() => undefined);
+				connecting = state.process;
+				const pending = settle;
+				this.connectFolder(state.process).then(ready => {
+					connection = ready.connection;
+					pending.resolve(ready);
+				}, err => {
+					// A connection that cannot be made, or an initialize that fails, settles the wait: its sessions fall back to the shared process (`processFor`).
+					pending.reject(err instanceof AgentError ? err : new AgentError(classifyAgentError(err)));
+					this.endFolder(folder);
+				});
+			} else if (state.kind === 'restarting') {
+				// The process is coming back; its sessions are gone with the old one, and open again on the new one once it answers `initialize`.
+				connection?.dispose();
+				connection = undefined;
+				connecting = undefined;
+				settle = deferred<FolderConnection>();
+				folder.ready = settle.promise;
+				this.endFolderSessions(folder);
+			} else if (state.kind !== 'starting') {
+				settle.reject(new AgentError(state.kind === 'failed' ? { kind: state.reason, message: state.message } : { kind: 'agent-exited', message: 'The agent process stopped.' }));
+				this.endFolder(folder);
+			}
+		});
 		this.folders.set(folder.key, folder);
 		this.debug(`Starting an agent process for ${cwd}'s settings`);
 		sidecar.start();
 		return folder;
+	}
+
+	/** Connects to a folder's process and runs `initialize` on it. */
+	private async connectFolder(agentProcess: ChildProcessWithoutNullStreams): Promise<FolderConnection> {
+		const connection = this.createConnection(await this.loadConnectionModule(), agentProcess);
+		try {
+			return { connection, agent: await connection.initialize() };
+		} catch (err) {
+			connection.dispose();
+			throw err;
+		}
+	}
+
+	/** Tells the sessions open on `folder`'s process that it ended, so each can open again, and forgets them. */
+	private endFolderSessions(folder: FolderProcess): void {
+		for (const sessionId of [...folder.sessions]) {
+			this.sessionFolders.delete(sessionId);
+			this.sessions.get(sessionId)?.onDidEnd?.();
+		}
+		folder.sessions.clear();
 	}
 
 	/** Ends `folder`'s process once it has had no session for a while. */
@@ -488,10 +580,7 @@ export class AgentRuntime {
 		this.folders.delete(folder.key);
 		clearTimeout(folder.idle);
 		folder.sidecar.dispose();
-		for (const sessionId of folder.sessions) {
-			this.sessionFolders.delete(sessionId);
-			this.sessions.get(sessionId)?.onDidEnd?.();
-		}
+		this.endFolderSessions(folder);
 	}
 
 	/**
@@ -561,6 +650,7 @@ export class AgentRuntime {
 		this.onDidChangeStateEmitter.dispose();
 		this.onDidBecomeBusyEmitter.dispose();
 		this.onDidBecomeIdleEmitter.dispose();
+		this.onDidReleaseEmitter.dispose();
 		this.onDidChangeSessionHealthEmitter.dispose();
 		this.onDidRetryEmitter.dispose();
 	}
@@ -749,6 +839,18 @@ export class AgentRuntime {
 		this._state = state;
 		this.onDidChangeStateEmitter.fire(state);
 	}
+}
+
+/** A promise with its `resolve` and `reject` to hand, whose rejection is never left unhandled. */
+function deferred<T>(): { readonly promise: Promise<T>; readonly resolve: (value: T) => void; readonly reject: (err: unknown) => void } {
+	let resolve!: (value: T) => void;
+	let reject!: (err: unknown) => void;
+	const promise = new Promise<T>((res, rej) => {
+		resolve = res;
+		reject = rej;
+	});
+	promise.catch(() => undefined);
+	return { promise, resolve, reject };
 }
 
 function exitsWithin(child: ChildProcessWithoutNullStreams, ms: number): Promise<boolean> {

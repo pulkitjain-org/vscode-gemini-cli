@@ -43,6 +43,24 @@ describe('runCliCommands', () => {
 			.toEqual({ extensions: ['x'], memory: undefined, init: 'session:fake-session-1:/work', busy: false, sessions: 0 });
 	});
 
+	it('holds the process while it runs, so a restart that waits for idle waits for the command, without counting as busy', async () => {
+		const started = await start({
+			availableCommands: [{ name: 'extensions', description: '' }],
+			turns: [[{ step: 'delay', ms: 200 }, { step: 'update', update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'installed' } } }]],
+		});
+		const events: string[] = [];
+		started.onDidBecomeBusy(() => events.push('busy'));
+		started.onDidBecomeIdle(() => events.push('idle'));
+		started.onDidRelease(() => events.push('released'));
+		const run = runCliCommands(started, '/work', ['/extensions install x']);
+		await new Promise(resolve => setTimeout(resolve, 50));
+		// As agentService's restartWhenIdle asks: not now, the command holds the process.
+		started.onceIdle(() => events.push('restart'));
+		expect({ held: started.held, busy: started.busy, idle: started.idle, events }).toEqual({ held: true, busy: false, idle: false, events: [] });
+		expect(await run).toEqual(['installed']);
+		expect({ held: started.held, idle: started.idle, events }).toEqual({ held: false, idle: true, events: ['released', 'restart'] });
+	});
+
 	it('sends nothing when the CLI lists no commands', async () => {
 		const started = await start({ turns: [[{ step: 'session' }]] });
 		expect(await runCliCommands(started, '/work', ['/extensions list'], 1_000, 50)).toEqual([undefined]);

@@ -357,6 +357,25 @@ describe('AgentClient', () => {
 			});
 		});
 
+		it('ends a prompt still waiting for a reopened session\'s replay when told to stop, without sending it', async () => {
+			const { client, settled } = start({ storedSessions: ['fake-session-1'], replay: { updates: 3, delayMs: 300 }, turns: [[{ step: 'session' }]] }, undefined, undefined, { client: { findSavedSession: async () => ({ replayUpdates: 4 }) } });
+			await settled;
+			const readyAgain = waitFor<AgentClientState>(client.onDidChangeState, s => s.kind === 'ready');
+			sidecar!.stop();
+			sidecar!.start();
+			await readyAgain;
+			const texts: string[] = [];
+			client.onDidReceiveEvent(e => e.kind === 'text' && texts.push(e.text));
+			const started = Date.now();
+			const turn = client.prompt('who');
+			await client.cancel();
+			expect(await turn).toBe('cancelled');
+			expect(Date.now() - started).toBeLessThan(500);
+			// The stopped prompt never reached the agent: the first turn answers the next one.
+			await client.prompt('who');
+			expect(texts.map(text => text.split(':').slice(0, 2).join(':'))).toEqual(['session:fake-session-1']);
+		});
+
 		it('says the agent restarted when its process ends under a turn', async () => {
 			const { client, settled } = start({ turns: [[{ step: 'delay', ms: 3_000 }]] }, undefined, undefined, { restartDelaysMs: [100] });
 			await settled;

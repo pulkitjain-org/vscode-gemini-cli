@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { appendFile, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { appendFile, chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -107,6 +107,22 @@ describe('McpDiagnostics', () => {
 		const removed = await removeEndedDebugLogs(dir, pid => pid === 22);
 		expect(removed.map(file => path.basename(file))).toEqual([debugLogName(11)]);
 		expect((await readdir(dir)).sort()).toEqual([debugLogName(), debugLogName(22), 'other.log'].sort());
+	});
+
+	it('leaves a log it cannot remove for next time, without failing', async () => {
+		dir = await mkdtemp(path.join(tmpdir(), 'gemini-mcp-'));
+		const locked = path.join(dir, 'locked');
+		await mkdir(locked);
+		await writeFile(path.join(locked, debugLogName(11)), '');
+		await writeFile(path.join(dir, debugLogName(12)), '');
+		await chmod(locked, 0o555);
+		try {
+			const removed = process.getuid?.() === 0 ? [path.join(locked, debugLogName(11))] : [];
+			expect(await removeEndedDebugLogs(locked, () => false)).toEqual(removed);
+			expect(await removeEndedDebugLogs(dir, () => false)).toEqual([path.join(dir, debugLogName(12))]);
+		} finally {
+			await chmod(locked, 0o755);
+		}
 	});
 
 	it('reads the log when the CLI writes to it', async () => {

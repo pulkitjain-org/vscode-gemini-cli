@@ -9,6 +9,7 @@
 
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import type { McpContent } from './browserMcp';
+import { stopProcess } from './processStop';
 
 /** How to start a server: its command, arguments and the environment it alone gets. */
 export interface StdioServerSpec {
@@ -91,10 +92,11 @@ export class McpStdioClient {
 		return { content: Array.isArray(answer.content) ? answer.content : [], ...answer.isError ? { isError: true } : {} };
 	}
 
+	/** Stops the server: its input ends and it is asked to exit; one that does not (or runs under a cmd.exe shim on Windows) is killed (sidecar.ts). */
 	close(): void {
 		this.fail(new McpServerUnavailableError('The server was stopped.'));
 		this.child.stdin.end();
-		this.child.kill();
+		stopProcess(this.child);
 	}
 
 	private request(method: string, params: unknown, timeoutMs: number): Promise<unknown> {

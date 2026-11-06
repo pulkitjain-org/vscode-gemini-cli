@@ -85,6 +85,26 @@ describe('AgentRuntime', () => {
 		expect(events).toEqual(['busy', 'idle']);
 	});
 
+	it('calls a wait for idle once no prompt runs and nothing holds the process, whichever ends last', async () => {
+		start({ turns: [[{ step: 'delay', ms: 150 }]] });
+		const a = await session('/work/a');
+		const calls: string[] = [];
+		runtime!.onceIdle(() => calls.push('at once'));
+		const hold = runtime!.hold();
+		const turn = a.client.prompt('slow');
+		await new Promise(resolve => setTimeout(resolve, 20));
+		runtime!.onceIdle(() => calls.push('after both'));
+		const cancelled = runtime!.onceIdle(() => calls.push('cancelled'));
+		cancelled.dispose();
+		expect({ idle: runtime!.idle, held: runtime!.held, busy: runtime!.busy, calls }).toEqual({ idle: false, held: true, busy: true, calls: ['at once'] });
+		hold.dispose();
+		hold.dispose();
+		// Released while the prompt still runs: the wait goes on until the prompt ends.
+		expect({ idle: runtime!.idle, held: runtime!.held, calls }).toEqual({ idle: false, held: false, calls: ['at once'] });
+		await turn;
+		expect({ idle: runtime!.idle, calls }).toEqual({ idle: true, calls: ['at once', 'after both'] });
+	});
+
 	it('asks the session that owns the request for permission', async () => {
 		start({ turns: [[permissionStep]] });
 		const asked: string[] = [];
@@ -278,6 +298,106 @@ describe('AgentRuntime', () => {
 		b1.client.dispose();
 		b2.client.dispose();
 		await waitFor<SidecarState>(folders[1].onDidChangeState, s => s.kind === 'stopped');
+	});
+
+	describe('a folder\'s own process', () => {
+		const says = (text: string) => [{ step: 'update' as const, update: { sessionUpdate: 'agent_message_chunk' as const, content: { type: 'text' as const, text } } }];
+
+		/** The shared process, and one of /work/b's own that restarts `restartDelaysMs` times. */
+		function startWithFolder(restartDelaysMs: number[], options: Partial<ConstructorParameters<typeof AgentRuntime>[1]> = {}) {
+			const folders: AgentSidecar[] = [];
+			start({ storedSessions: ['b1'], turns: [says('shared'), says('shared')] }, {
+				...options,
+				folderProcess: {
+					needed: async cwd => cwd === '/work/b',
+					sidecar: () => {
+						const folder = new AgentSidecar({ command: () => fakeAgentCommand({ storedSessions: ['b1'], turns: [says('own'), says('own')] }), cwd: undefined, restartDelaysMs });
+						folders.push(folder);
+						return folder;
+					},
+					idleMs: 50,
+				},
+			});
+			return folders;
+		}
+
+		async function folderSession() {
+			const b1 = await session('/work/b', { resumeSessionId: 'b1' });
+			const failures: string[] = [];
+			b1.client.onDidFailToReopen(f => failures.push(f.error.message));
+			return { ...b1, failures };
+		}
+
+		function endFolderProcess(folder: AgentSidecar): void {
+			folder.endProcess((folder.state as Extract<SidecarState, { kind: 'running' }>).process);
+		}
+
+		it('reopens the session on the folder\'s process once it has restarted', async () => {
+			const folders = startWithFolder([10]);
+			const b1 = await folderSession();
+			await b1.client.prompt('who');
+			expect(b1.texts.at(-1)).toBe('own');
+			endFolderProcess(folders[0]);
+			await waitFor<SidecarState>(folders[0].onDidChangeState, s => s.kind === 'running');
+			if (b1.client.state.kind !== 'ready') {
+				await waitFor<AgentClientState>(b1.client.onDidChangeState, s => s.kind === 'ready');
+			}
+			await b1.client.prompt('who');
+			expect({ text: b1.texts.at(-1), savedSessionId: b1.client.state.kind === 'ready' && b1.client.state.savedSessionId, failures: b1.failures, folderState: folders[0].state.kind, folderProcesses: folders.length })
+				.toEqual({ text: 'own', savedSessionId: 'b1', failures: [], folderState: 'running', folderProcesses: 1 });
+		});
+
+		it('with no restart budget, as agentService gives it, reopens the session on a fresh process of the folder\'s own', async () => {
+			const folders = startWithFolder([]);
+			const b1 = await folderSession();
+			await b1.client.prompt('who');
+			endFolderProcess(folders[0]);
+			await waitFor<AgentClientState>(b1.client.onDidChangeState, s => s.kind === 'ready');
+			await b1.client.prompt('who');
+			expect({ text: b1.texts.at(-1), savedSessionId: b1.client.state.kind === 'ready' && b1.client.state.savedSessionId, failures: b1.failures, folderStates: folders.map(f => f.state.kind) })
+				.toEqual({ text: 'own', savedSessionId: 'b1', failures: [], folderStates: ['stopped', 'running'] });
+		});
+
+		it('falls back to the shared process when the folder\'s connection cannot be made, rather than waiting for ever', async () => {
+			let loads = 0;
+			const folders = startWithFolder([], {
+				connectionModule: async () => {
+					if (loads++ === 0) {
+						return import('../../src/acp/agentConnection');
+					}
+					throw new Error('the protocol code did not load');
+				},
+			});
+			const b1 = await folderSession();
+			await b1.client.prompt('who');
+			expect({ text: b1.texts.at(-1), state: b1.client.state.kind, folderStates: folders.map(f => f.state.kind) }).toEqual({ text: 'shared', state: 'ready', folderStates: ['stopped'] });
+		});
+
+		it('marks the process that served a prompt healthy, not every process', async () => {
+			const folders = startWithFolder([]);
+			const a = await session('/work/a');
+			const b1 = await folderSession();
+			const marked = { shared: 0, folder: 0 };
+			sidecar!.onDidChangeState(() => undefined);
+			const sharedMark = sidecar!.markHealthy.bind(sidecar);
+			sidecar!.markHealthy = () => { marked.shared++; sharedMark(); };
+			const folderMark = folders[0].markHealthy.bind(folders[0]);
+			folders[0].markHealthy = () => { marked.folder++; folderMark(); };
+			await a.client.prompt('who');
+			expect(marked).toEqual({ shared: 1, folder: 0 });
+			await b1.client.prompt('who');
+			expect(marked).toEqual({ shared: 1, folder: 1 });
+		});
+	});
+
+	it('forgets the folder of a session it failed to reopen', async () => {
+		start({ storedSessions: ['earlier'] });
+		await ready(runtime!);
+		await runtime!.loadSession('/work/a', 'earlier');
+		expect(runtime!.folderOf('earlier')).toBe('/work/a');
+		// The replay starts with another prompt than the one the chat shows: not the session asked for.
+		await expect(runtime!.loadSession('/work/a', 'earlier', 'who are you')).rejects.toThrow(/different session/);
+		expect(runtime!.folderOf('earlier')).toBeUndefined();
 	});
 
 	it('opens a new session when the agent cannot load sessions', async () => {

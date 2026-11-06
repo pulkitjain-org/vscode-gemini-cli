@@ -33,3 +33,5 @@ export { FigmaDesktop } from './acp/figma';
 export { pickAssignee } from './host/assigneePicker';
 export { projectStrings } from './host/chat/projectStrings';
 export { rebuildSessionFile } from './acp/sessionReplay';
+// The CLI installer: the streamed download and its tar reader, used only when a copy is installed.
+export { installCli } from './acp/cliInstall';

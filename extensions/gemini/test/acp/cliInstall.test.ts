@@ -9,7 +9,8 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { checkIntegrity, cliCopiesToKeep, cliRegistry, Fetch, fetchCliVersions, installCli, pruneCliVersions, readTar } from '../../src/acp/cliInstall';
+import { Readable } from 'node:stream';
+import { checkIntegrity, cliCopiesToKeep, cliRegistry, Fetch, fetchCliVersions, installCli, pruneCliVersions, readTar, tarballUrl, TarReader } from '../../src/acp/cliInstall';
 import { cliPatchMarker } from '../../src/acp/cliPatches';
 import { listManagedVersions, resolveCli } from '../../src/acp/cliResolution';
 
@@ -35,9 +36,14 @@ function integrityOf(data: Buffer): string {
 	return `sha512-${createHash('sha512').update(data).digest('base64')}`;
 }
 
-/** A registry serving one package version, recording the URLs asked for. */
-function fakeRegistry(tarball: Buffer, integrity = integrityOf(tarball), version = '0.62.0') {
+/**
+ * A registry serving one package version, recording the URLs asked for. The
+ * tarball comes whole, as `arrayBuffer`, or as a `body` stream of `chunkSize`
+ * bytes at a time, as fetch gives it; its address is `tarballAt` when given.
+ */
+function fakeRegistry(tarball: Buffer, integrity = integrityOf(tarball), version = '0.62.0', options: { readonly chunkSize?: number; readonly tarballAt?: string } = {}) {
 	const urls: string[] = [];
+	const tarballAt = options.tarballAt ?? 'https://registry.example/gemini-cli.tgz';
 	const fetch: Fetch = async url => {
 		urls.push(url);
 		const json = (body: unknown) => ({ ok: true, status: 200, json: async () => body, arrayBuffer: async () => new ArrayBuffer(0) });
@@ -45,10 +51,12 @@ function fakeRegistry(tarball: Buffer, integrity = integrityOf(tarball), version
 			return json({ 'dist-tags': { latest: '0.62.0' }, versions: { '0.61.0': {}, '0.62.0': {}, '0.63.0-preview.1': {}, '0.10.0': {} } });
 		}
 		if (url === 'https://registry.example/@google%2fgemini-cli/latest' || url === `https://registry.example/@google%2fgemini-cli/${version}`) {
-			return json({ version, dist: { tarball: 'https://registry.example/gemini-cli.tgz', integrity } });
+			return json({ version, dist: { tarball: tarballAt, integrity } });
 		}
-		if (url === 'https://registry.example/gemini-cli.tgz') {
-			return { ok: true, status: 200, json: async () => ({}), arrayBuffer: async () => new Uint8Array(tarball).buffer };
+		if (url === tarballAt) {
+			const chunkSize = options.chunkSize;
+			const chunks = chunkSize ? Array.from({ length: Math.ceil(tarball.length / chunkSize) }, (_, i) => tarball.subarray(i * chunkSize, (i + 1) * chunkSize)) : undefined;
+			return { ok: true, status: 200, json: async () => ({}), arrayBuffer: async () => new Uint8Array(tarball).buffer, ...(chunks ? { body: Readable.toWeb(Readable.from(chunks)) as ReadableStream<Uint8Array> } : {}) };
 		}
 		return { ok: false, status: 404, json: async () => ({}), arrayBuffer: async () => new ArrayBuffer(0) };
 	};
@@ -73,6 +81,33 @@ describe('installCli', () => {
 		await installCli({ ...fakeRegistry(tarball), managedDir, version: 'latest' });
 		const read = (name: string) => fs.readFileSync(path.join(managedDir, '0.62.0', 'bundle', name), 'utf8');
 		expect([read('gemini-ABC123.js').includes(cliPatchMarker), read('chunk-ABC123.js') === acp]).toEqual([true, true]);
+	});
+
+	it('installs from the download as it streams in, holding no archive', async () => {
+		const acp = fs.readFileSync(path.join(__dirname, '..', 'fixtures', 'acp-run-tool.txt'), 'utf8');
+		const long = `bundle/${'b'.repeat(120)}/deep.js`;
+		const tarball = packTarball({ 'package.json': '{}', 'bundle/gemini.js': acp.repeat(3), [long]: 'deep', 'bundle/chunk.js': 'x', 'node_modules/big.node': 'z'.repeat(5000) });
+		const managedDir = path.join(dir, 'managed');
+		expect(await installCli({ ...fakeRegistry(tarball, integrityOf(tarball), '0.62.0', { chunkSize: 1000 }), managedDir, version: 'latest' })).toBe('0.62.0');
+		const read = (name: string) => fs.readFileSync(path.join(managedDir, '0.62.0', name), 'utf8');
+		expect({ kept: fs.readdirSync(path.join(managedDir, '0.62.0')).sort(), gemini: read('bundle/gemini.js').length, deep: read(long), chunk: read('bundle/chunk.js') })
+			.toEqual({ kept: ['bundle', 'package.json'], gemini: acp.repeat(3).length, deep: 'deep', chunk: 'x' });
+	});
+
+	it('rejects a streamed download that does not match the checksum, leaving nothing behind', async () => {
+		const tarball = packTarball({ 'package.json': '{}', 'bundle/gemini.js': '' });
+		const managedDir = path.join(dir, 'managed');
+		await expect(installCli({ ...fakeRegistry(tarball, integrityOf(Buffer.from('other')), '0.62.0', { chunkSize: 100 }), managedDir, version: 'latest' })).rejects.toThrow(/checksum/);
+		expect(fs.readdirSync(managedDir)).toEqual([]);
+	});
+
+	it('refuses a download the manifest points away from the registry, without fetching it', async () => {
+		const tarball = packTarball({ 'package.json': '{}', 'bundle/gemini.js': '' });
+		for (const tarballAt of ['https://other.example/gemini-cli.tgz', 'http://registry.example/gemini-cli.tgz', 'https://user:pw@registry.example/gemini-cli.tgz']) {
+			const registry = fakeRegistry(tarball, integrityOf(tarball), '0.62.0', { tarballAt });
+			await expect(installCli({ ...registry, managedDir: path.join(dir, 'managed'), version: 'latest' })).rejects.toThrow(/refused/);
+			expect(registry.urls).not.toContain(tarballAt);
+		}
 	});
 
 	it('does not download a version that is already installed', async () => {
@@ -109,6 +144,35 @@ describe('fetchCliVersions', () => {
 	});
 });
 
+describe('tarballUrl', () => {
+	it('accepts the registry\'s own host over https, or its own http on this machine, and refuses the rest', () => {
+		const accepted = (tarball: string, registry: string) => {
+			try {
+				return tarballUrl(tarball, registry, '1.0.0');
+			} catch (err) {
+				return (err as Error).message;
+			}
+		};
+		expect([
+			accepted('https://registry.npmjs.org/@google/gemini-cli/-/gemini-cli-1.0.0.tgz', 'https://registry.npmjs.org'),
+			accepted('https://npm.example.com/api/npm/npm-remote/@google/gemini-cli/-/gemini-cli-1.0.0.tgz', 'https://npm.example.com/api/npm/npm-remote'),
+			accepted('http://localhost:4873/@google/gemini-cli/-/gemini-cli-1.0.0.tgz', 'http://localhost:4873'),
+			accepted('https://cdn.example.com/gemini-cli-1.0.0.tgz', 'https://registry.npmjs.org'),
+			accepted('http://registry.npmjs.org/gemini-cli-1.0.0.tgz', 'https://registry.npmjs.org'),
+			accepted('https://registry.npmjs.org:8443/gemini-cli-1.0.0.tgz', 'https://registry.npmjs.org'),
+			accepted('not a url', 'https://registry.npmjs.org'),
+		]).toEqual([
+			'https://registry.npmjs.org/@google/gemini-cli/-/gemini-cli-1.0.0.tgz',
+			'https://npm.example.com/api/npm/npm-remote/@google/gemini-cli/-/gemini-cli-1.0.0.tgz',
+			'http://localhost:4873/@google/gemini-cli/-/gemini-cli-1.0.0.tgz',
+			'The registry points the download of @google/gemini-cli 1.0.0 at https://cdn.example.com, not at https://registry.npmjs.org; the install was refused.',
+			'The registry points the download of @google/gemini-cli 1.0.0 at http://registry.npmjs.org, not at https://registry.npmjs.org; the install was refused.',
+			'The registry points the download of @google/gemini-cli 1.0.0 at https://registry.npmjs.org:8443, not at https://registry.npmjs.org; the install was refused.',
+			'The registry gave no usable download address for @google/gemini-cli 1.0.0.',
+		]);
+	});
+});
+
 describe('readTar', () => {
 	it('reads long paths and strips the package folder', async () => {
 		const long = `bundle/${'a'.repeat(120)}/file.js`;
@@ -116,6 +180,23 @@ describe('readTar', () => {
 		const files = readTar(execFileSync('gzip', ['-dc', path.join(dir, 'package.tgz')]));
 		expect(files.map(f => f.path).sort()).toEqual([long, 'package.json'].sort());
 		expect(tarball.length).toBeGreaterThan(0);
+	});
+
+	it('reads the same files from an archive given in pieces of any size, keeping only the wanted ones', async () => {
+		const long = `bundle/${'a'.repeat(120)}/file.js`;
+		packTarball({ 'package.json': '{}', [long]: 'deep', 'bundle/big.js': 'y'.repeat(3000), 'README.md': 'docs', 'empty.txt': '' });
+		const tar = execFileSync('gzip', ['-dc', path.join(dir, 'package.tgz')]);
+		const whole = readTar(tar);
+		const shown = (files: { path: string; data: Buffer }[]) => files.map(f => [f.path, f.data.length]).sort();
+		for (const size of [1, 7, 512, 1000]) {
+			const reader = new TarReader(file => file !== 'README.md');
+			const pieces: ReturnType<typeof readTar> = [];
+			for (let at = 0; at < tar.length; at += size) {
+				pieces.push(...reader.read(tar.subarray(at, at + size)));
+			}
+			expect(shown(pieces)).toEqual(shown(whole.filter(f => f.path !== 'README.md')));
+		}
+		expect(whole.map(f => f.path).sort()).toEqual(['README.md', 'bundle/big.js', 'empty.txt', long, 'package.json'].sort());
 	});
 
 	it('rejects a path that leaves the package', async () => {
