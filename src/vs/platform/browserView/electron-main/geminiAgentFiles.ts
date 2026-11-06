@@ -1,5 +1,5 @@
 /*---------------------------------------------------------------------------------------------
- *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Copyright (c) Pulkit Jain. All rights reserved.
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
@@ -11,11 +11,15 @@
 // - A load from a page (a frame, object, script, image, fetch) carries the page's webContents.
 //   For an agent's page, the page's window asks the Gemini extension, and a refused load fails.
 // - A `file:` or local http(s) page may be the agent's own work, and Electron would let it fetch
-//   any site with the browser's cookies. Its loads of other sites are asked about too; a page on
-//   a site the user allowed loads what it likes, as that site's own pages do in any browser.
+//   any site with the browser's cookies. Its loads of other sites are asked about too, the
+//   navigation itself included: a page that sends itself elsewhere (`location`, a meta refresh,
+//   a form) would otherwise carry the cookies out before the extension sees where it went. A
+//   page on a site the user allowed loads what it likes, as that site's own pages do in any
+//   browser.
 // - Workers load files where neither listener nor the session's `file:` handler sees them, so an
-//   agent's documents get `worker-src 'none'`. A service worker registered before that fetches
-//   with no page; in a session that has held an agent's page, such loads are refused.
+//   agent's local documents (`file:`, and local http(s), a secure context) get
+//   `worker-src 'none'`. A service worker registered before that fetches with no page; in a
+//   session that has held an agent's page, such loads reach only this machine.
 // - The session's `file:` handler (browserSession.ts) reads each file it serves through the
 //   session again, also with no page: those reads are let through.
 
@@ -30,7 +34,6 @@ type RequestListener = (details: Electron.OnBeforeRequestListenerDetails, callba
 /** Asks the window `windowId` whether the agent may load the file at `url`. */
 export type GeminiAgentFileQuestion = (windowId: number, agent: string, url: string) => Promise<boolean>;
 
-const fileUrls = { urls: ['file://*/*'] };
 const checkedUrls = { urls: ['file://*/*', 'http://*/*', 'https://*/*'] };
 
 /** Whether `url` is a page the agent could have written: a file, or a site on this machine. */
@@ -51,7 +54,7 @@ function isLocalPage(url: string): boolean {
 	return host === 'localhost' || host.endsWith('.localhost') || host === '::1' || host === '0.0.0.0' || /^127(\.\d{1,3}){3}$/.test(host);
 }
 
-/** What an agent's documents may not do: start workers, whose loads nothing here sees. */
+/** What an agent's local documents may not do: start workers, whose loads nothing here sees. */
 const agentDocumentPolicy = 'worker-src \'none\'';
 
 export class GeminiAgentFiles {
@@ -97,7 +100,7 @@ export class GeminiAgentFiles {
 		} else {
 			session.webRequest.onBeforeRequest(checkedUrls, check);
 		}
-		session.webRequest.onHeadersReceived(fileUrls, (details, callback) => callback(this.headers(details)));
+		session.webRequest.onHeadersReceived(checkedUrls, (details, callback) => callback(this.headers(details)));
 	}
 
 	/** Upstream's network filter for an Agent session, or `null` when its policy is off. */
@@ -134,6 +137,10 @@ export class GeminiAgentFiles {
 	private async mayLoad(session: Electron.Session, details: Electron.OnBeforeRequestListenerDetails): Promise<boolean> {
 		const view = details.webContentsId !== undefined ? this.views.get(details.webContentsId) : undefined;
 		if (!details.url.startsWith('file:')) {
+			if (details.webContentsId === undefined && this.agentSessions.has(session) && !isLocalPage(details.url)) {
+				// A service worker's fetch, with no page to ask for: nothing beyond this machine.
+				return false;
+			}
 			return this.mayReach(view, details);
 		}
 		if (view) {
@@ -150,12 +157,16 @@ export class GeminiAgentFiles {
 	/**
 	 * Whether a page may reach a site: a load of another site by an agent's
 	 * local page is asked about, since the page may be the agent's own work and
-	 * the browser's cookies go with the request. The navigation itself is the
-	 * extension's to check once the page is there, so a main frame goes through.
+	 * the browser's cookies go with the request. The page's own navigation is
+	 * held the same way: the extension answers for a site the user already let
+	 * the agent see, which a navigation the agent asked for has arranged before
+	 * the load starts, and a page that sends itself to any other site is
+	 * stopped before the request leaves. Where a page on an allowed site goes
+	 * is the extension's to check once the page is there.
 	 */
 	private mayReach(view: BrowserView | undefined, details: Electron.OnBeforeRequestListenerDetails): Promise<boolean> {
 		const agent = view ? geminiAgentOf(view.owner) : undefined;
-		if (!view || agent === undefined || details.resourceType === 'mainFrame' || isLocalPage(details.url) || !isLocalPage(view.webContents.getURL())) {
+		if (!view || agent === undefined || isLocalPage(details.url) || !isLocalPage(view.webContents.getURL())) {
 			return Promise.resolve(true);
 		}
 		return this.ask(view.host.windowId, agent, details.url);
@@ -172,7 +183,8 @@ export class GeminiAgentFiles {
 
 	private headers(details: Electron.OnHeadersReceivedListenerDetails): Electron.HeadersReceivedResponse {
 		const view = details.webContentsId !== undefined ? this.views.get(details.webContentsId) : undefined;
-		if (!view || geminiAgentOf(view.owner) === undefined) {
+		if (!view || geminiAgentOf(view.owner) === undefined || !isLocalPage(details.url)) {
+			// A page on a site the user allowed keeps its workers, as in any browser.
 			return {};
 		}
 		const headers = { ...details.responseHeaders };

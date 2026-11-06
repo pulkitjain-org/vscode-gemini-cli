@@ -1,5 +1,5 @@
 diff --git a/src/vs/workbench/browser/parts/paneCompositeBar.ts b/src/vs/workbench/browser/parts/paneCompositeBar.ts
-index ee76b0ef3b4f24cf61f30c948d6614d287019a27..d3a03df01b35e9a0e9a376078190087f7c4899a3 100644
+index ee76b0ef3b4f24cf61f30c948d6614d287019a27..333710382bfbdd06e37ca08cfc9e29ef591f5fe4 100644
 --- a/src/vs/workbench/browser/parts/paneCompositeBar.ts
 +++ b/src/vs/workbench/browser/parts/paneCompositeBar.ts
 @@ -32,6 +32,9 @@ import { IPaneCompositePart } from './paneCompositePart.js';
@@ -22,7 +22,7 @@ index ee76b0ef3b4f24cf61f30c948d6614d287019a27..d3a03df01b35e9a0e9a376078190087f
 +				const index = this._cachedViewContainers.findIndex(cached => cached.id === 'workbench.view.extension.gemini');
 +				if (index >= 0) {
 +					this._cachedViewContainers.unshift(...this._cachedViewContainers.splice(index, 1));
-+					this.storageService.store(geminiFirstKey, true, StorageScope.PROFILE, StorageTarget.USER);
++					this.storageService.store(geminiFirstKey, true, StorageScope.PROFILE, StorageTarget.MACHINE); // one move per machine, not synced
 +				}
 +			}
  		}

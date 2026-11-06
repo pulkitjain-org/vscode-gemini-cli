@@ -40,11 +40,14 @@ class FakeBrowser implements BrowserBackend {
 	fullSnapshot: string | undefined;
 	/** The error the next action fails with, as Playwright words it. */
 	actError: string | undefined;
+	/** Runs while an action is under way, as the main process's load check does. */
+	duringAct: ((action: BrowserAction) => Promise<void>) | undefined;
 	async snapshot(_agent: string, pageId: string) {
 		return { summary: this.fullSnapshot ?? `snapshot ${pageId}`, url: this.at.get(pageId) ?? 'about:blank' };
 	}
 	async act(agent: string, pageId: string, action: BrowserAction, args: readonly unknown[]): Promise<PageState> {
 		this.calls.push(`${action} ${agent} ${pageId} ${JSON.stringify(args)}`);
+		await this.duringAct?.(action);
 		const url = this.leadsTo.get(action) ?? (action === 'goto' ? String(args[0]) : 'http://localhost:5173/');
 		this.at.set(pageId, url);
 		const error = this.actError;
@@ -80,7 +83,8 @@ function setup(answer = false, otherSites = true, model = 'gemini-3.1-pro-previe
 	const granted = new Set<string>();
 	let on = true;
 	const host = new BrowserToolHost(browser, {
-		allow: async (agent, url) => granted.has(`${agent} ${url.origin}`) || (asked.push(url.origin), answer),
+		// A yes is kept, as BrowserTools.allow keeps it, so the site is known before the page loads.
+		allow: async (agent, url) => granted.has(`${agent} ${url.origin}`) || (asked.push(url.origin), answer && granted.add(`${agent} ${url.origin}`), answer),
 		files: () => ({ roots: [workspace], isIgnored: async file => file.endsWith('.log') }),
 		enabled: () => on,
 		otherSites: () => otherSites,
@@ -242,6 +246,29 @@ describe('BrowserToolHost', () => {
 		});
 		const { host: policed } = setup(true, true, 'gemini-3.1-pro-preview', ['https://*.example.com']);
 		expect(await policed.loadAllowed('a1', 'https://shop.example/cart')).toBe(false);
+	});
+
+	it('answers for a local page\'s own navigation: the site the agent asked for is known before the load starts, one the page picked is not', async () => {
+		const { browser, host, asked } = setup(true);
+		await host.call('a1', 'browser_navigate', { url: 'http://localhost:5173' });
+		// The main process holds the main frame's request while goto runs, and asks loadAllowed.
+		const during: Record<string, boolean> = {};
+		browser.duringAct = async action => {
+			if (action === 'goto') {
+				during.asked = await host.loadAllowed('a1', 'https://shop.example/');
+				during.picked = await host.loadAllowed('a1', 'https://intranet.example/x?secret');
+			}
+		};
+		expect((await host.call('a1', 'browser_navigate', { url: 'https://shop.example/' })).isError).toBeUndefined();
+		expect({ during, asked, calls: browser.calls.at(-1) }).toEqual({
+			during: { asked: true, picked: false },
+			asked: ['https://shop.example'],
+			calls: 'goto a1 p1 ["https://shop.example/"]',
+		});
+		// Asked again later (a page the user handed over, a reload), the answer is the same and nothing asks.
+		expect(await host.loadAllowed('a1', 'https://shop.example/cart')).toBe(true);
+		expect(await host.loadAllowed('a1', 'https://intranet.example/')).toBe(false);
+		expect(asked).toEqual(['https://shop.example']);
 	});
 
 	it('checks where the page really is: after a redirect on open, and on snapshot and screenshot', async () => {

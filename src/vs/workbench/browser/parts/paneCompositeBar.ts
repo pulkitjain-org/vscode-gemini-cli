@@ -649,7 +649,7 @@ export class PaneCompositeBar extends Disposable {
 				const index = this._cachedViewContainers.findIndex(cached => cached.id === 'workbench.view.extension.gemini');
 				if (index >= 0) {
 					this._cachedViewContainers.unshift(...this._cachedViewContainers.splice(index, 1));
-					this.storageService.store(geminiFirstKey, true, StorageScope.PROFILE, StorageTarget.USER);
+					this.storageService.store(geminiFirstKey, true, StorageScope.PROFILE, StorageTarget.MACHINE); // one move per machine, not synced
 				}
 			}
 		}

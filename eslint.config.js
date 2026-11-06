@@ -24,6 +24,11 @@ const ignores = fs.readFileSync(path.join(import.meta.dirname, '.eslint-ignore')
 	.split(/\r\n|\n/)
 	.filter(line => line && !line.startsWith('#'));
 
+// GEMINI-FORK: the files the fork adds under src/vs, which carry the fork's header
+const forkAddedFiles = fs.readFileSync(path.join(import.meta.dirname, 'gemini/patches/ADDED'), 'utf8')
+	.split(/\r\n|\n/)
+	.filter(line => line.startsWith('src/vs/'));
+
 const allowedJavaScriptFiles = fs.readFileSync(path.join(import.meta.dirname, '.eslint-allowed-javascript-files'), 'utf8')
 	.toString()
 	.split(/\r\n|\n/)
@@ -3082,11 +3087,12 @@ export default defineConfig(
 			'local/code-no-new-javascript-files': 'error',
 		},
 	},
-	// GEMINI-FORK: fork-owned code carries its own copyright header.
+	// GEMINI-FORK: fork-owned code carries its own copyright header, the files the fork adds under src/vs (gemini/patches/ADDED) included.
 	{
 		files: [
 			'extensions/gemini/**/*.{ts,mts}',
 			'gemini/**/*.{ts,mts}',
+			...forkAddedFiles.filter(file => /\.m?ts$/.test(file)),
 		],
 		rules: {
 			'header/header': [
