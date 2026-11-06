@@ -445,9 +445,12 @@ describe('AgentRuntime', () => {
 		runtime!.prepareSession('/work/a');
 		const b = await session('/work/b');
 		const a = await session('/work/a');
-		expect([a.state, b.state]).toMatchObject([{ kind: 'ready', sessionId: 'fake-session-1' }, { kind: 'ready', sessionId: 'fake-session-2' }]);
+		// Two sessions in all: a took the one prepared for it rather than opening a third. Which of
+		// the two the fake numbers first depends on whose session/new reaches it first.
+		const ids = [a.state, b.state].map(state => state.kind === 'ready' ? state.sessionId : state.kind);
+		expect([...ids].sort()).toEqual(['fake-session-1', 'fake-session-2']);
 		await a.client.prompt('who');
-		expect(a.texts).toEqual(['session:fake-session-1:/work/a']);
+		expect(a.texts).toEqual([`session:${ids[0]}:/work/a`]);
 	});
 
 	it('closes a spare it replaces when the agent can close sessions', async () => {
