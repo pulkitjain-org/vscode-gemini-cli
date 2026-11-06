@@ -38,11 +38,9 @@ Run asks in the block, before anything runs, when a command:
 - writes to a disk device
 - writes outside the agent's folder
 - writes a git hook, a build file or a setting that decides what runs next, such as `.git/hooks/pre-commit` or `package.json`
-
-A wrapper in front of the command (`command`, `exec`, `env`, `nohup`, `time`, `xargs`) doesn't hide it: `xargs rm -r` asks as `rm -r` does.
 - has a quote that is never closed, so what it would run can't be read
 
-A block with several commands asks too. Run in a project's coordinator chat always asks, because it runs in your own checkout.
+A wrapper in front of the command (`command`, `exec`, `env`, `nohup`, `time`, `xargs`) doesn't hide it: `xargs rm -r` asks as `rm -r` does. A block with several commands asks too. Run in a project's coordinator chat always asks, because it runs in your own checkout.
 
 The check reads the command line only. A script the command runs can still write anywhere, so read what you run.
 

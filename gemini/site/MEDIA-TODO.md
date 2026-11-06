@@ -17,8 +17,7 @@ Capture from the real app, against demo data, so no real account, ticket, name o
 
 | Taken on | Against | Media |
 | --- | --- | --- |
-| 2026-11-03 | The demo repositories `acme-checkout` and `billing-api`, and a demo Jira (two sites), Confluence, GitLab and SonarQube signed in as Sam Rivera, in the installed GeminiCode built from `main` at 1191a475f68 | Everything except `showcase-console`, including the link preview images in `og/` |
-| 2026-10-15 | | `showcase-console` |
+| 2026-11-06 | The demo repositories `acme-checkout` and `billing-api`, and a demo Jira (two sites), Confluence, GitLab and SonarQube signed in as Sam Rivera, in a dev build of `main` at 411fd00c87d, with agents on gemini-3.1-pro-preview | Everything, including the link preview images in `og/` |
 
 The clips' dates are also in `clipDates` in `build.mts`, which the site's video data uses. Keep the two in step.
 
@@ -41,6 +40,10 @@ Nothing at the moment.
 - A chat that isn't in front stops updating while the window is hidden, so bring an agent's tab forward before reading its state.
 - Give the capture profile's terminal a neutral prompt (`terminal.integrated.env.osx` with `ZDOTDIR` pointing at a `.zshrc` that sets `PROMPT='%1~ %# '`), or the agent's terminal shows the Mac's user and host name.
 - Plan mode replies can print the plan file's full path; ask for the plan only. A coordinator's failed `list_directory` calls show home-folder paths while it works; cut that stretch from a clip.
-- Project settings' **Add repository** opens the native folder picker: add the second repository before the screen can lock.
+- Project settings' **Add repository** opens the native folder picker, which the capture scripts can't drive. Add the second repository to `~/.geminicode/projects/<id>/project.json` instead and reload the window; the app keeps the project in memory until then.
+- With a Pro model, Plan mode ends by asking for plan approval through the Gemini CLI's own permission card, whose text holds the plan file's full path under the home folder. Ask the agent to end its turn once the plan is written, so the reply ends with **Approve Plan** and **Review Plan**, and rewrite the home folder to `~` in the webviews while recording.
+- The rich Markdown editor keeps its own selection: select text for a comment with the keyboard (Shift and the arrow keys), not a scripted selection. It also reads `$5 … $20` as inline math, so keep dollar amounts out of a report you comment on.
+- A merge request review in a checkout without `node_modules` can sit on `npx tsc`; reject commands other than the reviewer's git reads.
+- The Index & Docs page shows documentation sources shared with every folder on the Mac. Don't remove one to tidy a shot.
 
 The link preview images in `media/og/` (1200 × 630 JPEG) are crops of the light shots named in `ogImages` in `build.mts`. Remake one when its shot is retaken; [RELEASING.md](../docs/RELEASING.md#search-engines-link-previews-and-ai-tools) has the command.

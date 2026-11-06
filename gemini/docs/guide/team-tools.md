@@ -1,6 +1,6 @@
 # Team tools
 
-GeminiCode connects to Jira, Confluence, GitLab, SonarQube, Snyk and Figma with your own account. Agents read tickets, pages, merge requests, CI logs, quality checks and designs, draft Confluence pages for you to review, and you can go from a ticket to a merged merge request without leaving the app.
+Most tasks start somewhere else: a Jira ticket, a review comment, a failed pipeline, a Figma frame. GeminiCode connects to Jira, Confluence, GitLab, SonarQube, Snyk and Figma with your own account, so agents can read all of that for themselves. They read tickets, pages, merge requests, CI logs, quality checks and designs, and draft Confluence pages for you to review. You can go from a ticket to a merged merge request without leaving the app.
 
 Everything runs from your Mac, over your VPN. Nothing goes through a GeminiCode or Google service except what an agent reads, which goes to Gemini as part of its prompt. Nothing is written to Jira, Confluence or GitLab without your click or your approval on a permission card.
 

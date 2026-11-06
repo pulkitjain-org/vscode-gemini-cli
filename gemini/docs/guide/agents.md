@@ -1,6 +1,6 @@
 # Agents
 
-Run several Gemini agents side by side, each with its own chat, files, changes and [terminal](terminal.md). Give an agent its own branch when agents might trip over each other's edits, and fork one when its work splits in two. Every agent finds code through a local index of its workspace, and searches the documentation you attach.
+An agent is a Gemini CLI session with a tab of its own: its chat, the files it opened, the changes it made and its own [terminal](terminal.md). You can run several at once, one fixing a bug while another writes tests, and switch between them as you would between files. When agents might trip over each other's edits, give one its own branch; when one agent's work splits in two, fork it. Every agent finds code through a local index of its workspace, and searches the documentation you attach.
 
 ![An agent's chat with the files it opened in a group beside it](../../site/media/files-dark.webp)
 
@@ -56,11 +56,11 @@ In the Agents layout the agent list highlights the agent, project or thread whos
 
 ## Agents side by side
 
-The Agents pane lists your agents under the folder each works in. A folder's projects come first, each a row you can expand to see its threads, then its agents, most recently used first. A fork is listed under the agent it came from, and the agents you archived are under an **Archived** row.
+The Agents pane lists your agents under the folder each works in. A folder's projects come first, each a row you can expand to see its threads, then its agents, most recently used first. A fork hangs under the agent it came from, joined to it by a line, and the agents you archived are under an **Archived** row.
 
 ![The Agents pane with one agent working, the others done, and a fork under the agent it came from](../../site/media/agents-pane-dark.webp)
 
-Each row's mark shows what the agent is doing: a spinner while it works, a yellow dot when it needs you, a green dot when it has finished and you haven't looked yet, a red dot when something went wrong, and a grey dot otherwise. On the right the row shows how long the current turn has run, "needs you", the lines the agent added, or when it was last active. Point at a row to see its state, its changes, and its branch and folder.
+A row has a mark only when the agent is busy or wants you: a spinner while it works, a yellow dot when it needs you, a green dot when it has finished and you haven't looked yet, and a red dot when something went wrong. An agent with nothing to tell you has no mark, so the quiet ones stay out of your way. On the right the row shows how long the current turn has run, "needs you", the lines the agent added, or when it was last active. Point at a row to see its state, its changes, and its branch and folder.
 
 Click an agent to show it. Agents you click share one tab: the next agent you click takes its place there, and the one it showed carries on with its turn. An agent gets a tab of its own once you send it a message, or when you choose **Keep in own tab** in the tab's title bar or under **More** in the row's right-click menu.
 
@@ -188,6 +188,7 @@ Every agent's session gets the `geminicode-index` tools for the folder it works 
 | `code_type` | A function's, variable's or class's type and documentation, from the editor's language server: what hovering shows. |
 | `code_diagnostics` | Errors and warnings in the files the agent changed, or the files it names, from the language servers: a check after an edit without running a build. |
 | `code_calls` | What calls a function, or what it calls, as the language server resolves them. |
+| `research` | A broad question that needs many parts of the code read, such as "where are auth tokens read, stored or logged?". Several read-only readers each read one area at once, and the agent gets one report with `path:line` evidence. It takes a few minutes, and stops after eight minutes with what its readers found by then. |
 
 GeminiCode is an editor, so its language servers are running already: agents ask them through the same tools. `find_symbol` with references lists the exact uses of a symbol, through imports and aliases, where a language server covers the file, instead of every line that shares its name. Where none answers (a language with no extension, a server still loading, or an agent's own branch outside the workspace), the index answers alone and the result says so. When a turn changes files and the language servers report errors in the folder's changed files, a notice under the turn lists them, with **Fix**, which asks the agent to fix them and check again. Agents only reach files in their own folder that are neither secret nor ignored by git.
 

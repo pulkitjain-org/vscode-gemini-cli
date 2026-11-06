@@ -2,14 +2,16 @@
 
 GeminiCode is a code editor built on [VS Code (Code - OSS)](https://github.com/microsoft/vscode) with the [Gemini CLI](https://github.com/google-gemini/gemini-cli) built in as its coding agent. It runs the official `gemini` CLI over the [Agent Client Protocol](https://agentclientprotocol.com), so you get the CLI's agent, sign-in and Gemini Code Assist license inside a full editor.
 
-- **Agents side by side.** Run several agents at once, each in its own tab and folder, optionally on a branch of its own, and try its work in your workspace before you keep it. Fork one to split its work without starting over. Beside each chat, one click opens the agent's changes, browser, terminal and files. Home shows each agent's status, changes and next step.
-- **Chat that asks first.** Every command and edit asks before it runs unless you pick a looser mode, and each change can be kept or undone in the file. Edit and comment on a plan before it is built. Steer an agent while it works or queue your next message, answer a reply with an emoji, and compress long chats.
-- **A terminal per agent.** Run the commands Gemini suggests with one click, in the agent's own terminal, and send a failed command's output straight back to it.
-- **Context.** `@` to mention files, <kbd>Cmd</kbd>+<kbd>L</kbd> to add the selection, and drag in files, images and PDFs from anywhere. A local workspace index lets agents find code in one step.
-- **Projects.** A coordinator splits larger work into threads, each an agent on its own branch, whose work you try in your workspace and keep, or take back.
-- **A browser agents can use.** Agents open your app, click, type and read the console; point at an element to add it to a prompt.
-- **Team tools.** Jira (one site or several), Confluence, GitLab, SonarQube, Snyk and Figma with your own account: start from a ticket, open and fix the merge request, review others' merge requests with Gemini's draft and your own comments, merge when GitLab's checks pass, and publish the Confluence pages agents draft once you've reviewed them.
-- **Its own Gemini CLI.** GeminiCode comes with the Gemini CLI, checks once a day for a newer release and installs it when you click. In Settings you can pin a version or install from your organisation's npm mirror.
+You describe a task, an agent does the work in your repository, and nothing it does lands without you seeing it.
+
+- **Agents side by side.** Each agent has its own tab, chat, files and terminal. Run several at once, give one its own branch so it can't trip over the others, and try its work in your checkout before you keep it. When an agent's work splits in two, fork it and both carry on from the same conversation.
+- **You approve, you review.** Commands and edits ask before they run, unless you choose a looser mode. Every change shows in its file with **Keep** and **Undo**, and **Rewind** takes the chat and the code back to any message. Plans can be edited and commented on before a line of code changes, and so can the reports and other Markdown files an agent writes.
+- **Talk to it while it works.** Steer an agent mid-task, queue the next message, ask a side question without interrupting it, or answer a reply with an emoji.
+- **It finds the code.** A local index of each workspace, the editor's language servers and the documentation you attach let agents go straight to the right code instead of reading file by file. Nothing leaves your Mac.
+- **Projects for bigger work.** A coordinator splits a larger job into threads, each an agent on its own branch, possibly across several repositories. You try each thread's work and keep it, or take it back.
+- **A browser your agents can use.** Agents open your app, click, type and read the console. Point at an element or pin notes on the page to show them what to change.
+- **Your team's tools.** Jira, Confluence, GitLab, SonarQube, Snyk and Figma, with your own account: start from a ticket, open the merge request, fix the pipeline and the review comments, review a teammate's merge request with Gemini, and publish the Confluence pages agents draft once you've reviewed them.
+- **The Gemini CLI included.** GeminiCode ships with the CLI and offers its updates once a day. Your terminal's `gemini` shares its settings, sign-in and saved sessions.
 
 ## Get GeminiCode
 

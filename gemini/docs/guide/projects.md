@@ -1,6 +1,6 @@
 # Projects
 
-A project hands a larger piece of work to a team of agents. You talk to a **coordinator**, which splits the work into **threads**. Each thread is an agent on its own branch, in one or more repositories, and you review and take each thread's work when it's right.
+Some work is too big for one agent: a feature that touches the API, the app and the docs, or a list of fixes that can go in parallel. A project hands that kind of work to a team of agents. You talk to a **coordinator**, which splits the work into **threads**. Each thread is an agent on its own branch, in one or more repositories, and you review and take each thread's work when it's right.
 
 ![A project chat where the coordinator has started a thread per repository, each waiting on an approval](../../site/media/project-chat-dark.webp)
 
@@ -112,8 +112,7 @@ Open the project's settings with the gear in the project chat's side panel, or w
 
 **Memory** holds what every thread and the coordinator read:
 
-- **How the repositories connect**: what each repository owns and where they meet, such as APIs, data models, URLs and release order.
-- **Project instructions**: conventions and anything you'd otherwise repeat.
+- **Project instructions**, for a project with one repository: conventions and anything you'd otherwise repeat. With several repositories the same field is **How the repositories connect**: what each repository owns and where they meet, such as APIs, data models, URLs and release order.
 - **Context files**: Markdown files kept in the project's folder. For each one, choose whether the coordinator, the threads or both read it.
 
 Under **Also read**, the page lists each repository's own rules files, which its threads read as they are, and estimates how many tokens the memory adds to each thread's first request.

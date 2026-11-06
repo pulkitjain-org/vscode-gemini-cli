@@ -1,6 +1,6 @@
 # Getting started
 
-Install GeminiCode, sign in with Google and start your first agent. The Gemini CLI comes with the app, so there is nothing else to install.
+GeminiCode is a code editor with Gemini agents built in. You describe a task, an agent reads your code and does the work, and you approve and review what it changes. This page takes you from the download to your first agent. The Gemini CLI comes with the app, so there is nothing else to install.
 
 ![An agent at work on a task in the Agents layout, with the links to its changes, browser, terminal and files beside the chat](../../site/media/showcase-work-dark.webp "clip")
 
@@ -50,12 +50,10 @@ Read [Agents](agents.md) for the layout, and [Review and safety](review.md) for 
 Run **Gemini: Make It Yours: Theme, Font and Icons** from the Command Palette. It opens a page where you pick:
 
 - **A theme.** GeminiCode's **Dark** or **Light**, or any other installed theme with **More themes...**.
-- **A code font.** JetBrains Mono (the default) and Geist Mono ship with GeminiCode; SF Mono and Menlo come with macOS.
+- **A code font.** JetBrains Mono (the default) and Geist Mono ship with GeminiCode, and Menlo comes with macOS. SF Mono is offered when it is installed on your Mac.
 - **File icons.** GeminiCode's own (the default), Seti, or none.
 
-Each choice applies at once. If the window follows the system's light or dark setting (`window.autoDetectColorScheme`), picking a theme turns that off, so your pick holds.
-
-GeminiCode Dark and Light use soft greys, panels as cards with a hairline border, and menus and pop-ups drawn in the theme rather than the system's. Blue is the accent colour. The Gemini colours mark Gemini's own moments, such as the bar along the chat input while an agent works.
+Each choice applies at once, and the page always shows what is set now. If the window follows the system's light or dark setting (`window.autoDetectColorScheme`), picking a theme turns that off, so your pick holds.
 
 ## Updates
 
