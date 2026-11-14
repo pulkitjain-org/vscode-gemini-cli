@@ -105,7 +105,7 @@ The build also writes:
 
 Every product screenshot can be opened full size, and every clip is described as a `VideoObject`, with its duration read from the MP4 and its date from `clipDates` in `build.mts`. The build stops when a clip has no date there, so add one with each new clip, and change it when a clip is retaken. Docs pages show when their Markdown last changed and list it in `sitemap.xml`, from git, or from GitHub's API in the Pages workflow's one-commit checkout. Pages that may be indexed allow large image previews (`max-image-preview:large`).
 
-Link previews use the 1200 × 630 JPEG crops in `media/og/`, one for the landing page and one per feature page. Remake one with `ffmpeg -i <shot>-light.webp -vf "crop=2000:1050:0:0,scale=1200:630:flags=lanczos" -q:v 3 og/<page>.jpg` when its screenshot is retaken.
+Link previews use the 1200 × 630 JPEG cards in `media/og/`, one for the landing page, one per feature page and one for the release notes: the page's headline in the site's fonts over its light screenshot, kept to the middle square because some apps crop previews that way. `node gemini/site/og.mts [name ...]` remakes them (all when no name is given) with Google Chrome and ffmpeg; the words and the screenshot of each are in its `cards`. Remake a card when its screenshot is retaken. The same script makes `gemini/branding/social-preview.jpg` (its `github` card, 1280 × 640: the mark, the name and the headline on Charcoal, with no screenshot), which is uploaded by hand in the repository's Settings → General → Social preview for links to the repository on GitHub; upload it again whenever it is remade.
 
 ### Screenshots and clips
 

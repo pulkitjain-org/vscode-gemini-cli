@@ -477,16 +477,18 @@ interface PageMeta {
 }
 
 /**
- * The link preview images in `media/og/`, 1200 × 630 JPEG crops of the product shots (JPEG
- * because not every link preview shows WebP), with their alt text.
+ * The link preview images in `media/og/`: 1200 x 630 JPEG cards (JPEG because not every link
+ * preview shows WebP) with the page's headline over a product shot, which og.mts makes. Their
+ * alt text is here.
  */
 const ogImages = {
-	'home.jpg': 'GeminiCode in Agents layout: the agent list, an agent\'s chat and the files it opened beside it',
-	'agents.jpg': 'The Index page, with the workspace indexed and the Vitest docs attached',
-	'chat-and-review.jpg': 'An agent\'s edits in the file, with Keep and Undo above each change',
-	'projects.jpg': 'Finished thread cards in a project chat, with the side panel counting threads and their requests',
-	'browser.jpg': 'A cart page in GeminiCode\'s browser beside the chat, with Add to Gemini',
-	'team-tools.jpg': 'A merge request\'s diff with Gemini\'s review comments on their lines',
+	'home.jpg': 'GeminiCode: Code with Gemini agents. Review every change. Over the app\'s Home page in Agents layout',
+	'agents.jpg': 'GeminiCode Agents: Several agents, side by side. Over the Index page with the workspace indexed',
+	'chat-and-review.jpg': 'GeminiCode Chat and review: Keep or undo every change. Over an agent\'s edits with Keep and Undo',
+	'projects.jpg': 'GeminiCode Projects: Split larger work into threads. Over a project chat with its thread cards',
+	'browser.jpg': 'GeminiCode Browser: A browser your agents can use. Over a cart page in the browser beside the chat',
+	'team-tools.jpg': 'GeminiCode Connected tools: From the ticket to the merge. Over a merge request\'s diff with review comments',
+	'notes.jpg': 'GeminiCode release notes: What\'s new in GeminiCode. Over the app\'s Home page in Agents layout',
 } as const;
 
 /** The pages layout() wrote that belong in sitemap.xml, by path, with when each last changed. */
@@ -1267,6 +1269,7 @@ export function renderNotesPage(latest: LatestRelease, notes: ReleaseNotes | und
 		canonical: own,
 		modified: published,
 		description: `What's new in GeminiCode ${version}${r.releasedLong ? `, released ${r.releasedLong}` : ''}: new features, what changes for you, new commands and shortcuts${r.dmg ? ', and the download' : ''}.`,
+		image: 'notes.jpg',
 		markdown: root ? `${version}.md` : 'notes.md',
 		schema: [
 			{ '@type': 'WebPage', name: `GeminiCode ${version} release notes`, url: `${c.siteUrl}${own}`, isPartOf: website(c), ...published ? { datePublished: published } : {} },
