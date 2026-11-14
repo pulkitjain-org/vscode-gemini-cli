@@ -46,4 +46,4 @@ Nothing at the moment.
 - A merge request review in a checkout without `node_modules` can sit on `npx tsc`; reject commands other than the reviewer's git reads.
 - The Index & Docs page shows documentation sources shared with every folder on the Mac. Don't remove one to tidy a shot.
 
-The link preview images in `media/og/` (1200 × 630 JPEG) are crops of the light shots named in `ogImages` in `build.mts`. Remake one when its shot is retaken; [RELEASING.md](../docs/RELEASING.md#search-engines-link-previews-and-ai-tools) has the command.
+The link preview images in `media/og/` (1200 × 630 JPEG) are cards made by `og.mts` from the light shots it names. Remake one when its shot is retaken; [RELEASING.md](../docs/RELEASING.md#search-engines-link-previews-and-ai-tools) has the command.
