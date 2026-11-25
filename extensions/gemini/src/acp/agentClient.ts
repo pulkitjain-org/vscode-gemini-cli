@@ -6,7 +6,8 @@
 import { promises as fs } from 'node:fs';
 import type * as acp from '@agentclientprotocol/sdk';
 import type { AgentConnection } from './agentConnection';
-import { AgentError, AgentErrorInfo, classifyAgentError, errorMessage, isConnectionClosed } from './errors';
+import { compareVersions } from './cliResolution';
+import { AgentError, AgentErrorInfo, classifyAgentError, errorMessage, isConnectionClosed, parseAcpRetry } from './errors';
 import { FileAccessDeniedError } from './fileAccess';
 import { isAllowed, protectedWriteRequest } from './permissions';
 import { decidesWhatRuns } from './sessionApprovals';
@@ -83,6 +84,15 @@ type OpenOutcome = { readonly opened: true } | { readonly opened: false; readonl
  * themselves with message text such as `[MODE_UPDATE] autoEdit`, not with
  * `current_mode_update`. Several can arrive in one chunk.
  */
+/**
+ * Whether the CLI answers `session/load` only once it has sent the session's whole replay, which gemini-cli
+ * does from 0.68 (`await session.streamHistory`). Before that the replay trailed the answer, and its end is
+ * told from its length or a quiet spell (replayTracker.ts); the same for an agent that gives no version.
+ */
+export function answersLoadAfterReplay(version: string | undefined): boolean {
+	return !!version && /^\d+\.\d+\.\d+/.test(version) && compareVersions(version, '0.68.0') >= 0;
+}
+
 const modeUpdateText = /^(?:\[MODE_UPDATE\] [\w-]+)+$/;
 
 /** Updates the CLI sends when it replays a saved session's history. */
@@ -230,6 +240,8 @@ export class AgentClient {
 	private failedAt = 0;
 	private retrying: Promise<void> | undefined;
 	private readonly retryListener: { dispose(): void };
+	/** The CLI sent this session a retry notice of its own (`parseAcpRetry`). */
+	private toldOfRetries = false;
 
 	constructor(private readonly runtime: AgentRuntime, private readonly options: AgentClientOptions) {
 		this.resumeSessionId = options.resumeSessionId;
@@ -237,7 +249,8 @@ export class AgentClient {
 		this.runtimeListener = runtime.onDidChangeState(state => this.onRuntimeState(state));
 		this.stallWatch = new StallWatch(options.stallAfterMs ?? defaultStallAfterMs, () => this.turns > 0);
 		this.onDidChangeStall = this.stallWatch.onDidChange;
-		this.retryListener = runtime.onDidRetry(retry => this.stallWatch.retry(retry));
+		// The debug log's retries are the whole process's; a CLI that tells each session of its own (0.69 on) is believed instead.
+		this.retryListener = runtime.onDidRetry(retry => !this.toldOfRetries && this.stallWatch.retry(retry));
 		this.onRuntimeState(runtime.state);
 	}
 
@@ -674,6 +687,10 @@ export class AgentClient {
 				onDidWriteFile: filePath => this.options.onDidWriteFile?.(filePath),
 				beforeWrite: (filePath, content) => this.confirmProtectedWrite(session.sessionId, filePath, content),
 			});
+			if (replayUpdates !== null && answersLoadAfterReplay(agent.agentInfo?.version)) {
+				// The whole replay came before the answer to session/load, so registering just handed all of it over: it is over, with no wait.
+				this.replay.end();
+			}
 			this.resumeSessionId = savedSessionId;
 			// Model and mode together rather than one after the other: they are independent, and each is a round trip before the chat is ready.
 			const opened = withModelList(filterModes(readSessionSettings(session), this.options.isModeAllowed), this.options.modelList);
@@ -760,6 +777,15 @@ export class AgentClient {
 		if (this.replay.active && replayKinds.has(update.sessionUpdate)) {
 			this.onReplayed(update);
 			return;
+		}
+		if (update.sessionUpdate === 'agent_thought_chunk' && update.content.type === 'text') {
+			// The CLI's notice that it calls the API again is a status, not the model's thinking, and no sign of progress.
+			const retry = parseAcpRetry(update.content.text, update._meta);
+			if (retry) {
+				this.toldOfRetries = true;
+				this.stallWatch.retry(retry, true);
+				return;
+			}
 		}
 		if (this.turns > 0) {
 			this.stallWatch.noteActivity();
@@ -996,7 +1022,8 @@ export class AgentClient {
 
 /** `servers` without those over a transport the agent does not advertise (ACP `mcpCapabilities`); every agent takes stdio. */
 export function supportedMcpServers(agent: acp.InitializeResponse | undefined, servers: readonly acp.McpServer[]): acp.McpServer[] {
-	const transports = agent?.agentCapabilities?.mcpCapabilities;
+	// By name: the SDK's stable type lists http and sse, and a transport it does not know yet is one the agent has to say it takes.
+	const transports: Readonly<Record<string, unknown>> | undefined = agent?.agentCapabilities?.mcpCapabilities;
 	return servers.filter(server => {
 		// Only stdio servers come without a `type`.
 		const type = (server as { readonly type?: 'http' | 'sse' | 'acp' }).type;

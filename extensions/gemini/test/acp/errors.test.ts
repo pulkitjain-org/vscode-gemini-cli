@@ -6,7 +6,7 @@
 import { readFileSync } from 'node:fs';
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { AgentError, classifyAgentError, classifyTurnError, isConnectionClosed, isContextOverflow, isModelTurnRefusal, parseCliRetry, stripApiWrapper } from '../../src/acp/errors';
+import { AgentError, classifyAgentError, classifyTurnError, isConnectionClosed, isContextOverflow, isModelTurnRefusal, parseAcpRetry, parseCliRetry, stripApiWrapper } from '../../src/acp/errors';
 
 interface Fixture { kind: string; code?: number; message: string; details?: string }
 const fixtures: Record<string, Fixture[] | string> = JSON.parse(readFileSync(path.join(import.meta.dirname, '..', 'fixtures', 'agentErrors.json'), 'utf8'));
@@ -106,6 +106,24 @@ describe('classifyTurnError', () => {
 			classifyTurnError(rpc(500, 'Something else went wrong')),
 			classifyTurnError(new Error('The agent cannot take images, so there was nothing to send.')),
 		].map(info => info.kind)).toEqual(['network', 'auth-expired', 'auth-expired', 'server', 'server', 'agent-restarted', 'timeout', 'unknown', 'unknown']);
+	});
+});
+
+describe('parseAcpRetry', () => {
+	it('reads the retries gemini-cli 0.69 and later send as thoughts, and leaves the model\'s own thoughts alone', () => {
+		expect([
+			parseAcpRetry('[Retry 2/10] Request failed with status 503. Retrying in 4s...', undefined),
+			parseAcpRetry('[Retry 1/3] Request failed. Retrying in 1s...', null),
+			parseAcpRetry('_[Stream interrupted. Retrying response...]_', { retry: true }),
+			parseAcpRetry('**Planning**\nRetrying in my head: [Retry 2/10]', undefined),
+			parseAcpRetry('I will retry the test.', {}),
+		]).toEqual([
+			{ attempt: 2, limit: 10, delaySec: 4, status: 503 },
+			{ attempt: 1, limit: 3, delaySec: 1 },
+			{ attempt: 1 },
+			undefined,
+			undefined,
+		]);
 	});
 });
 

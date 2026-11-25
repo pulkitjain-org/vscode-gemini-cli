@@ -61,7 +61,7 @@ An agent's browser page can fetch from any site its policy allows; the platform'
 
 ### Sessions are never closed
 
-gemini-cli 0.67.0 offers no `session/close`, so a long-lived agent process keeps every session it opened, a few MB each. That includes Enhance prompt's fallback sessions and hidden command sessions. GeminiCode closes sessions as soon as a CLI advertises `sessionCapabilities.close`. Until a CLI does, a process holding eight or more sessions that has served no prompt for half an hour is restarted (`agentService.ts`, `recycleIfIdle`); its chats reopen their sessions by id on their next prompt, and the status bar's menu shows the count and the last such restart.
+gemini-cli 0.71.1 offers no `session/close`, so a long-lived agent process keeps every session it opened, a few MB each. That includes Enhance prompt's fallback sessions and hidden command sessions. GeminiCode closes sessions as soon as a CLI advertises `sessionCapabilities.close`. Until a CLI does, a process holding eight or more sessions that has served no prompt for half an hour is restarted (`agentService.ts`, `recycleIfIdle`); its chats reopen their sessions by id on their next prompt, and the status bar's menu shows the count and the last such restart.
 
 ### Stopping one shell command
 

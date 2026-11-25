@@ -7,7 +7,7 @@ import type * as acp from '@agentclientprotocol/sdk';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { AgentClient, AgentClientOptions, AgentClientState, supportedMcpServers, TurnStall, WaitAbortedError } from '../../src/acp/agentClient';
+import { AgentClient, AgentClientOptions, AgentClientState, answersLoadAfterReplay, supportedMcpServers, TurnStall, WaitAbortedError } from '../../src/acp/agentClient';
 import { AgentRuntime, AgentRuntimeOptions, FileSystemHandlers } from '../../src/acp/agentRuntime';
 import { AgentError, classifyTurnError } from '../../src/acp/errors';
 import { ClientFileSystem, createFileHandlers } from '../../src/acp/fileAccess';
@@ -327,6 +327,25 @@ describe('AgentClient', () => {
 			await client.prompt('slow');
 			expect(stalls.map(stall => stall && { retry: stall.retry })).toEqual([{ retry: undefined }, { retry: { attempt: 2, status: 503 } }, undefined]);
 			expect(client.stall).toBeUndefined();
+		});
+
+		it('shows a retry the CLI sends as a thought as the turn\'s status, not as thinking', async () => {
+			const thought = (value: string, meta?: Record<string, unknown>) => ({ step: 'update' as const, update: { sessionUpdate: 'agent_thought_chunk' as const, content: { type: 'text' as const, text: value }, ...meta ? { _meta: meta } : {} } });
+			const { client, settled } = start({ turns: [[thought('[Retry 1/10] Request failed with status 503. Retrying in 2s...'), thought('Looking at the cart.'), text('answer')]] });
+			await settled;
+			const stalls: (TurnStall | undefined)[] = [];
+			const seen: string[] = [];
+			client.onDidChangeStall(stall => stalls.push(stall));
+			client.onDidReceiveEvent(event => event.kind === 'text' && seen.push(`${event.role}:${event.text}`));
+			await client.prompt('go');
+			expect({ stalls: stalls.map(stall => stall?.retry), seen }).toEqual({
+				stalls: [{ attempt: 1, limit: 10, delaySec: 2, status: 503 }, undefined],
+				seen: ['thought:Looking at the cart.', 'agent:answer'],
+			});
+		});
+
+		it('takes a replay as over with the answer to session/load only for a CLI that sends it first', () => {
+			expect(['0.71.1', '0.68.0', '0.72.0-preview.0', '0.67.0', '0.0.0', 'nightly', undefined].map(answersLoadAfterReplay)).toEqual([true, true, true, false, false, false, false]);
 		});
 
 		it('does not count a running tool or a question for the user as a stall', async () => {

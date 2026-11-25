@@ -79,6 +79,22 @@ describe('ChatTranscript', () => {
 		expect(summary(transcript.items)).toEqual(['user:hi', 'thought:let me think', 'agent:Hello']);
 	});
 
+	it('drops the reply that was cut off when the CLI sends it again from the start, and keeps the steps before it', () => {
+		const transcript = new ChatTranscript();
+		const adapter = new SessionUpdateAdapter();
+		transcript.addPrompt('hi');
+		for (const update of [
+			{ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Reading the file.' } },
+			{ sessionUpdate: 'tool_call', toolCallId: 't1', title: 'Read cart.ts', status: 'completed' },
+			{ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'The total is rou' } },
+			{ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'The total ' }, _meta: { retry: true, reset: true } },
+			{ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'is rounded down.' } },
+		] as const) {
+			transcript.apply(adapter.adapt(update));
+		}
+		expect(summary(transcript.items)).toEqual(['user:hi', 'agent:Reading the file.', 'tool:Read cart.ts:completed', 'agent:The total is rounded down.']);
+	});
+
 	it('cuts the conversation at a prompt for Rewind, and numbers new items after the old ones', () => {
 		const transcript = new ChatTranscript();
 		transcript.addPrompt('one');

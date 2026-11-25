@@ -117,8 +117,10 @@ export function turnErrorNotice(error: TurnErrorInfo, now = Date.now()): TurnErr
 /** What the chat says about a stalled turn (see `AgentClient.stall`), with Stop and Show Log as its ways out. */
 export function stallNotice(stall: TurnStall, now = Date.now()): { readonly text: string; readonly actions: readonly TurnAction[] } {
 	const seconds = Math.max(0, Math.round((now - stall.since) / 1000));
-	const text = stall.retry
-		? vscode.l10n.t("No response from Gemini for {0} s. Gemini is retrying after a server error (attempt {1}).", seconds, stall.retry.attempt)
-		: vscode.l10n.t("No response from Gemini for {0} s. It may be retrying a busy server.", seconds);
+	const retry = stall.retry;
+	// A retry the CLI told of itself carries its own numbers; one read from its debug log only the attempt.
+	const text = retry?.limit && retry.delaySec ? vscode.l10n.t("Gemini is retrying its request (attempt {0} of {1}, the next in {2} s).", retry.attempt, retry.limit, retry.delaySec)
+		: retry ? vscode.l10n.t("No response from Gemini for {0} s. Gemini is retrying after a server error (attempt {1}).", seconds, retry.attempt)
+			: vscode.l10n.t("No response from Gemini for {0} s. It may be retrying a busy server.", seconds);
 	return { text, actions: ['stop', 'showLog'] };
 }

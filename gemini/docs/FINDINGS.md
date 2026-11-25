@@ -5,7 +5,7 @@ This page records what GeminiCode's design relies on about the Gemini CLI, and w
 Every entry is one of two kinds:
 
 - **Measured.** Taken on 18 Oct 2026 on an Apple M3 Pro Mac (12 cores, 36 GB, macOS 26.7) with gemini-cli 0.64.0, unless the section gives another date. GeminiCode bundles 0.67.0 since 5 Nov 2026; the real-CLI tests pass against it, and the measurements were not taken again, since nothing in the 0.65, 0.66 and 0.67 release notes touches the paths they time. *Real account* means a Google sign-in with a Gemini Code Assist license, billed to a Google Cloud project, over the network. *Stand-in* means a local fake of the Gemini API that answers each model call after a fixed delay, with an API key and no network; it measures everything except the model and the sign-in. Each table names the script in `extensions/gemini/scripts/` that takes it again.
-- **Read from the CLI.** Behaviour read from the 0.64.0 bundle and checked again in the 0.66.0 bundle on 29 Oct 2026 and the 0.67.0 bundle (`extensions/gemini/cli/0.67.0/bundle/`) on 5 Nov 2026. Where a real-CLI test (`extensions/gemini/test/acp/real*.test.ts`) checks it, the test is named. All of those tests pass against 0.67.0.
+- **Read from the CLI.** Behaviour read from the 0.64.0 bundle and checked again in the 0.66.0 bundle on 29 Oct 2026 and the 0.67.0 bundle on 5 Nov 2026. On 25 Nov 2026 the bundled CLI moved to 0.71.1 (`extensions/gemini/cli/0.71.1/bundle/`): the contract check (`checkCliContract`) holds, the agent implements and advertises the same ACP methods and capabilities, and what changed is said where it applies. Where a real-CLI test (`extensions/gemini/test/acp/real*.test.ts`) checks it, the test is named. All of those tests pass against 0.71.1.
 
 Re-check both kinds when GeminiCode moves to a new CLI version.
 
@@ -171,10 +171,10 @@ The CLI registers two folders for one directory reached through a link: its proc
 
 ### The replay
 
-- The CLI replays the history as `session/update` notifications without waiting for them, so some arrive after the answer. The answer carries the modes and models but not the session id.
+- Up to 0.67 the CLI replays the history as `session/update` notifications without waiting for them, so some arrive after the answer. From 0.68 it awaits the replay (`await session.streamHistory`) before it answers `session/load`, so every replayed update comes first: GeminiCode then ends the replay as soon as the session registers, with no count and no wait (`answersLoadAfterReplay` in `agentClient.ts`). The answer carries the modes and models but not the session id.
 - Each saved message becomes text through the CLI's verbose converter, so thoughts, tool calls and tool results come through as markers: `[Thought: true]`, `[Function Call: replace]`, and tool results (which the CLI saves as user messages) as user messages such as `[Function Response: run_shell_command]`. A pasted image is `[Image: image/png, 45.2 KB]`.
 - It sends one update per user message with any text or part. Per model message it sends one per thought, one for its text or parts, and one per tool call.
-- GeminiCode works the count out from the session file (`replayUpdateCount`) and holds a prompt until the counted replay is over. Until the count is known, 250 ms with no update ends the replay; once it is known, 3 s does, in case the count is off (`replayTracker.ts`). It keeps replayed updates apart from the new turn and strips the markers wherever the replay is shown.
+- For a CLI before 0.68, GeminiCode works the count out from the session file (`replayUpdateCount`) and holds a prompt until the counted replay is over. Until the count is known, 250 ms with no update ends the replay; once it is known, 3 s does, in case the count is off (`replayTracker.ts`). It keeps replayed updates apart from the new turn and strips the markers wherever the replay is shown.
 - Tool calls replay with title, kind, locations, diffs and text only, so a client cannot rebuild its own view from the replay. GeminiCode keeps its own copy of each conversation for display and uses `session/load` only so the agent remembers it.
 
 ### The chat file

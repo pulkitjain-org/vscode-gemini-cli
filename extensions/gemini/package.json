@@ -1472,7 +1472,9 @@
             "type": "string",
             "default": "",
             "scope": "machine",
-            "tags": ["advanced"],
+            "tags": [
+              "advanced"
+            ],
             "markdownDescription": "%configuration.cliPath%"
           },
           "gemini.cli.version": {
@@ -1480,7 +1482,9 @@
             "default": "",
             "scope": "machine",
             "pattern": "^$|^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?$",
-            "tags": ["advanced"],
+            "tags": [
+              "advanced"
+            ],
             "markdownDescription": "%configuration.cli.version%"
           },
           "gemini.cli.checkForUpdates": {
@@ -1505,14 +1509,18 @@
             "type": "boolean",
             "default": true,
             "scope": "machine",
-            "tags": ["advanced"],
+            "tags": [
+              "advanced"
+            ],
             "markdownDescription": "%configuration.agents.startEarly%"
           },
           "gemini.cli.registry": {
             "type": "string",
             "default": "",
             "scope": "machine",
-            "tags": ["advanced"],
+            "tags": [
+              "advanced"
+            ],
             "markdownDescription": "%configuration.cli.registry%"
           },
           "gemini.agent.startEarly": {
@@ -1581,14 +1589,18 @@
             "minimum": 1,
             "maximum": 20,
             "scope": "machine",
-            "tags": ["advanced"],
+            "tags": [
+              "advanced"
+            ],
             "markdownDescription": "%configuration.projects.maxRunningThreads%"
           },
           "gemini.debugMode.enabled": {
             "type": "boolean",
             "default": false,
             "scope": "application",
-            "tags": ["advanced"],
+            "tags": [
+              "advanced"
+            ],
             "markdownDescription": "%configuration.debugMode.enabled%"
           },
           "gemini.notifications": {
@@ -2038,11 +2050,11 @@
     "test": "vitest run"
   },
   "bundledCli": {
-    "version": "0.67.0",
-    "integrity": "sha512-lDJfCcYem6/6QZdwZFiGfOu1ZxJJ+j4wsr4HlmcYBfqUHTDXLKDv1MPUXYL2Ok1ygdfMve0F5KrW/ORNZRSHIg=="
+    "version": "0.71.1",
+    "integrity": "sha512-FYDTjU+9BFPYKBcFS3vCjJol8pFyV0iHVigUNr2wZqk4vYNFgacGB5ubyrySFGM5jWxCK+1EFdcDJiEQjNomaw=="
   },
   "dependencies": {
-    "@agentclientprotocol/sdk": "1.9.0",
+    "@agentclientprotocol/sdk": "2.7.0",
     "jsonc-parser": "3.3.1",
     "zod": "^4.6.7"
   },

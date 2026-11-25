@@ -285,6 +285,25 @@ export interface CliRetry {
 	readonly attempt: number;
 	/** The HTTP status it failed with, when the line names one. */
 	readonly status?: number;
+	/** How many attempts the CLI makes in all, when it says. */
+	readonly limit?: number;
+	/** How long the CLI waits before the next attempt, in seconds, when it says. */
+	readonly delaySec?: number;
+}
+
+/**
+ * Reads a retry from a thought the CLI sends over ACP, which gemini-cli does
+ * from 0.69: `[Retry 2/10] <error>. Retrying in 4s...` while it waits to call
+ * the API again, and a thought marked `_meta.retry` when a reply's stream broke
+ * off and is asked for again. Undefined for a thought that is the model's own.
+ */
+export function parseAcpRetry(text: string, meta: unknown): CliRetry | undefined {
+	const match = /^\[Retry (?<attempt>\d+)\/(?<limit>\d+)\] (?<error>[\s\S]*)\. Retrying in (?<delay>\d+)s\.\.\.$/.exec(text.trim());
+	if (match?.groups) {
+		const status = /\b(429|5\d\d)\b/.exec(match.groups.error)?.[1];
+		return { attempt: Number(match.groups.attempt), limit: Number(match.groups.limit), delaySec: Number(match.groups.delay), ...(status ? { status: Number(status) } : {}) };
+	}
+	return (meta as { readonly retry?: unknown } | null | undefined)?.retry === true ? { attempt: 1 } : undefined;
 }
 
 /**

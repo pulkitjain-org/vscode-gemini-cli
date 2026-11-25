@@ -95,14 +95,18 @@ export class StallWatch {
 		this.noteActivity();
 	}
 
-	/** The CLI retried its model call: shown with the stall, since the model is what is slow. */
-	retry(retry: CliRetry): void {
+	/**
+	 * The CLI retried its model call: shown with the stall, since the model is
+	 * what is slow. With `show`, for a retry the CLI told this session of itself,
+	 * the turn counts as stalled from now: the user sees why nothing comes.
+	 */
+	retry(retry: CliRetry, show = false): void {
 		if (!this.running()) {
 			return;
 		}
 		this.lastRetry = retry;
-		if (this._stall) {
-			this.set({ ...this._stall, retry });
+		if (this._stall || show) {
+			this.set({ since: this._stall?.since ?? this.lastUpdateAt, retry });
 		}
 	}
 
