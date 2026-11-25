@@ -21,7 +21,7 @@ export interface ToolCallModel {
 }
 
 export type ChatEvent =
-	| { readonly kind: 'text'; readonly role: 'agent' | 'user' | 'thought'; readonly text: string; readonly messageId?: string | null }
+	| { readonly kind: 'text'; readonly role: 'agent' | 'user' | 'thought'; readonly text: string; readonly messageId?: string | null; /** The reply starts over: what came of it since the last step was cut off and is sent again (gemini-cli 0.69 on, `_meta.reset`). */ readonly reset?: true }
 	/** A tool call was created or changed; `call` is the merged current state. */
 	| { readonly kind: 'toolCall'; readonly call: ToolCallModel }
 	| { readonly kind: 'plan'; readonly entries: readonly acp.PlanEntry[] }
@@ -79,7 +79,7 @@ export class SessionUpdateAdapter {
 	adapt(update: acp.SessionUpdate): ChatEvent {
 		switch (update.sessionUpdate) {
 			case 'agent_message_chunk':
-				return { kind: 'text', role: 'agent', text: contentBlockToText(update.content), messageId: update.messageId };
+				return { kind: 'text', role: 'agent', text: contentBlockToText(update.content), messageId: update.messageId, ...(update._meta as { readonly reset?: unknown } | null | undefined)?.reset === true ? { reset: true as const } : {} };
 			case 'user_message_chunk':
 				return { kind: 'text', role: 'user', text: contentBlockToText(update.content), messageId: update.messageId };
 			case 'agent_thought_chunk':

@@ -354,6 +354,9 @@ export class ChatTranscript {
 		}
 		switch (event.kind) {
 			case 'text':
+				if (event.reset) {
+					this.dropPartialReply();
+				}
 				this.appendText(event.role, event.text, event.messageId);
 				break;
 			case 'toolCall': {
@@ -664,6 +667,28 @@ export class ChatTranscript {
 		this.breakText = false;
 		if (messageId) {
 			this.lastMessageId = messageId;
+		}
+	}
+
+	/**
+	 * The reply's stream broke off and the CLI sends it again from its start:
+	 * the reply text since the turn's last step goes, so the two don't run
+	 * together. Thoughts stay; the reply that follows fills the emptied item
+	 * when it is still the last.
+	 */
+	private dropPartialReply(): void {
+		this.held = '';
+		if (this.reactionHeld !== undefined) {
+			this.reactionHeld = '';
+		}
+		for (let i = this._items.length - 1; i >= this.turnStart; i--) {
+			const item = this._items[i];
+			if (item.kind !== 'agent' && item.kind !== 'thought') {
+				break;
+			}
+			if (item.kind === 'agent' && item.text) {
+				this.upsert({ ...item, text: '' });
+			}
 		}
 	}
 

@@ -70,4 +70,14 @@ describe('StallWatch', () => {
 		expect(stalls).toHaveLength(2);
 		w.dispose();
 	});
+
+	it('shows a retry the CLI told the session of at once, until something comes again', () => {
+		const { watch: w, stalls } = watch();
+		w.begin();
+		w.retry({ attempt: 1, limit: 10, delaySec: 2 }, true);
+		w.retry({ attempt: 2, limit: 10, delaySec: 4 }, true);
+		w.noteActivity();
+		expect(stalls).toEqual([{ since: 0, retry: { attempt: 1, limit: 10, delaySec: 2 } }, { since: 0, retry: { attempt: 2, limit: 10, delaySec: 4 } }, undefined]);
+		w.dispose();
+	});
 });

@@ -123,7 +123,8 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	'dist/extension.js': 1_000_000,
 	// The agent's connection with the ACP SDK and zod (English messages only), and the benchmark's own ACP client,
 	// about 254 KB (src/connection.ts), loaded when the first agent process starts, seconds after activation.
-	'dist/connection.js': 270_000,
+	// ACP SDK 2.7.0 took it to about 154 KB.
+	'dist/connection.js': 170_000,
 	// Project Helpers and Connections, about 96 KB, loaded the first time one is opened (src/pages.ts): their own code
 	// and their copy of jsonc-parser (about 17 KB), which edits the Gemini CLI's settings files keeping their comments.
 	// Project Helpers' Storage section, with the storage measuring and Clean Up's list, is about 9 KB of it.

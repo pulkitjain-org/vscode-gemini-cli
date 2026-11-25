@@ -66,6 +66,12 @@ describe('buildToolPolicy', () => {
 		expect({ reads: reads.filter(refused), plain: plain.filter(refused) }).toEqual({ reads, plain: [] });
 	});
 
+	it('writes no rule the CLI\'s RE2 would refuse: one it cannot compile is skipped without a word (gemini-cli 0.70 on)', () => {
+		const regexes = [...(buildToolPolicy({ ...allowAll, denyEnvironmentCommands: true }) ?? '').matchAll(/^commandRegex = '(?<regex>.*)'$/gm)].map(match => match.groups!.regex);
+		// Lookahead, lookbehind, backreferences, atomic groups and possessive quantifiers are not RE2's.
+		expect({ rules: regexes.length, refused: regexes.filter(regex => /\(\?(?:[=!]|<[=!]|>)|\\[1-9]|\\k<|[*+?}]\+/.test(regex)) }).toEqual({ rules: 4, refused: [] });
+	});
+
 	it('never suggests printing a variable instead', async () => {
 		expect(buildToolPolicy({ ...allowAll, denyEnvironmentCommands: true })).not.toContain('echo');
 	});

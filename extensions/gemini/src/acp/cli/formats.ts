@@ -9,7 +9,8 @@
 // `checkCliContract` (contract.ts) checks a CLI's bundle still has each of
 // them. `npm run bundle-cli` refuses a CLI that fails the check, and
 // test/acp/realCliContract.test.ts runs it against the real CLI.
-// Read from gemini-cli 0.64.0.
+// Read from gemini-cli 0.64.0, and checked against each release bundled since, 0.71.1 the latest:
+// `npm run bundle-cli` passed the check for it, and the real-CLI tests read the same files.
 
 import * as os from 'node:os';
 import * as path from 'node:path';
