@@ -5,7 +5,8 @@ tsconfig*.json
 out/**
 esbuild*.mts
 vitest.config.mts
-package-lock.json
+pnpm-lock.yaml
+pnpm-workspace.yaml
 webview-src/**
 scripts/**
 knip.json

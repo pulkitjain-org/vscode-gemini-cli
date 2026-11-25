@@ -6,7 +6,7 @@
 #   gemini/scripts/bump-cli.sh <version>
 #
 # The checksum must match the tarball, as the release build will check, so the
-# CLI is bundled once here (`npm run bundle-cli`) before the commit.
+# CLI is bundled once here (`pnpm run bundle-cli`) before the commit.
 set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
@@ -23,7 +23,7 @@ CLI=$version INTEGRITY=$integrity node -e '
 	pkg.bundledCli = { version: process.env.CLI, integrity: process.env.INTEGRITY };
 	fs.writeFileSync(file, JSON.stringify(pkg, null, 2) + "\n");
 '
-npm ci --ignore-scripts --prefix extensions/gemini
-npm run bundle-cli --prefix extensions/gemini
+pnpm -C extensions/gemini install --frozen-lockfile --ignore-scripts
+pnpm -C extensions/gemini run bundle-cli
 git add extensions/gemini/package.json
 git commit -q -m "Bump the bundled Gemini CLI to $version"

@@ -1,6 +1,6 @@
 .agents/skills/geminicode-real-app/SKILL.md
 .claude/CLAUDE.md
-build/lib/test/nodeCompileCache.test.ts
+build/lib/test/geminiNodeCompileCacheTag.test.ts
 extensions/markdown-language-features/markdown-editor-src/geminiComments.css
 extensions/markdown-language-features/markdown-editor-src/geminiDollarProse.ts
 extensions/markdown-language-features/markdown-editor-src/geminiDollarText.ts

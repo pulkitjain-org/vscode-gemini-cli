@@ -7,7 +7,7 @@ import { SequencerByKey } from '../../../../../../../base/common/async.js';
 import { IStringDictionary } from '../../../../../../../base/common/collections.js';
 import { formatTokenCount } from '../../../../../../../base/common/numbers.js';
 import { localize } from '../../../../../../../nls.js';
-import { getModelContextWindowTotal, ILanguageModelChatMetadataAndIdentifier, ILanguageModelConfigurationSchema, type IModelConfigurationAccess } from '../../../../common/languageModels.js';
+import { getModelContextWindowTotal, ILanguageModelChatMetadata, ILanguageModelChatMetadataAndIdentifier, ILanguageModelConfigurationSchema, type IModelConfigurationAccess } from '../../../../common/languageModels.js';
 import { isAutoModel, isHydraFusionModel } from './modelPickerPresentation.js';
 import { isDisabledEnumValue } from '../chatModelConfigurationLogic.js';
 
@@ -123,6 +123,33 @@ export function getModelConfigProperty(
 	return undefined;
 }
 
+/**
+ * Presents inline chat's scope, where Copilot Fusion offers no effort level: the host runs it at its fast
+ * tier there (see {@link ILanguageModelChatMetadata.autoModelFusionInlineChatTier}), or at the runtime's
+ * default when the provider does not accept that tier. Only the picker's view of the schema changes:
+ * values still read, write, and persist through `configurationAccess` unchanged.
+ */
+export function withoutFusionEffortLevel(
+	configurationAccess: IModelConfigurationAccess,
+	lookupModel: (modelId: string) => ILanguageModelChatMetadata | undefined,
+): IModelConfigurationAccess {
+	return {
+		getModelConfiguration: modelId => configurationAccess.getModelConfiguration(modelId),
+		getModelConfigurationSchema: modelId => {
+			const metadata = lookupModel(modelId);
+			const schema = configurationAccess.getModelConfigurationSchema?.(modelId) ?? metadata?.configurationSchema;
+			if (!metadata?.autoModelFusion || !schema?.properties) {
+				return schema;
+			}
+			return { ...schema, properties: Object.fromEntries(Object.entries(schema.properties).filter(([, property]) => property.group !== MODEL_CONFIG_GROUP_EFFORT)) };
+		},
+		setModelConfiguration: (modelId, values) => configurationAccess.setModelConfiguration(modelId, values),
+		presentModelConfiguration: configurationAccess.presentModelConfiguration && ((modelId, values) => configurationAccess.presentModelConfiguration?.(modelId, values)),
+		getModelConfigurationActions: modelId => configurationAccess.getModelConfigurationActions(modelId),
+		onDidChange: configurationAccess.onDidChange,
+	};
+}
+
 /** Counts the legacy `fast` tier, which still shows as Automatic beside Efficiency. */
 function isOfferedAutoTier(schema: IModelConfigPropertySchema, value: unknown): boolean {
 	return (!!schema.enum?.includes(value) && !isDisabledEnumValue(value, schema)) || (value === 'fast' && !!schema.enum?.includes('efficiency'));
@@ -195,7 +222,7 @@ export function getModelConfigDisplayValues(
 			const total = getModelContextWindowTotal(model.metadata);
 			if (Number.isFinite(total) && total > 0) {
 				const label = formatTokenCount(total);
-				values.push({ group, label: localize('chat.modelPicker.maxContextValue', "Max {0}", label), description: localize('chat.modelPicker.maxContext', "Max context: {0}", label) });
+				values.push({ group, label, description: localize('chat.modelPicker.configValue', "{0}: {1}", localize('chat.context.header', "Context"), label) });
 			}
 		}
 	}

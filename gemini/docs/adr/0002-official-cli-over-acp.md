@@ -25,8 +25,8 @@ Sign-in, the Gemini Code Assist licence and billing by project ID live in the CL
 
 In ACP mode the CLI hands a tool's whole output to the model, skipping the 40,000-character cap its scheduler applies elsewhere. One large `git diff` could take an agent past the model's 1,048,576-token limit, after which every turn failed on the same history. A client cannot fix that, so `cliPatches.ts` puts the cap back on the ACP path. It is the only change to the CLI's code:
 
-- It is applied to the bundled copy (`npm run bundle-cli`), to each copy GeminiCode installs, and at launch to older installs.
-- `npm run bundle-cli` fails when the patch does not match the CLI, so an uncapped CLI is never shipped.
+- It is applied to the bundled copy (`pnpm run bundle-cli`), to each copy GeminiCode installs, and at launch to older installs.
+- `pnpm run bundle-cli` fails when the patch does not match the CLI, so an uncapped CLI is never shipped.
 - A CLI the user picks (`gemini.cliPath`, `PATH`) is never patched.
 
 The npm CLI ships no ripgrep, so `grep_search` falls back to the slower `git grep`. `cliRipgrep.ts` copies the app's ripgrep into `bundle/vendor/ripgrep/` of the bundled and installed copies, where the CLI looks for its own. No CLI file changes.

@@ -20,8 +20,8 @@
 # series too; a binary that upstream also changed has to be redone by hand.
 # The fork runs only its own workflows (gemini-*.yml): upstream's workflows and
 # Dependabot config are removed, `apply` and `prune` remove them again, and
-# `check` fails while any is there. Their helper scripts stay, since the Gemini
-# workflows use some (node_modules_cache).
+# `check` fails while any is there. Upstream's composite actions stay, since the
+# Gemini workflows use some (setup-pnpm, setup-electron).
 set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
@@ -176,14 +176,27 @@ case "${1:-}" in
 				failed+=("$(basename "$p")")
 			fi
 		done
-		# Files the fork adds beside upstream's come over as they are.
+		# Files the fork adds beside upstream's come over as they are, unless upstream has
+		# added a file at the same path since: the fork's copy would replace it without a word.
+		shadowed=()
 		while read -r file; do
-			[[ -n "$file" ]] && git checkout "$from" -- "$file"
+			[[ -z "$file" ]] && continue
+			if git cat-file -e "$tag:$file" 2>/dev/null; then
+				shadowed+=("$file")
+			else
+				git checkout "$from" -- "$file"
+			fi
 		done < "$patches/ADDED"
 		prune_automation
+		if [[ ${#shadowed[@]} -gt 0 ]]; then
+			echo "$tag has its own file at ${#shadowed[@]} paths the fork added, and upstream's was kept. Move what the fork still needs to a file named gemini*, and take the path out of $patches/ADDED:" >&2
+			printf '  %s\n' "${shadowed[@]}" >&2
+		fi
 		if [[ ${#failed[@]} -gt 0 ]]; then
 			echo "Applied the series to $tag with ${#failed[@]} patches to resolve by hand (conflict markers are in the files):" >&2
 			printf '  %s\n' "${failed[@]}" >&2
+		fi
+		if [[ ${#failed[@]} -gt 0 || ${#shadowed[@]} -gt 0 ]]; then
 			exit 1
 		fi
 		echo "Applied the series to $tag cleanly."

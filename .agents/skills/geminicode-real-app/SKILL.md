@@ -5,14 +5,14 @@ description: "Test a change to extensions/gemini in the installed GeminiCode.app
 
 # Testing in the real GeminiCode app
 
-Unit tests (`npm run check` in `extensions/gemini`) cover the pure modules. A change to a webview, a command or the way the extension starts also needs a look in the app. These steps run your working copy of the extension inside the installed `GeminiCode.app`, in a second instance with its own profile, so the user's own window, settings and sign-ins are never touched.
+Unit tests (`pnpm run check` in `extensions/gemini`) cover the pure modules. A change to a webview, a command or the way the extension starts also needs a look in the app. These steps run your working copy of the extension inside the installed `GeminiCode.app`, in a second instance with its own profile, so the user's own window, settings and sign-ins are never touched.
 
 ## 1. Build what the dev host loads
 
 The extension's `main` is `./out/extension`, not `dist/`. From the repository root:
 
 ```sh
-npm run gulp compile-extension:gemini        # out/, which the dev host loads
+pnpm run gulp compile-extension:gemini        # out/, which the dev host loads
 (cd extensions/gemini && node esbuild.webview.mts)   # media/, the webviews' scripts and styles
 ```
 
@@ -48,5 +48,5 @@ Quit with `app.exit(0)` through the main-process inspector. `pkill` may leave th
 ## Traps
 
 - The installed app can be older than your source even when its build time is later than your change: compare its `extensions/gemini/media/*.js` with your build before deciding the source is wrong.
-- A dev host runs the CLI the extension resolves (bundled, installed, `gemini.cliPath` or `PATH`). Run `npm run bundle-cli` in `extensions/gemini` to test against the version the app ships.
+- A dev host runs the CLI the extension resolves (bundled, installed, `gemini.cliPath` or `PATH`). Run `pnpm run bundle-cli` in `extensions/gemini` to test against the version the app ships.
 - Agents in the test instance run for real against the signed-in account of the CLI they find. Use a throwaway folder, and Default mode, so nothing the agent does lands in a real repository.

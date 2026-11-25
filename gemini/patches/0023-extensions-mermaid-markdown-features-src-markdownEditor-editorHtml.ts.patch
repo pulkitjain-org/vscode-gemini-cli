@@ -1,0 +1,24 @@
+diff --git a/extensions/mermaid-markdown-features/src/markdownEditor/editorHtml.ts b/extensions/mermaid-markdown-features/src/markdownEditor/editorHtml.ts
+index 0d0490a0fb1cf3d32fa7bfed4cb51038cd753c48..2f72a96adfa95a809992e99bcf4c9a3737b84244 100644
+--- a/extensions/mermaid-markdown-features/src/markdownEditor/editorHtml.ts
++++ b/extensions/mermaid-markdown-features/src/markdownEditor/editorHtml.ts
+@@ -4,8 +4,8 @@
+  *--------------------------------------------------------------------------------------------*/
+ 
+ /**
+- * The page of the Mermaid code block editor. Its script, `index.js`, loads relative to the page's base URL,
+- * `markdown-editor-out/`. `configSpan` carries the `markdown-mermaid` settings, as in the Markdown preview.
++ * The page of the Mermaid code block editor. Its script, `markdownEditor.js`, loads relative to the page's base URL,
++ * `markdown-preview-out/` (GEMINI-FORK: built with the Markdown preview's script, whose chunks of mermaid it shares). `configSpan` carries the `markdown-mermaid` settings, as in the Markdown preview.
+  */
+ export function renderMermaidEditorHtml(configSpan: string): string {
+ 	return `<!DOCTYPE html>
+@@ -27,7 +27,7 @@ export function renderMermaidEditorHtml(configSpan: string): string {
+ <body>
+ 	${configSpan}
+ 	<main aria-label="Mermaid diagram" aria-busy="true"></main>
+-	<script type="module" src="./index.js"></script>
++	<script type="module" src="./markdownEditor.js"></script>
+ </body>
+ </html>`;
+ }

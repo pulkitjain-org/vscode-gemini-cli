@@ -1,0 +1,19 @@
+# GeminiCode's extension is a pnpm install root of its own (`separateRoots` in build/npm/dirs.ts),
+# with its own pnpm-lock.yaml: an upstream release then never rewrites the fork's lockfile, and the
+# fork's dependencies never show up in upstream's. The root `pnpm install` installs it in its
+# postinstall; `pnpm install` here installs it alone, which is all the extension's checks need.
+packages: []
+nodeLinker: isolated
+strictPeerDependencies: false
+autoInstallPeers: false
+fetchTimeout: 180000
+engineStrict: false
+# Seven days, in minutes: a release that is pulled within a week of its publication never gets here.
+minimumReleaseAge: 10080
+strictDepBuilds: true
+sideEffectsCache: false
+verifyDepsBeforeRun: false
+# See pmOnFail in the root pnpm-workspace.yaml
+pmOnFail: download
+allowBuilds:
+  esbuild@0.28.1: true

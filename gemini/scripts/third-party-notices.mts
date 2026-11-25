@@ -7,7 +7,7 @@
 // own code: the bundled Gemini CLI, the packages bundled into dist/ and media/,
 // the emoji data and the ripgrep GeminiCode adds to the CLI. The app's own
 // ThirdPartyNotices.txt is upstream's and covers the workbench. The release
-// build runs this after `npm run bundle-cli`, so the CLI's licence is there:
+// build runs this after `pnpm run bundle-cli`, so the CLI's licence is there:
 //
 //   node gemini/scripts/third-party-notices.mts [output]
 //
@@ -53,14 +53,30 @@ SOFTWARE.`;
 
 function read(file: string): string {
 	if (!fs.existsSync(file)) {
-		throw new Error(`${path.relative(root, file)} is missing: install the dependencies (and run npm run bundle-cli in extensions/gemini) first.`);
+		throw new Error(`${path.relative(root, file)} is missing: install the dependencies (and run pnpm run bundle-cli in extensions/gemini) first.`);
 	}
 	return fs.readFileSync(file, 'utf8').trim();
 }
 
+/**
+ * Where `name` is installed. pnpm links only the packages a package.json names at the top of
+ * node_modules; a package's own dependencies sit beside its real folder, so one the extension
+ * bundles without naming it is found through the package that brings it (`via`).
+ */
+function packageDir(name: string, modules: string, via?: string): string {
+	if (via) {
+		const parent = fs.realpathSync(path.join(modules, ...via.split('/')));
+		const beside = path.join(parent, ...via.split('/').map(() => '..'), ...name.split('/'));
+		if (fs.existsSync(beside)) {
+			return beside;
+		}
+	}
+	return path.join(modules, ...name.split('/'));
+}
+
 /** A package from node_modules, with every licence and notice file it ships. */
-function npmPackage(name: string, modules = path.join(extensionDir, 'node_modules')): Component {
-	const dir = path.join(modules, ...name.split('/'));
+function npmPackage(name: string, modules = path.join(extensionDir, 'node_modules'), via?: string): Component {
+	const dir = packageDir(name, modules, via);
 	const pkg = JSON.parse(read(path.join(dir, 'package.json'))) as { version: string; homepage?: string; repository?: string | { url?: string } };
 	const files = fs.readdirSync(dir).filter(file => /^(licen[cs]e|notice)/i.test(file)).sort();
 	if (!files.length) {
@@ -99,7 +115,10 @@ function ripgrep(): Component[] {
 
 const components: Component[] = [
 	geminiCli(),
-	...['@agentclientprotocol/sdk', 'zod', 'highlight.js', 'katex', 'markdown-it', 'entities', 'linkify-it', 'mdurl', 'uc.micro', 'punycode.js', '@vscode/codicons'].map(name => npmPackage(name)),
+	...['@agentclientprotocol/sdk', 'zod', 'highlight.js', 'katex', 'markdown-it', 'entities'].map(name => npmPackage(name)),
+	// What markdown-it brings and the webview bundles with it.
+	...['linkify-it', 'mdurl', 'uc.micro', 'punycode.js'].map(name => npmPackage(name, undefined, 'markdown-it')),
+	npmPackage('@vscode/codicons'),
 	emojibase(),
 	...ripgrep(),
 ];

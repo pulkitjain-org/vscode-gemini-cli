@@ -12,7 +12,9 @@ const nodeCompileCacheKinds = ['main', 'extension-host', 'shared-process', 'pty-
 // GEMINI-FORK: Node on macOS and Linux ends the tag with the user's id (`v24.22.0-arm64-60e4fe36-501`), which upstream's pattern rejected
 const nodeCompileCacheTagPattern = /^v\d+\.\d+\.\d+-(arm64|x64)-[0-9a-f]{8}(?:-\d+)?$/;
 const nodeCompileCacheEntryPattern = /^[0-9a-f]{8}$/;
-const nodeCompileCacheInterruptedEntryPattern = /^[0-9a-f]{8}\.[0-9A-Za-z]{6}$/; // GEMINI-FORK
+// Node writes each entry to `<entry>.XXXXXX` (uv_fs_mkstemp) and renames it into place, so a process that is
+// stopped while it flushes on exit can leave one behind. The last completed write of that entry is intact.
+const nodeCompileCacheTemporaryEntryPattern = /^[0-9a-f]{8}\.[A-Za-z0-9]{6}$/;
 
 export interface INodeCompileCacheProduct {
 	readonly applicationName: string;
@@ -105,11 +107,15 @@ export async function validateNodeCompileCache(rootDirectory: string, architectu
 		}
 
 		const cacheDirectory = path.join(kindDirectory, tagDirectories[0].name);
-		// GEMINI-FORK: a process the app's quit stops mid-write leaves Node's temporary file (`71f3f0c1.3EEf8I`); drop it, which only leaves that entry uncached
 		const allCacheEntries = await fs.promises.readdir(cacheDirectory, { withFileTypes: true });
-		const interruptedCacheEntries = allCacheEntries.filter(entry => entry.isFile() && nodeCompileCacheInterruptedEntryPattern.test(entry.name));
-		await Promise.all(interruptedCacheEntries.map(entry => fs.promises.rm(path.join(cacheDirectory, entry.name))));
-		const cacheEntries = allCacheEntries.filter(entry => !interruptedCacheEntries.includes(entry));
+		const temporaryEntries = allCacheEntries.filter(entry => entry.isFile() && nodeCompileCacheTemporaryEntryPattern.test(entry.name));
+		for (const entry of temporaryEntries) {
+			await fs.promises.rm(path.join(cacheDirectory, entry.name));
+		}
+		if (temporaryEntries.length > 0) {
+			console.log(`Removed ${temporaryEntries.length} interrupted ${kind} Node.js compile cache write(s) in ${cacheDirectory}: ${temporaryEntries.map(entry => entry.name).join(', ')}.`);
+		}
+		const cacheEntries = allCacheEntries.filter(entry => !temporaryEntries.includes(entry));
 		const validCacheEntries = cacheEntries.filter(entry => entry.isFile() && nodeCompileCacheEntryPattern.test(entry.name));
 		const cacheEntryCount = validCacheEntries.length;
 		if (cacheEntryCount === 0) {

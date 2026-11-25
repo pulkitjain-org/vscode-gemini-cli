@@ -1,8 +1,8 @@
 diff --git a/build/lib/electron.ts b/build/lib/electron.ts
-index 27151cc45465dcf9f8297ac39c026db7169257fc..bddd0c9eec38e85977531b1b86feb0993b46641a 100644
+index 3a55d04b82c74978ec9c3cc9b79bcc1fb517e72e..e977289922c68f406f82f21272b4bfa1371595c9 100644
 --- a/build/lib/electron.ts
 +++ b/build/lib/electron.ts
-@@ -143,14 +143,15 @@ const electronAssetResolver = electronFeed
+@@ -157,14 +157,15 @@ const electronAssetResolver = electronFeed
  export const config = {
  	version: electronVersion,
  	productAppName: product.nameLong,

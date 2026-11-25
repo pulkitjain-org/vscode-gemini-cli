@@ -40,7 +40,7 @@ export function extensionChunk<T>(name: string): () => T {
 export function chunkLoader<T>(dir: string, name: string): () => T {
 	let loaded: T | undefined;
 	// A path the bundler cannot follow: the chunk stays a file of its own, so tree-shaking does not apply.
-	// eslint-disable-next-line no-restricted-syntax
+	// eslint-disable-next-line eslint-js/no-restricted-syntax
 	return () => loaded ??= require(path.join(dir, `${name}.js`)) as T;
 }
 

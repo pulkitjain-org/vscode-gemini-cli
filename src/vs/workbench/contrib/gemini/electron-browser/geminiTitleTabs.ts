@@ -80,7 +80,7 @@ export class GeminiTitleTabs extends BaseActionViewItem {
 	override onClick(): void { }
 
 	override focus(): void {
-		// eslint-disable-next-line no-restricted-syntax
+		// eslint-disable-next-line eslint-js/no-restricted-syntax
 		(this.strip?.querySelector('.gemini-title-tab.active') as HTMLElement | null)?.focus();
 	}
 

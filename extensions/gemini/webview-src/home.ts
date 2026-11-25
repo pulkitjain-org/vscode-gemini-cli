@@ -148,7 +148,7 @@ let menus: HomeMenus | undefined;
 
 /** The menus and their class, a chunk of their own loaded once Home has settled, or on the first click on a menu's button. */
 function loadMenus(): Promise<HomeMenus> {
-	// eslint-disable-next-line no-restricted-syntax
+	// eslint-disable-next-line eslint-js/no-restricted-syntax
 	homeMenus ??= (homeMenusUrl ? import(/* webpackIgnore: true */ homeMenusUrl) as Promise<HomeMenusModule> : Promise.reject(new Error('no menus'))).then(module => menus = module.createHomeMenus({
 		strings,
 		view: () => view,
@@ -357,7 +357,7 @@ let draftMarkdown: Promise<DraftMarkdown> | undefined;
 
 /** Preview's renderer, a chunk of its own so Home's startup script stays small. */
 function loadDraftMarkdown(): Promise<DraftMarkdown> {
-	// eslint-disable-next-line no-restricted-syntax
+	// eslint-disable-next-line eslint-js/no-restricted-syntax
 	draftMarkdown ??= draftMarkdownUrl ? import(/* webpackIgnore: true */ draftMarkdownUrl) : Promise.reject(new Error('no renderer'));
 	return draftMarkdown;
 }
@@ -453,7 +453,7 @@ let popups: HomePopups | undefined;
 
 /** Show all's popup and the gear menu, a chunk of their own loaded the first time either opens. */
 function loadPopups(): Promise<HomePopups> {
-	// eslint-disable-next-line no-restricted-syntax
+	// eslint-disable-next-line eslint-js/no-restricted-syntax
 	homePopups ??= Promise.all([homePopupsUrl ? import(/* webpackIgnore: true */ homePopupsUrl) as Promise<HomePopupsModule> : Promise.reject(new Error('no popups')), loadMenus()]).then(([module, loaded]) => popups = module.createHomePopups({
 		strings,
 		post: message => vscode.postMessage(message),
@@ -491,7 +491,7 @@ let commentBox: Promise<CommentBox> | undefined;
 
 /** The comment box for Jira tickets, a chunk of its own loaded the first time it opens. */
 function loadCommentBox(): Promise<CommentBox> {
-	// eslint-disable-next-line no-restricted-syntax
+	// eslint-disable-next-line eslint-js/no-restricted-syntax
 	commentBox ??= (commentBoxUrl ? import(/* webpackIgnore: true */ commentBoxUrl) as Promise<CommentBoxModule> : Promise.reject(new Error('no comment box'))).then(module => module.createCommentBox({
 		strings,
 		post: message => vscode.postMessage(message),

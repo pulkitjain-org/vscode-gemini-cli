@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 import path from 'path';
 import esbuild, { type Plugin } from 'esbuild';
+import { resolvePackageDirectory } from '../esbuild-common.mts';
 import { run } from '../esbuild-webview-common.mts';
 
 const rootDir = import.meta.dirname;
@@ -48,7 +49,7 @@ await Promise.all([
 		entryPoints: {
 			'index': path.join(chatSrcDir, 'index.ts'),
 			'index-editor': path.join(chatSrcDir, 'index-editor.ts'),
-			'codicon': path.join(rootDir, 'node_modules', '@vscode', 'codicons', 'dist', 'codicon.css'),
+			'codicon': path.join(resolvePackageDirectory(rootDir, '@vscode/codicons'), 'dist', 'codicon.css'),
 		},
 		srcDir: chatSrcDir,
 		outdir: path.join(rootDir, 'chat-webview-out'),
@@ -58,12 +59,13 @@ await Promise.all([
 			},
 		}
 	}, process.argv),
-	// Markdown preview and notebook
-	// GEMINI-FORK: one build, so the two share mermaid's chunks (about 18 MB) instead of each shipping a copy; the notebook renderer was notebook-out/index.js
+	// Markdown preview, notebook and Markdown editor code blocks
+	// GEMINI-FORK: one build, so the three share mermaid's chunks (about 18 MB) instead of each shipping a copy; the notebook renderer was notebook-out/index.js and the Markdown editor's page markdown-editor-out/index.js
 	run({
 		entryPoints: {
 			'index': path.join(previewSrcDir, 'markdown', 'index.ts'),
 			'notebook': path.join(previewSrcDir, 'notebook', 'index.ts'),
+			'markdownEditor': path.join(previewSrcDir, 'markdownEditor', 'index.ts'),
 		},
 		srcDir: previewSrcDir,
 		outdir: path.join(rootDir, 'markdown-preview-out'),

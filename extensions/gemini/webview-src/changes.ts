@@ -80,7 +80,7 @@ function render(view: ChangesPanelView): void {
 		const [label, hint, iconName] = choice === 'merge' ? [strings.mergeBack, strings.mergeBackTip, 'git-merge'] : choice === 'mr' ? [strings.openMr, strings.openMrTip, 'git-pull-request'] : [strings.tryIn, strings.tryInTip, 'beaker'];
 		const agent = view.agent;
 		const menu = button('primary try-menu', '', () => {
-			// eslint-disable-next-line no-restricted-syntax
+			// eslint-disable-next-line eslint-js/no-restricted-syntax
 			tryMenu ??= (changesMenuUrl ? import(/* webpackIgnore: true */ changesMenuUrl) as Promise<ChangesMenuModule> : Promise.reject(new Error('no menu'))).then(module => module.createChangesMenu(strings.tryChoices, setTip));
 			void tryMenu.then(loaded => loaded.toggle(menu, agent.tryChoice ?? 'try', !!agent.mergeRequests, choice => post({ type: 'tryChoice', choice })));
 		}, 'chevron-down');

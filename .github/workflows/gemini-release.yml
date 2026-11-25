@@ -60,6 +60,10 @@ jobs:
         with:
           node-version-file: .nvmrc
 
+      - name: Setup pnpm
+        # The version the root package.json pins (packageManager).
+        uses: ./.github/actions/setup-pnpm
+
       - name: Work out the version
         id: version
         env:
@@ -157,12 +161,12 @@ jobs:
         run: |
           set -e
           for i in 1 2 3; do
-            npm ci && break
+            pnpm install --frozen-lockfile && break
             if [ $i -eq 3 ]; then
-              echo "npm ci failed too many times" >&2
+              echo "pnpm install failed too many times" >&2
               exit 1
             fi
-            echo "npm ci failed $i, trying again..."
+            echo "pnpm install failed $i, trying again..."
           done
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
@@ -174,7 +178,7 @@ jobs:
         run: rm -rf extensions/copilot
 
       - name: Bundle the Gemini CLI
-        run: npm run bundle-cli --prefix extensions/gemini
+        run: pnpm -C extensions/gemini run bundle-cli
         env:
           # The pinned SHA-512 vouches for the download; a CLI pinned in its first week
           # must pass the package's min-release-age (bundle-cli.mts also passes this, from v0.1.1).
@@ -185,7 +189,7 @@ jobs:
         run: node gemini/scripts/third-party-notices.mts
 
       - name: Build the app
-        run: npm run gulp vscode-darwin-arm64-min
+        run: pnpm run gulp vscode-darwin-arm64-min
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -209,9 +213,11 @@ jobs:
           test ! -e "$RESOURCES/extensions/copilot" || { echo "::error::Upstream's Copilot extension is in the app"; exit 1; }
           # About 140 MB GeminiCode never runs (build/gulpfile.vscode.ts).
           test ! -e "$RESOURCES/node_modules.asar.unpacked/@github/copilot-sdk-darwin-arm64" || { echo "::error::The Copilot agent runtime is in the app"; exit 1; }
-          # Mermaid's notebook renderer shares the Markdown preview's chunks (extensions/mermaid-markdown-features/esbuild.webview.mts).
+          # Mermaid's notebook renderer and its page for the Markdown editor share the Markdown preview's chunks (extensions/mermaid-markdown-features/esbuild.webview.mts).
           test -f "$RESOURCES/extensions/mermaid-markdown-features/markdown-preview-out/notebook.js" || { echo "::error::Mermaid's notebook renderer is missing from the app"; exit 1; }
           test ! -e "$RESOURCES/extensions/mermaid-markdown-features/notebook-out" || { echo "::error::Mermaid's notebook renderer still ships its own copy of mermaid"; exit 1; }
+          test -f "$RESOURCES/extensions/mermaid-markdown-features/markdown-preview-out/markdownEditor.js" || { echo "::error::Mermaid's page for the Markdown editor is missing from the app"; exit 1; }
+          test ! -e "$RESOURCES/extensions/mermaid-markdown-features/markdown-editor-out" || { echo "::error::Mermaid's page for the Markdown editor still ships its own copy of mermaid"; exit 1; }
           # shellcheck disable=SC2016 # a JavaScript template string, not shell
           node -e 'const p = require(process.argv[1]); if (p.geminiCodeVersion !== process.argv[2]) { throw new Error(`product.json has ${p.geminiCodeVersion}`); }' "$RESOURCES/product.json" "${{ steps.version.outputs.version }}"
           echo "build-dir=$BUILD_DIR" >> "$GITHUB_OUTPUT"

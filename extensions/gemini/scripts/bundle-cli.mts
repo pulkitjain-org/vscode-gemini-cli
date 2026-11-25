@@ -51,7 +51,7 @@ async function patch(): Promise<void> {
 	const placed = await provideRipgrep(bundle, source);
 	if (placed === 'unavailable' && process.env.CI) {
 		// A release without it searches three to four times slower; CI installs the root packages, which carry it.
-		throw new Error(`No ripgrep for ${platform} at ${path.relative(process.cwd(), source)}: install the root packages (npm ci) first.`);
+		throw new Error(`No ripgrep for ${platform} at ${path.relative(process.cwd(), source)}: install the root packages (pnpm install) first.`);
 	}
 	console.log(placed === 'unavailable' ? `No ripgrep for ${platform} in node_modules; the bundled CLI falls back to git grep there.` : `Ripgrep for ${platform}: ${placed}.`);
 	const own = cliRipgrepPath(bundle);

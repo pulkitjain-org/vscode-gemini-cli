@@ -7,7 +7,7 @@
 // ACP (formats.ts). Each check looks for the code in the CLI's bundle that
 // writes or names the format, so a release that renames a constant, moves a
 // file or changes a log line shows up here, by the feature it affects, and
-// not as a feature that quietly stops working. Run by `npm run bundle-cli`,
+// not as a feature that quietly stops working. Run by `pnpm run bundle-cli`,
 // test/acp/realCliContract.test.ts and Check Agent Connection.
 
 import { promises as fs } from 'node:fs';

@@ -1,0 +1,13 @@
+diff --git a/extensions/mermaid-markdown-features/src/markdownEditor/mermaidCodeBlockEditorProvider.ts b/extensions/mermaid-markdown-features/src/markdownEditor/mermaidCodeBlockEditorProvider.ts
+index 9dc82dbb0b2bb3e8ecb3084be87be9c00b3dd65e..82d827a683404ee96586fe0fe8206ef3da25d594 100644
+--- a/extensions/mermaid-markdown-features/src/markdownEditor/mermaidCodeBlockEditorProvider.ts
++++ b/extensions/mermaid-markdown-features/src/markdownEditor/mermaidCodeBlockEditorProvider.ts
+@@ -34,7 +34,7 @@ export class MermaidCodeBlockEditorProvider implements vscode.Disposable {
+ 		const config = buildMermaidConfigData();
+ 		const html = renderMermaidEditorHtml(renderMermaidConfigSpan());
+ 		return {
+-			content: { html, baseUri: vscode.Uri.joinPath(this._extensionUri, 'markdown-editor-out') },
++			content: { html, baseUri: vscode.Uri.joinPath(this._extensionUri, 'markdown-preview-out') }, // GEMINI-FORK: was markdown-editor-out; see esbuild.webview.mts
+ 			contentType: 'text' as const,
+ 			// Frames are only reused for equal runtime keys, so a settings change must not reuse frames with the old settings.
+ 			runtimeKey: `vscode.mermaid-markdown-features/${hashString(html)}`,

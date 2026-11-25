@@ -92,7 +92,7 @@ function toolRow(row: ConnectionRowView): HTMLElement {
 					return;
 				}
 				// Several repositories name a design system: ask which in the page's own menu.
-				// eslint-disable-next-line no-restricted-syntax
+				// eslint-disable-next-line eslint-js/no-restricted-syntax
 				repoMenu ??= (repoMenuUrl ? import(/* webpackIgnore: true */ repoMenuUrl) as Promise<typeof import('./connectionsMenu')> : Promise.reject(new Error('no menu'))).then(module => module.createRepoMenu(strings.syncWhich));
 				void repoMenu.then(menu => menu.toggle(sync, repos, folder => post({ type: 'syncDesignSystem', folder })), () => {
 					repoMenu = undefined;

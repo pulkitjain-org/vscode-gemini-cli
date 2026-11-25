@@ -22,6 +22,7 @@ import { createMcpGalleryMarketplaceProviders, getAllMcpGalleryMarketplaceSource
 import { IDefaultAccountService } from '../../../../../platform/defaultAccount/common/defaultAccount.js';
 import { IInstantiationService } from '../../../../../platform/instantiation/common/instantiation.js';
 import { IMcpGalleryManifestService } from '../../../../../platform/mcp/common/mcpGalleryManifest.js';
+import { IProductService } from '../../../../../platform/product/common/productService.js';
 import { ITelemetryService } from '../../../../../platform/telemetry/common/telemetry.js';
 import { IAuthenticationService } from '../../../../services/authentication/common/authentication.js';
 import { ChatConfiguration } from '../../common/constants.js';
@@ -29,7 +30,7 @@ import { ICustomizationHarnessService, ICustomizationMarketplaceInfo, ICustomiza
 import { IPluginMarketplaceService } from '../../common/plugins/pluginMarketplaceService.js';
 import { CopilotConnectorsMarketplaceProvider, ICopilotConnectorsService } from './copilotConnectorsService.js';
 import { isAgentFinderPublicFeedAvailable } from './customizationMarketplaceConfiguration.js';
-import { createPluginCustomizationMarketplaceProviders, getAllPluginCustomizationMarketplaceSourceInfos, getPluginCustomizationMarketplaceSourceInfos } from './pluginCustomizationMarketplaceProvider.js';
+import { createPluginCustomizationMarketplaceProviders, getAllPluginCustomizationMarketplaceSourceInfos, getPluginCustomizationMarketplaceSourceInfos, isPluginMarketplaceAvailableInDiscover } from './pluginCustomizationMarketplaceProvider.js';
 
 export function getProviderMarketplaceSourceId(name: string): string {
 	return `providerPluginMarketplace.${encodeURIComponent(name)}`;
@@ -141,13 +142,14 @@ export class PlatformCustomizationMarketplaceWorkbenchService implements ICustom
 	declare readonly _serviceBrand: undefined;
 	readonly allSources = getAllMcpGalleryMarketplaceSourceInfos();
 	readonly onDidChangeSources: Event<ICustomizationMarketplaceSourcesChangeEvent>;
-	get sources() { return getCustomizationMarketplaceSourceInfos(this.mcpGalleryManifestService.mcpGalleryManifestStatus); }
+	get sources() { return getCustomizationMarketplaceSourceInfos(this.mcpGalleryManifestService.mcpGalleryManifestStatus, this.configurationService, this.productService); }
 	private readonly service: Lazy<CustomizationMarketplaceService>;
 
 	constructor(
 		@IConfigurationService private readonly configurationService: IConfigurationService,
 		@IInstantiationService instantiationService: IInstantiationService,
 		@IMcpGalleryManifestService private readonly mcpGalleryManifestService: IMcpGalleryManifestService,
+		@IProductService private readonly productService: IProductService,
 	) {
 		this.onDidChangeSources = Event.map(mcpGalleryManifestService.onDidChangeMcpGalleryManifestStatus, () => ({ sourceIds: this.allSources.map(source => source.id) }));
 		void mcpGalleryManifestService.getMcpGalleryManifest();
@@ -278,14 +280,18 @@ export class CustomizationMarketplaceWorkbenchService extends Disposable impleme
 		if (this.configurationService.getValue<boolean>(ChatConfiguration.PluginsEnabled) !== true) {
 			return [];
 		}
-		return this.providerMarketplaces
-			.filter(marketplace => includeUnavailable || marketplace.available !== false)
+		return this.getProviderMarketplaces(includeUnavailable)
 			.map(marketplace => ({
 				id: getProviderMarketplaceSourceId(marketplace.name),
 				displayName: marketplace.name,
 				enablementSetting: CustomizationMarketplaceConfiguration.MarketplaceEnabled,
-				configurationDependencies: [ChatConfiguration.PluginsEnabled],
+				configurationDependencies: [ChatConfiguration.PluginsEnabled, CustomizationMarketplaceConfiguration.AgentFinderPublicFeedEnabled],
 			}));
+	}
+
+	private getProviderMarketplaces(includeUnavailable = false): readonly ICustomizationMarketplaceInfo[] {
+		return this.providerMarketplaces.filter(marketplace => includeUnavailable ||
+			marketplace.available !== false && isPluginMarketplaceAvailableInDiscover(this.configurationService, marketplace.source, this.isGitHubFeedAvailable()));
 	}
 
 	private bindMarketplaceProviders(
@@ -362,8 +368,7 @@ export class CustomizationMarketplaceWorkbenchService extends Disposable impleme
 				githubFeedAvailable,
 			);
 		const providerMarketplaceProviders = managementProvider
-			? this.providerMarketplaces
-				.filter(marketplace => marketplace.available !== false)
+			? this.getProviderMarketplaces()
 				.map(marketplace => createLazyCustomizationMarketplaceProvider(
 					getProviderMarketplaceSourceId(marketplace.name),
 					() => ({
@@ -423,7 +428,7 @@ export class CustomizationMarketplaceWorkbenchService extends Disposable impleme
 					},
 				}), CustomizationMarketplaceSources.AgentFinderPublicFeed.id),
 				createLazyCustomizationMarketplaceProvider(CustomizationMarketplaceSources.CopilotConnectors.id, () => new CopilotConnectorsMarketplaceProvider(this.copilotConnectorsService, this.configurationService)),
-			]);
+			], ['harness.githubFeed', CustomizationMarketplaceSources.CopilotConnectors.id]);
 		}
 		return this.service;
 	}

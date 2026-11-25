@@ -29,11 +29,12 @@ import { NullLogService } from '../../../../../../platform/log/common/log.js';
 import { IOpenerService } from '../../../../../../platform/opener/common/opener.js';
 import product from '../../../../../../platform/product/common/product.js';
 import { IProductService } from '../../../../../../platform/product/common/productService.js';
-import { NullTelemetryService, NullTelemetryServiceShape } from '../../../../../../platform/telemetry/common/telemetryUtils.js';
+import { NullTelemetryService } from '../../../../../../platform/telemetry/common/telemetryUtils.js';
 import { AuthenticationSession, AuthenticationSessionsChangeEvent, IAuthenticationService } from '../../../../../services/authentication/common/authentication.js';
-import { IWorkbenchGitHubService } from '../../../../../services/github/common/githubService.js';
+import { IWorkbenchGitHubService, toGitHubAuthorizationContext } from '../../../../../services/github/common/githubService.js';
 import { CopilotConnectorsMarketplaceProvider, CopilotConnectorsService } from '../../../browser/aiCustomization/copilotConnectorsService.js';
 import { CustomizationMarketplaceMediaType } from '../../../../../../platform/customizationMarketplace/common/customizationMarketplaceService.js';
+import { TestDataTelemetryService } from '../../../../../../platform/telemetry/test/common/testTelemetryService.js';
 
 function catalogResponse(
 	status: ConnectorPlugin['connection']['status'],
@@ -62,16 +63,6 @@ function catalogResponse(
 			},
 		})),
 	};
-}
-
-class TestTelemetryService extends NullTelemetryServiceShape {
-	readonly events: { readonly name: string; readonly data: Record<string, unknown> }[] = [];
-
-	override publicLog2(eventName?: string, data?: Record<string, unknown>): void {
-		if (eventName && data) {
-			this.events.push({ name: eventName, data });
-		}
-	}
 }
 
 suite('CopilotConnectorsService', () => {
@@ -164,7 +155,7 @@ suite('CopilotConnectorsService', () => {
 				return true;
 			}
 		}();
-		const telemetryService = new TestTelemetryService();
+		const telemetryService = new TestDataTelemetryService();
 		const grants: GitHubAuthorizationContext[] = [];
 		const leases = { acquired: 0, released: 0 };
 		const invalidatedGrants = store.add(new Emitter<GitHubCredentialChange>());
@@ -193,7 +184,10 @@ suite('CopilotConnectorsService', () => {
 			getToken: context => sessions.find(session => session.id === context.sessionId && session.account.id === context.accountId)?.accessToken,
 		}));
 		const gitHubService = new class extends mock<IWorkbenchGitHubService>() {
-			override async acquireAccountApiClient(authorization: GitHubAuthorizationContext, signal: AbortSignal): Promise<IGitHubAccountClient> {
+			override async acquireAccountApiClient(...args: Parameters<IWorkbenchGitHubService['acquireAccountApiClient']>): Promise<IGitHubAccountClient> {
+				assert.ok(args.length === 3);
+				const [providerId, session, signal] = args;
+				const authorization = toGitHubAuthorizationContext(providerId, session);
 				signal.throwIfAborted();
 				grants.push(authorization);
 				if (!sessions.some(session => session.id === authorization.sessionId && session.account.id === authorization.accountId)) {
@@ -332,10 +326,12 @@ suite('CopilotConnectorsService', () => {
 	test('bounds a stalled acquisition and disposes a client that arrives after timeout', () => runWithFakedTimers({ useFakeTimers: true }, async () => {
 		const fixture = createFixture([]);
 		const pending = new DeferredPromise<IGitHubAccountClient>();
-		const started = new DeferredPromise<{ authorization: GitHubAuthorizationContext; signal: AbortSignal }>();
+		const started = new DeferredPromise<{ providerId: string; session: AuthenticationSession; signal: AbortSignal }>();
 		const acquire = fixture.gitHubService.acquireAccountApiClient;
-		fixture.gitHubService.acquireAccountApiClient = async (authorization, signal) => {
-			void started.complete({ authorization, signal });
+		fixture.gitHubService.acquireAccountApiClient = async (...args) => {
+			assert.ok(args.length === 3);
+			const [providerId, session, signal] = args;
+			void started.complete({ providerId, session, signal });
 			return pending.p;
 		};
 		const start = Date.now();
@@ -343,7 +339,7 @@ suite('CopilotConnectorsService', () => {
 		const request = await started.p;
 		await rejected;
 		const elapsed = Date.now() - start;
-		const late = await acquire(request.authorization, new AbortController().signal);
+		const late = await acquire(request.providerId, request.session, new AbortController().signal);
 		await pending.complete(late);
 		await timeout(0);
 		assert.deepStrictEqual({ elapsed, aborted: request.signal.aborted, requests: fixture.requests, leases: fixture.leases }, {
@@ -563,7 +559,7 @@ suite('CopilotConnectorsService', () => {
 		const unavailable = createFixture([], true, true);
 		await unavailable.service.refresh(CancellationToken.None);
 
-		const snapshot = (telemetry: TestTelemetryService) => telemetry.events.find(event => event.name === 'copilotConnectors.catalogSnapshot')?.data;
+		const snapshot = (telemetry: TestDataTelemetryService) => telemetry.events.find(event => event.name === 'copilotConnectors.catalogSnapshot')?.data;
 		assert.deepStrictEqual({
 			scoped: snapshot(scoped.telemetryService),
 			unscoped: snapshot(unscoped.telemetryService),
@@ -787,7 +783,7 @@ suite('CopilotConnectorsService', () => {
 		});
 	});
 
-	test('a connector session that covers a narrow default session but not the Copilot credential scopes does not satisfy authorization', async () => {
+	test('a connector session that covers a narrow default session but not the forwarded Copilot credential scopes does not satisfy authorization', async () => {
 		const fixture = createFixture([]);
 		fixture.setSessions([
 			{ ...fixture.initialSession, scopes: ['user:email'] },
@@ -796,8 +792,40 @@ suite('CopilotConnectorsService', () => {
 		]);
 		const authorized = await fixture.service.authorize(CancellationToken.None);
 		assert.deepStrictEqual({ consent: fixture.consentCalls, authorized: authorized.id }, {
-			consent: [['github', ['user:email', 'read:user', 'write:plugin_gateway_connections'], { account: { id: 'account', label: 'octocat' } }]],
+			consent: [['github', ['user:email', 'read:user', 'repo', 'workflow', 'write:plugin_gateway_connections'], { account: { id: 'account', label: 'octocat' } }]],
 			authorized: 'authorized-session',
+		});
+	});
+
+	test('a connector session that grants the Copilot scopes but drops scopes of the forwarded credential does not satisfy authorization', async () => {
+		// A narrow default session once produced a Connector session without `repo`. The Agent Host never forwards it
+		// in place of the account's Copilot credential, so it must not count as authorized. Equally narrow credentials
+		// may each be forwarded, so the new session keeps the scopes of all of them.
+		const fixture = createFixture([]);
+		fixture.setSessions([
+			{ ...fixture.initialSession, scopes: ['user:email'] },
+			{ ...fixture.initialSession, id: 'copilot-session', accessToken: 'copilot-token', scopes: ['read:user', 'user:email', 'repo', 'workflow'] },
+			{ ...fixture.initialSession, id: 'codespace-session', accessToken: 'codespace-token', scopes: ['codespace', 'read:user', 'repo', 'user:email'] },
+			{ ...fixture.initialSession, id: 'narrow-connector-session', accessToken: 'narrow-connector-token', scopes: ['user:email', 'read:user', 'write:plugin_gateway_connections'] },
+		]);
+		const authorized = await fixture.service.authorize(CancellationToken.None);
+		assert.deepStrictEqual({ consent: fixture.consentCalls, authorized: authorized.id }, {
+			consent: [['github', ['user:email', 'read:user', 'repo', 'workflow', 'codespace', 'write:plugin_gateway_connections'], { account: { id: 'account', label: 'octocat' } }]],
+			authorized: 'authorized-session',
+		});
+	});
+
+	test('a connector session that keeps the forwarded Copilot credential scopes satisfies authorization without consent', async () => {
+		const fixture = createFixture([]);
+		fixture.setSessions([
+			{ ...fixture.initialSession, scopes: ['user:email'] },
+			{ ...fixture.initialSession, id: 'copilot-session', accessToken: 'copilot-token', scopes: ['read:user', 'user:email', 'repo', 'workflow'] },
+			{ ...fixture.initialSession, id: 'full-connector-session', accessToken: 'full-connector-token', scopes: ['read:user', 'user:email', 'repo', 'workflow', 'write:plugin_gateway_connections'] },
+		]);
+		const authorized = await fixture.service.authorize(CancellationToken.None);
+		assert.deepStrictEqual({ consent: fixture.consentCalls, authorized: authorized.id }, {
+			consent: [],
+			authorized: 'full-connector-session',
 		});
 	});
 

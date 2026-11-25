@@ -733,7 +733,7 @@ export class AgentRuntime {
 		// A specifier the bundler cannot follow, so the SDK stays out of the extension bundle (the host passes its own
 		// bundle above); this path serves the tests and the development build, where each module is a file of its own.
 		const module = './agentConnection';
-		// eslint-disable-next-line no-restricted-syntax
+		// eslint-disable-next-line eslint-js/no-restricted-syntax
 		return import(module) as Promise<typeof import('./agentConnection')>;
 	}
 

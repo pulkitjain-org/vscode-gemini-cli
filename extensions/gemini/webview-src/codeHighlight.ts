@@ -24,7 +24,7 @@ const maxCached = 300;
 
 function load(): Promise<Highlighter | undefined> {
 	// Loaded on demand on purpose: most replies have no code, and the chat opens faster without it.
-	// eslint-disable-next-line no-restricted-syntax
+	// eslint-disable-next-line eslint-js/no-restricted-syntax
 	return loading ??= url ? import(/* webpackIgnore: true */ url).catch(() => undefined) : Promise.resolve(undefined);
 }
 

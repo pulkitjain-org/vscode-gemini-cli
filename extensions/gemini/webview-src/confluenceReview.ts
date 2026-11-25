@@ -103,7 +103,7 @@ async function markdownToDoc(markdown: string): Promise<AdfDocument> {
 	if (!markdownUrl) {
 		return { type: 'doc', version: 1, content: [{ type: 'paragraph', content: [{ type: 'text', text: markdown }] }] };
 	}
-	// eslint-disable-next-line no-restricted-syntax
+	// eslint-disable-next-line eslint-js/no-restricted-syntax
 	const module = await import(/* webpackIgnore: true */ markdownUrl) as { markdownToAdf(text: string): AdfDocument };
 	return module.markdownToAdf(markdown);
 }
