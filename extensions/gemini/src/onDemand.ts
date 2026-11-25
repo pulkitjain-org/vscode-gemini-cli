@@ -18,6 +18,8 @@
 
 export { AgentMerge } from './host/agents/agentMerge';
 export { AgentTries } from './host/agents/agentTries';
+// Verify: running a repository's checks on an agent's work, and sending their failures back.
+export { AgentVerify } from './host/agents/agentVerify';
 export { AuditPage } from './host/auditPage';
 export { BenchmarkCommand } from './host/benchmarkCommand';
 export { checkAgent } from './host/checkAgent';

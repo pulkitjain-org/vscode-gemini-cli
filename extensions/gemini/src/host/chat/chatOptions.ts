@@ -126,6 +126,8 @@ export interface ChatControllerOptions {
 	openReview?(): void;
 	/** Opens the Open Merge Request page for the agent's branch; unset when the team tools aren't set up. */
 	openMergeRequest?(): void;
+	/** Asks for a command and keeps the agent going until it passes (Verify's goal). */
+	verifyGoal?(): void;
 	/** The agent's name, for Fork Agent. */
 	title?(): string;
 	/** Fork Agent: makes forks of this chat's agent; unset in chats that can't fork, such as a project's. */

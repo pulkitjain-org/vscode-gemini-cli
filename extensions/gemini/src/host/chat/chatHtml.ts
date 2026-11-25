@@ -359,6 +359,8 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 		figmaEditDesign: vscode.l10n.t("Change the design's sizes"),
 		openMergeRequest: vscode.l10n.t("Open Merge Request"),
 		openMergeRequestTip: vscode.l10n.t("Open a merge request on GitLab for this agent's branch"),
+		keepGoing: vscode.l10n.t("Keep Going Until Checks Pass..."),
+		keepGoingDetail: vscode.l10n.t("Runs a command after each turn and sends its failures back"),
 		toolChipLoading: vscode.l10n.t("Reading\u2026"),
 		openToolItem: vscode.l10n.t("Open {0}"),
 		indexToolVerbs: {

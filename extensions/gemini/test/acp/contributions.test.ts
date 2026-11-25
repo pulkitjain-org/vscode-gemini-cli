@@ -80,7 +80,7 @@ describe('package.json', () => {
 		expect({ sections, deprecated, enums }).toEqual({
 			sections: [
 				{ title: 'Gemini: Account and CLI', order: 1, settings: 8 },
-				{ title: 'Gemini: Agents', order: 2, settings: 14 },
+				{ title: 'Gemini: Agents', order: 2, settings: 15 },
 				{ title: 'Gemini: Chat', order: 3, settings: 8 },
 				{ title: 'Gemini: Browser', order: 4, settings: 3 },
 				{ title: 'Gemini: Workspace Index and Docs', order: 5, settings: 5 },

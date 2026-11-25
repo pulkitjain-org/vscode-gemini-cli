@@ -23,7 +23,7 @@ import { relativeTime, tildify } from '../displayText';
 import { commitToCurrentBranch, createBranchAndCommit, defaultBranch, hasCommits, localBranches, switchBranch } from '../gitActions';
 import type { ChatControllerOptions } from './chatOptions';
 
-export type GitMessage = Extract<FromWebview, { readonly type: 'listBranches' | 'switchBranch' | 'createBranchAndCommit' | 'writeCommitMessage' | 'commitToBranch' | 'workspaceAction' | 'openReview' | 'openMergeRequest' }>;
+export type GitMessage = Extract<FromWebview, { readonly type: 'listBranches' | 'switchBranch' | 'createBranchAndCommit' | 'writeCommitMessage' | 'commitToBranch' | 'workspaceAction' | 'openReview' | 'openMergeRequest' | 'verifyGoal' }>;
 
 /** How long the repository's default branch, first commit and the folder's trust are trusted before they are read again. */
 const repoFactsMs = 60_000;
@@ -42,7 +42,7 @@ export class ChatGitControls implements vscode.Disposable {
 	private writing: Promise<string | undefined> | undefined;
 
 	constructor(
-		private readonly options: Pick<ChatControllerOptions, 'git' | 'workspace' | 'review' | 'openReview' | 'openMergeRequest'>,
+		private readonly options: Pick<ChatControllerOptions, 'git' | 'workspace' | 'review' | 'openReview' | 'openMergeRequest' | 'verifyGoal'>,
 		/** Whether a turn runs; meanwhile nothing can be committed. */
 		private readonly isBusy: () => boolean,
 		/** Whether a webview shows the chat. */
@@ -87,6 +87,9 @@ export class ChatGitControls implements vscode.Disposable {
 				break;
 			case 'openMergeRequest':
 				this.options.openMergeRequest?.();
+				break;
+			case 'verifyGoal':
+				this.options.verifyGoal?.();
 				break;
 		}
 	}

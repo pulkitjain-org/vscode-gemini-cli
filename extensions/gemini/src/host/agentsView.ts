@@ -20,7 +20,7 @@ import { AgentTerminals } from './agentTerminals';
 import { AgentService } from './agentService';
 import { ChangesSource, ChangesView } from './changesView';
 import { TryChoice, TryChoices } from './agents/tryChoices';
-import type { AgentStateKind, HomeMode } from './panelProtocol';
+import type { AgentStateKind, HomeMode, VerifyAction, VerifyView } from './panelProtocol';
 import { ReviewController } from './reviewController';
 import { CommitSettler } from './commitSettler';
 import type { BrowserTools } from './browserTools';
@@ -624,6 +624,21 @@ export class AgentsView implements vscode.Disposable {
 		];
 		const picked = await vscode.window.showQuickPick(items, { title: vscode.l10n.t("Review"), placeHolder: vscode.l10n.t("What to review") });
 		await picked?.run();
+	}
+
+	/** The Verify row of agent `id`'s Changes panel: its repository's checks and their last result. */
+	verifyView(id: string): VerifyView | undefined {
+		return this.features.verifyView(id);
+	}
+
+	verifyAct(id: string, action: VerifyAction): Promise<void> {
+		return this.features.verifyAct(id, action);
+	}
+
+	/** From the composer: keep going until a command the user names passes. */
+	async verifyGoal(id: string): Promise<void> {
+		await this.features.primeVerify(id);
+		await this.features.verify.askGoal(id);
 	}
 
 	/** The choice the Try button runs for the agent's repository. Open Merge Request needs GitLab. */

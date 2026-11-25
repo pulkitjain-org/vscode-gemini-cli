@@ -19,6 +19,8 @@ These are a contract:
 
 A change adds a version, reads the old form and writes the new one, with a unit test for the migration. Removing a key needs a release note and one release of deprecation.
 
+A new optional section of the team defaults file is not such a change: a file without it reads as before, and an older GeminiCode leaves out a section it does not know. The `checks` section (1.9, for Verify) came in this way, with a test that a file without it reads the same.
+
 ## Consequences
 
 - Rewrites are internal; nothing a user set or saved is lost or renamed without a migration.

@@ -9,12 +9,16 @@
 // asks of the pane, and disposed with the pane.
 
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { agentFolder, AgentsModel } from '../../acp/agents';
 import { writeCommitMessage } from '../../acp/commitMessage';
+import { errorsNotice } from '../../acp/editorTools';
 import { fileCommentsMessage, validComments } from '../../acp/fileComments';
-import { inRepository } from '../../acp/worktrees';
+import { runRisk } from '../../acp/riskyCommand';
+import { readTeamDefaults } from '../../acp/teamDefaults';
+import { inRepository, repositoryRoot } from '../../acp/worktrees';
 import type { AgentsView } from '../agentsView';
 import type { DiffPreview } from '../diffPreview';
 import { agentColumn } from '../editorPlacement';
@@ -24,6 +28,10 @@ import type { AgentFilesPages } from '../agentFilesPage';
 import type { PlanReviews } from '../planReviewPage';
 import type { AgentMerge } from './agentMerge';
 import type { AgentTries } from './agentTries';
+import type { AgentVerify } from './agentVerify';
+import { AgentVerifyState } from './agentVerifyState';
+import { configSection } from '../configuration';
+import type { VerifyAction, VerifyView } from '../panelProtocol';
 import type { LiveAgent } from './agentStart';
 import type { AgentTabs } from './agentTabs';
 
@@ -33,10 +41,10 @@ export interface AgentFeaturesHost {
 	readonly model: AgentsModel;
 	/** The agents running in this window. */
 	readonly live: ReadonlyMap<string, LiveAgent>;
-	readonly projects: Pick<Projects, 'refreshThread' | 'setThreadKept'>;
+	readonly projects: Pick<Projects, 'refreshThread' | 'setThreadKept' | 'threadChecked'>;
 	readonly diffPreview: Pick<DiffPreview, 'show'>;
 	/** The pane's own surface the features call back into. */
-	readonly view: Pick<AgentsView, 'open' | 'direct' | 'focusedSource'>;
+	readonly view: Pick<AgentsView, 'open' | 'direct' | 'focusedSource' | 'index' | 'teamTools'>;
 	/** The pane's disposables, which a loaded feature joins. */
 	readonly disposables: vscode.Disposable[];
 	/** An agent started or ended a turn, for Plan Review. */
@@ -64,6 +72,9 @@ export class AgentFeatures {
 	private readonly pages = extensionChunk<typeof import('../../pages')>('pages');
 	private planReviewsLoaded: PlanReviews | undefined;
 	private agentFilesLoaded: AgentFilesPages | undefined;
+	/** What Verify knows of each agent; what runs the checks loads from dist/onDemand.js the first time they run. */
+	readonly verifyState = new AgentVerifyState();
+	private verifyLoaded: AgentVerify | undefined;
 
 	constructor(private readonly host: AgentFeaturesHost) { }
 
@@ -204,6 +215,113 @@ export class AgentFeatures {
 		return this.mergeLoaded ??= new (this.onDemand().AgentMerge)(this.host.model, this.host.live, (id, deleteBranch) => this.host.removeAgent(id, deleteBranch), inRepository, folder => writeCommitMessage(folder, undefined, this.host.view.direct),
 			// Take Back and Merge: tried work leaves the checkout quietly before the merge.
 			id => this.tries.takeBack(id, true));
+	}
+
+	get verify(): AgentVerify {
+		if (!this.verifyLoaded) {
+			const host = this.host;
+			this.verifyLoaded = new (this.onDemand().AgentVerify)({
+				state: this.verifyState,
+				globalState: host.context.globalState,
+				place: id => {
+					const record = host.model.agent(id);
+					const workspace = record && host.model.workspace(record.workspaceId);
+					return record && workspace ? {
+						folder: agentFolder(record, workspace.folder), title: record.title,
+						...record.worktree && !record.repos?.length ? { worktree: { repository: workspace.folder, branch: record.worktree.branch, base: record.worktree.base } } : {},
+					} : undefined;
+				},
+				busy: id => !!host.live.get(id)?.activity.busy,
+				send: (id, text) => {
+					const live = host.tabs.ensureLive(id);
+					// After a running turn, as a queued message goes.
+					void live?.controller.send(text, [], undefined, 'queue').catch(err => host.log(`Verify: ${err instanceof Error ? err.message : String(err)}`));
+					return !!live;
+				},
+				errors: async folder => {
+					const found = await host.view.index?.diagnostics(folder);
+					return found && errorsNotice(folder, found.diagnostics);
+				},
+				risky: (command, folder) => !!runRisk(command, folder, os.homedir()),
+				maxRounds: () => vscode.workspace.getConfiguration(configSection).get<number>('verify.maxRounds', 2),
+				changed: id => host.tryChanged(id),
+				report: (id, text) => host.projects.threadChecked(id, text),
+				log: message => host.log(message),
+			});
+			host.disposables.push(this.verifyLoaded);
+		}
+		return this.verifyLoaded;
+	}
+
+	/**
+	 * Reads the checks agent `id`'s repository names, once per folder and again
+	 * when asked to (`again`), then redraws its row. Until then the agent has no
+	 * Verify row: most repositories name no checks, and those load nothing.
+	 */
+	async primeVerify(id: string, again = false): Promise<void> {
+		const record = this.host.model.agent(id);
+		const workspace = record && this.host.model.workspace(record.workspaceId);
+		if (!record || !workspace) {
+			return;
+		}
+		const folder = agentFolder(record, workspace.folder);
+		const entry = this.verifyState.of(id);
+		if (entry.own || entry.stop || (entry.folder === folder && !again)) {
+			return;
+		}
+		entry.folder = folder;
+		// The agent's own checkout, so a branch that changes the checks is checked by its own; asked for once, as a changed setup script is.
+		const root = await repositoryRoot(folder).catch(() => undefined);
+		const checks = root ? (await readTeamDefaults(root)).checks : undefined;
+		if (entry.own || JSON.stringify(checks) === JSON.stringify(entry.config)) {
+			return;
+		}
+		entry.config = checks;
+		if (!checks) {
+			entry.result = undefined;
+			entry.goal = undefined;
+		}
+		this.host.tryChanged(id);
+	}
+
+	/** The Verify row for agent `id`'s Changes panel; reads the repository's checks the first time it is asked. */
+	verifyView(id: string): VerifyView | undefined {
+		if (this.verifyState.peek(id)?.folder === undefined) {
+			void this.primeVerify(id);
+		}
+		return this.verifyState.view(id);
+	}
+
+	verifyAct(id: string, action: VerifyAction): Promise<void> {
+		return this.verify.act(id, action);
+	}
+
+	/** Agent `id` edited files: a result describes an earlier version. */
+	verifyEdited(id: string): void {
+		const entry = this.verifyState.of(id);
+		entry.editedThisTurn = true;
+		if (this.verifyState.edited(id)) {
+			this.host.tryChanged(id);
+		}
+	}
+
+	/** Agent `id`'s turn started or ended. Loads nothing unless its repository names checks or it has a goal. */
+	async verifyTurn(id: string, busy: boolean): Promise<void> {
+		if (busy) {
+			this.verifyLoaded?.turnStarted(id);
+			const entry = this.verifyState.peek(id);
+			if (entry) {
+				entry.editedThisTurn = false;
+			}
+			return;
+		}
+		const entry = this.verifyState.of(id);
+		const edited = !!entry.editedThisTurn;
+		// The agent may have changed the checks themselves this turn.
+		await this.primeVerify(id, edited);
+		if (entry.config && (entry.goal || (edited && entry.config.afterTurn === 'always'))) {
+			await this.verify.turnEnded(id, edited);
+		}
 	}
 
 	get tries(): AgentTries {

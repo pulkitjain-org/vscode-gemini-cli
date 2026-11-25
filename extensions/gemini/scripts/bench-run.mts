@@ -20,14 +20,18 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import * as path from 'node:path';
 import { parseArgs } from 'node:util';
-import { benchResultsFileName, readBenchTasks, runBenchmark } from '../src/acp/benchmark.ts';
+import './sourceImports.mts';
+import type { BenchSummary, BenchVariant } from '../src/acp/benchmark.ts';
+
+// After the hook above: the benchmark's own imports leave out their extension.
+const { benchComparison, benchResultsFileName, readBenchTasks, readBenchVariants, runBenchmark } = await import('../src/acp/benchmark.ts');
 
 const { values: args } = parseArgs({
 	options: {
 		cli: { type: 'string' }, model: { type: 'string' },
 		tasks: { type: 'string', default: path.resolve(import.meta.dirname, '..', '..', '..', 'gemini', 'bench', 'tasks') },
 		out: { type: 'string' }, only: { type: 'string' }, timeout: { type: 'string', default: '1200000' }, project: { type: 'string' },
-		version: { type: 'string' },
+		version: { type: 'string' }, variants: { type: 'string' },
 	},
 });
 if (!args.cli || !args.model) {
@@ -51,20 +55,43 @@ function cliVersion(): string | undefined {
 }
 
 const isScript = /\.(c|m)?js$/.test(cli);
-const summary = await runBenchmark({
-	tasks,
-	agent: {
-		command: isScript ? process.execPath : cli,
-		args: isScript ? [cli, '--acp'] : ['--acp'],
-		env: { ...process.env, GEMINI_CLI_NO_RELAUNCH: 'true', ...args.project ? { GOOGLE_CLOUD_PROJECT: args.project } : {} },
-	},
-	model: args.model,
-	geminiCodeVersion: args.version,
-	cliVersion: cliVersion(),
-	turnTimeoutMs: Number(args.timeout),
-	log: line => console.log(line),
-});
-const out = args.out ?? path.join(path.resolve(import.meta.dirname, '..', '..', '..', 'gemini', 'bench', 'results'), benchResultsFileName(summary));
-mkdirSync(path.dirname(out), { recursive: true });
-writeFileSync(out, `${JSON.stringify(summary, null, '\t')}\n`);
-console.log(`\n${summary.completed} of ${summary.tasks} completed; ${summary.requestsPerCompletedTask ?? '-'} requests per completed task; median first text ${summary.medianFirstTextMs ?? '-'} ms. Written to ${out}.`);
+// Each variant runs the same tasks; without a file there is one run, as the app's own.
+let variants: (BenchVariant | undefined)[] = [undefined];
+if (args.variants) {
+	try {
+		variants = readBenchVariants(readFileSync(path.resolve(args.variants), 'utf8'));
+	} catch (err) {
+		console.error(`${args.variants}: ${err instanceof Error ? err.message : String(err)}`);
+		process.exit(2);
+	}
+}
+const summaries: BenchSummary[] = [];
+for (const variant of variants) {
+	if (variant) {
+		console.log(`\n=== variant ${variant.name}`);
+	}
+	const summary = await runBenchmark({
+		tasks,
+		agent: {
+			command: isScript ? process.execPath : cli,
+			args: isScript ? [cli, '--acp'] : ['--acp'],
+			env: { ...process.env, GEMINI_CLI_NO_RELAUNCH: 'true', ...args.project ? { GOOGLE_CLOUD_PROJECT: args.project } : {} },
+		},
+		model: args.model,
+		...variant ? { variant } : {},
+		geminiCodeVersion: args.version,
+		cliVersion: cliVersion(),
+		turnTimeoutMs: Number(args.timeout),
+		log: line => console.log(line),
+	});
+	summaries.push(summary);
+	// --out names the file of a single run; with variants each gets its own in that folder.
+	const folder = args.out && args.variants ? path.resolve(args.out) : path.resolve(import.meta.dirname, '..', '..', '..', 'gemini', 'bench', 'results');
+	const out = args.out && !args.variants ? args.out : path.join(folder, benchResultsFileName(summary));
+	mkdirSync(path.dirname(out), { recursive: true });
+	writeFileSync(out, `${JSON.stringify(summary, null, '\t')}\n`);
+	console.log(`\n${summary.completed} of ${summary.tasks} completed; ${summary.requestsPerCompletedTask ?? '-'} requests per completed task; median first text ${summary.medianFirstTextMs ?? '-'} ms. Written to ${out}.`);
+}
+if (summaries.length > 1) {
+	console.log(`\n${benchComparison(summaries).join('\n')}`);
+}

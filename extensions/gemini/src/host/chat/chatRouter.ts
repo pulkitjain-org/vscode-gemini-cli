@@ -203,6 +203,7 @@ export function chatRouter(
 		workspaceAction: message => f.git.onMessage(message),
 		openReview: message => f.git.onMessage(message),
 		openMergeRequest: message => f.git.onMessage(message),
+		verifyGoal: message => f.git.onMessage(message),
 		restoreSession: message => f.sessions.onMessage(message),
 		pickSession: message => f.sessions.onMessage(message),
 		undoTurn: message => f.checkpoints.onMessage(message),

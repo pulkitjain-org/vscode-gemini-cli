@@ -92,9 +92,9 @@ export interface AgentStartHost {
 	readonly diffPreview: DiffPreview;
 	readonly enhancer: ChatEnhancer;
 	/** The pane's own surface the chat reaches: what activate sets on it (the browser, the team tools, the index, usage), reviews, the spare session and its tabs. */
-	readonly view: Pick<AgentsView, 'browser' | 'teamTools' | 'index' | 'debug' | 'usage' | 'contextCost' | 'reviewChip' | 'openReview' | 'direct' | 'review' | 'cliDefaultMode' | 'prepareStart' | 'open' | 'openChanges'>;
+	readonly view: Pick<AgentsView, 'browser' | 'teamTools' | 'index' | 'debug' | 'usage' | 'contextCost' | 'reviewChip' | 'openReview' | 'direct' | 'review' | 'cliDefaultMode' | 'prepareStart' | 'open' | 'openChanges' | 'verifyGoal'>;
 	/** Try in Workspace, Plan Review and the design-system note, loaded once first needed. */
-	readonly features: Pick<AgentFeatures, 'tries' | 'planReviews' | 'onDemand' | 'openMarkdown'>;
+	readonly features: Pick<AgentFeatures, 'tries' | 'planReviews' | 'onDemand' | 'openMarkdown' | 'verifyTurn' | 'verifyEdited'>;
 	readonly tabs: Pick<AgentTabs, 'reveal'>;
 	/** The side column's links, and Run on the agent's replies. */
 	readonly sideLinks: Pick<AgentSideLinks, 'openSideLink' | 'chatTerminal'>;
@@ -256,6 +256,7 @@ export class AgentStarter {
 				review: () => host.view.reviewChip?.(record.id),
 				openReview: () => host.view.openReview?.(record.id),
 				openMergeRequest: () => void vscode.commands.executeCommand('gemini.team.openMergeRequest', record.id),
+				verifyGoal: () => void host.view.verifyGoal(record.id),
 				title: () => host.model.agent(record.id)?.title ?? record.title,
 				// A coordinator splits work into threads instead; a thread's fork is a new thread (Fork Thread).
 				...(record.project?.role === 'coordinator' ? {} : { fork: host.forks.forkerFor(record.id) }),
@@ -343,6 +344,8 @@ export class AgentStarter {
 						host.model.setResolved(record.id, undefined);
 					}
 					host.turnChanged(record.id);
+					// Verify: a new turn stops a run of the checks, and a turn that changed files may start one.
+					void host.features.verifyTurn(record.id, activity.busy).catch(err => host.service.writeLog(`Verify: ${err instanceof Error ? err.message : String(err)}`));
 				}
 				host.refresh(record.id);
 			}),
@@ -353,6 +356,7 @@ export class AgentStarter {
 			}),
 			live.controller.onDidEditFiles(diffs => {
 				changes.record(diffs);
+				host.features.verifyEdited(record.id);
 				host.view.index?.agentEdited(folder, diffs.map(diff => diff.path));
 			}),
 			changes.onDidChange(() => {

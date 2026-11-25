@@ -47,6 +47,19 @@ export interface ChangedFileView {
 /** What the Try button does with the work of an agent on its own branch (`agents/tryChoices.ts`). */
 export type TryChoice = 'try' | 'merge' | 'mr';
 
+/** What the Verify row's buttons ask for: run the checks, stop them, send their failures to the agent, show their output, or flip "Keep going until checks pass". */
+export type VerifyAction = 'run' | 'stop' | 'send' | 'output' | 'goal';
+
+/** The repository's checks on the agent's work (src/host/agents/agentVerifyState.ts): every word comes from the host. */
+export interface VerifyView {
+	readonly state: 'none' | 'running' | 'passed' | 'failed' | 'weakened';
+	readonly text: string;
+	readonly detail?: string;
+	readonly actions: readonly { readonly id: VerifyAction; readonly label: string; readonly tip?: string }[];
+	/** "Keep going until checks pass", and whether it is on. */
+	readonly goal: { readonly label: string; readonly tip: string; readonly on: boolean };
+}
+
 export interface ChangesPanelView {
 	readonly agent?: {
 		readonly title: string;
@@ -65,6 +78,8 @@ export interface ChangesPanelView {
 	readonly files: readonly ChangedFileView[];
 	/** The team tools' part (src/host/mrPanel.ts), when GitLab, Snyk or SonarQube is connected. */
 	readonly team?: ChangesTeamView;
+	/** The repository's checks, when it names any or the agent has a goal command. */
+	readonly verify?: VerifyView;
 }
 
 export type ToChangesPanel = { readonly type: 'view'; readonly view: ChangesPanelView };
@@ -76,6 +91,7 @@ export type FromChangesPanel =
 	| { readonly type: 'keepAll' | 'undoAll' | 'openAll' | 'commit' | 'mergeBack' | 'keepTried' | 'takeBack' }
 	/** A pick from the Try button's chevron menu. */
 	| { readonly type: 'tryChoice'; readonly choice: TryChoice }
+	| { readonly type: 'verify'; readonly action: VerifyAction }
 	| FromChangesTeam;
 
 // --- Agent Home

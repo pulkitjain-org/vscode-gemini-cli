@@ -842,6 +842,24 @@ The chat's usage popover, and Agent Setup's Measure buttons with `gemini.develop
 
 The page shows each test prompt's input tokens as the CLI reported them, never a difference between two ([design rule 10](#design-rules)). The probe runs only on request, the readings are kept in global state per folder, and each server's reading shows beside its switch. A server whose reading is half as much again as the folder's alone, or context files that put the folder that far above an empty one, are pointed out in words (`heavyReadings`). Memory files show their size in characters, including the files they import with `@`.
 
+### Verify
+
+Verify runs a repository's checks on an agent's work and shows the result in the Changes panel ([guide](guide/agents.md#verify-an-agents-work)).
+
+| Module | What it holds |
+| --- | --- |
+| `src/acp/checksConfig.ts` | The `checks` section of the team defaults: its commands, when they run, and which files are protected (tests, lockfiles, test configuration by default). In the bundle every window loads, with `teamDefaults.ts`. |
+| `src/acp/verify.ts` | The decisions: what two passes add up to (`passed`, `failed`, `weakened`, `stopped`), the prompt a failure sends, and what "Keep going until checks pass" does next (`nextRound`). No I/O. |
+| `src/acp/verifyRun.ts` | Runs the commands through the shell, each in a process group of its own with a 30 minute limit, and makes the scratch copy for the second pass. |
+| `src/host/agents/agentVerifyState.ts` | Per agent, for the window: the checks, the last result and its tree, whether the agent edited since, the goal's rounds. It builds the card's words. State, so in the extension's own bundle. |
+| `src/host/agents/agentVerify.ts` | Asks before a repository's commands run, runs them, sends failures, follows the goal. In `dist/onDemand.js`, loaded with the first run. |
+
+A run is one or two passes. The first is on the agent's folder as it is. When it passes and the agent changed a protected file since its base commit (`startOf` for an agent on its own branch, `HEAD` for one in the workspace folder), the commands run again in a scratch copy with those files as the base has them, and without the protected files the agent added. A result records the git tree of the first pass (`snapshotTree`).
+
+Turn events drive it from `agentStart.ts`: a turn's start stops a run in progress, and a turn's end runs the checks when the repository says `always` and the turn edited files, or when the goal is on. `AgentFeatures.primeVerify` reads the repository's checks from the agent's own checkout the first time its Changes panel shows, and again after a turn that edited files; a repository that names none loads nothing more.
+
+Nothing is refused on a result. The card sits above Try in Workspace, Merge Back and Open Merge Request and they go ahead whatever it says.
+
 ## Gemini CLI management
 
 ### Which CLI runs
@@ -1204,6 +1222,14 @@ What was learnt the hard way, kept with the design it belongs to. [AGENTS.md](..
 - `git worktree remove --force` deletes its own record of the worktree before the files, and gives up with "Directory not empty" when anything still writes in the folder (a setup script's install, an agent's running command). What it leaves is a folder with some files and no `.git`: no worktree any more, so nothing that looks for worktrees finds it again. Stop the writers first, and treat a failure as files to delete, never as a worktree to ask git about (`removeWorktree`, `test/acp/worktrees.test.ts`).
 - Aborting a `spawn` with a shell ends the shell, not what it started: `npm install` carries on. Spawn it `detached` and signal the process group (`stopProcessGroup`), and wait for `close`, which comes only once every process holding the output has ended.
 - A locked worktree needs `--force` twice.
+
+### Verify
+
+- The second pass cannot run in a checkout made from git alone: checks need what git ignores (`node_modules`, build output, `.env`), and a tree without them fails for a reason that has nothing to do with the agent's work. The scratch copy is a clone of the whole folder (`cp -c`, which takes no space on APFS until a file is written), with its `.git` removed so nothing a check does there reaches the agent's branch.
+- A command's output is the repository's and its dependencies', not the user's: it goes to the agent inside `<external source="checks">`, as a job log does. A test that prints `</external>` cannot close the frame.
+- A turn Verify started must not start the goal's rounds over, and the user's own prompt must. `turnStarted` tells them apart by a flag set when the failures are sent, cleared by the turn that follows.
+- A run that was stopped (a new turn, Stop, the time limit hit while stopping) says nothing about the work: it is `stopped`, never `failed`, and the goal does nothing with it.
+- `riskyCommand.ts` and `configuration.ts` stay in the extension's own bundle; the runner asks the host for them. Importing them added 8 KB to `dist/onDemand.js` and a second copy of the settings' state.
 
 ### Packages and lint
 

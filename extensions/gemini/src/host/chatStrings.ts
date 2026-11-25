@@ -596,6 +596,9 @@ export interface ChatStrings {
 	/** The + menu's row that opens the Open Merge Request page for the agent's branch, when GitLab is connected. */
 	readonly openMergeRequest: string;
 	readonly openMergeRequestTip: string;
+	/** Verify's goal: keep going until a command passes. */
+	readonly keepGoing: string;
+	readonly keepGoingDetail: string;
 	/** Friendly titles for the geminicode-tools calls. */
 	readonly teamToolVerbs: TeamToolVerbs;
 	/** Friendly titles for the geminicode-index calls. */
