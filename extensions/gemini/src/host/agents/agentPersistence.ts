@@ -16,10 +16,10 @@ import { errorMessage } from '../../acp/errors';
 import { TranscriptStore } from '../../acp/transcriptStore';
 import { CheckpointStore } from '../../acp/checkpointStore';
 import type { CleanupItem, WorktreeCandidate } from '../../acp/storageUsage';
-import { cleanupWorktrees } from '../../acp/worktreeCleanup';
 import { AgentWorktree, inRepository, removeWorktree, repositoryRoot } from '../../acp/worktrees';
 import type { ChatActivity, ChatController } from '../chatController';
 import { background } from '../background';
+import { extensionChunk } from '../lazyFeature';
 
 /** Where the agent list was kept before the record store; still written when a window closes, for a downgrade. */
 export const storageKey = 'gemini.agents';
@@ -165,7 +165,7 @@ export class AgentPersistence implements vscode.Disposable {
 
 	/** The worktrees Settings' Clean Up may offer: merged threads', ended reviews' and removed agents', none in use here. */
 	storageWorktrees(): Promise<WorktreeCandidate[]> {
-		return cleanupWorktrees({
+		return extensionChunk<typeof import('../../onDemand')>('onDemand')().cleanupWorktrees({
 			records: this.model.snapshot().agents,
 			repositoryOf: async record => {
 				const workspace = this.model.workspace(record.workspaceId);

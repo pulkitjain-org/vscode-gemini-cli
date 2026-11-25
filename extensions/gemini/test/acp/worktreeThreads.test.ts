@@ -9,7 +9,7 @@ import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { allThreadsHome, branchExists, commitAll, createWorktree, createWorktreeAt, currentBranch, freeBranchName, git, gitNetworkProblem, inRepository, pathExists, projectFolders, projectsHome, removeThreadFolder, repositoryRoot, runWorktreeSetup, threadGuide, threadsHome, TurnQueue, worktreeSetup, worktreeSetupCommand, worktreesHome, writeThreadGuide } from '../../src/acp/worktrees';
+import { allThreadsHome, branchExists, commitAll, createWorktree, createWorktreeAt, currentBranch, freeBranchName, git, gitNetworkProblem, inRepository, pathExists, projectFolders, projectsHome, removeThreadFolder, removeWorktree, repositoryRoot, runWorktreeSetup, threadGuide, threadsHome, TurnQueue, worktreeSetup, worktreeSetupCommand, worktreesHome, writeThreadGuide } from '../../src/acp/worktrees';
 
 let root: string;
 let repo: string;
@@ -113,6 +113,20 @@ describe('worktree setup', () => {
 		expect(output.trim()).toBe('copied on gemini/setup');
 		expect(await fs.readFile(path.join(worktree.folder, '.env'), 'utf8')).toBe('KEY=1\n');
 		expect(await runWorktreeSetup('exit 3', worktree, repo, () => undefined)).toBe(3);
+	});
+
+	it.skipIf(process.platform === 'win32')('stopped, ends with everything it started, so the folder can be removed', async () => {
+		const worktree = await createWorktree(repo, 'gemini/installing', '', home);
+		const abort = new AbortController();
+		// An install still running: a process the script started, which keeps writing files.
+		const running = runWorktreeSetup('(while :; do mkdir -p node_modules/$RANDOM; : > node_modules/$RANDOM.js; done) & wait', worktree, repo, () => undefined, abort.signal);
+		await expect.poll(() => pathExists(path.join(worktree.folder, 'node_modules'))).toBe(true);
+		abort.abort();
+		await running;
+		await removeWorktree(repo, worktree, true, home);
+		// Nothing writes there any more: it stays gone.
+		await new Promise(resolve => setTimeout(resolve, 300));
+		expect({ folder: await pathExists(worktree.folder), branch: await branchExists(repo, 'gemini/installing') }).toEqual({ folder: false, branch: false });
 	});
 });
 

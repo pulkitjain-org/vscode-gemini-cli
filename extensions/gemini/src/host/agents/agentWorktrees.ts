@@ -87,6 +87,8 @@ export class AgentWorktrees implements vscode.Disposable {
 	private readonly queue = new TurnQueue();
 	/** Threads whose cleaned-up folders are being put back, so two callers share one `git worktree add`. */
 	private readonly restoringFolders = new Map<string, Promise<boolean>>();
+	/** The setup scripts running now, by their worktree's folder: what stops each, and when it has ended. */
+	private readonly setups = new Map<string, { stop(): void; readonly ended: Promise<unknown> }>();
 	/** Output of worktree setup scripts, made the first time one runs. */
 	private setupOutput: vscode.OutputChannel | undefined;
 
@@ -253,6 +255,17 @@ export class AgentWorktrees implements vscode.Disposable {
 		return [{ repository: await repositoryRoot(workspace.folder) ?? workspace.folder, worktree: record.worktree }];
 	}
 
+	/**
+	 * Stops the setup scripts still running in `folder` or below it, with all
+	 * they started, and resolves once they have ended: nothing of theirs
+	 * writes there any more, so the folder can be removed.
+	 */
+	async stopSetups(folder: string): Promise<void> {
+		const running = [...this.setups].filter(([each]) => each === folder || each.startsWith(folder + path.sep)).map(([, setup]) => setup);
+		running.forEach(setup => setup.stop());
+		await Promise.all(running.map(setup => setup.ended));
+	}
+
 	dispose(): void {
 		this.setupOutput?.dispose();
 	}
@@ -264,9 +277,18 @@ export class AgentWorktrees implements vscode.Disposable {
 		output.appendLine(`$ ${command}    (${worktree.folder})`);
 		const abort = new AbortController();
 		const cancel = token.onCancellationRequested(() => abort.abort());
-		const code = await runWorktreeSetup(command, worktree, repository, text => output.append(text), abort.signal).finally(() => cancel.dispose());
+		const running = runWorktreeSetup(command, worktree, repository, text => output.append(text), abort.signal);
+		const setup = { stop: () => abort.abort(), ended: running };
+		this.setups.set(worktree.folder, setup);
+		const code = await running.finally(() => {
+			cancel.dispose();
+			if (this.setups.get(worktree.folder) === setup) {
+				this.setups.delete(worktree.folder);
+			}
+		});
 		output.appendLine(code === 0 ? '' : vscode.l10n.t("Exited with {0}.", code));
-		if (code !== 0 && !token.isCancellationRequested) {
+		// Stopped by the user, or because its agent was removed: nothing to report.
+		if (code !== 0 && !abort.signal.aborted) {
 			const show = vscode.l10n.t("Show Output");
 			void vscode.window.showWarningMessage(vscode.l10n.t("The setup script for {0} failed. The agent starts anyway.", branch), show).then(choice => choice === show && output.show());
 		}

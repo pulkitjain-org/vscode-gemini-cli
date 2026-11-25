@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { spawn, type ChildProcess, type ChildProcessWithoutNullStreams } from 'node:child_process';
 
 // Ending a child process the same way everywhere (the agent's sidecar, a stdio
 // MCP server): kept apart from sidecar.ts, whose module state (the processes
@@ -19,7 +19,7 @@ const killAfterMs = 3_000;
  * that ignores SIGTERM, for example a CLI while a shell tool runs, is killed
  * after `killAfterMs`.
  */
-export function stopProcess(child: ChildProcessWithoutNullStreams): void {
+export function stopProcess(child: ChildProcess | ChildProcessWithoutNullStreams): void {
 	if (process.platform === 'win32' && child.pid) {
 		try {
 			spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' }).on('error', () => child.kill());
@@ -34,4 +34,30 @@ export function stopProcess(child: ChildProcessWithoutNullStreams): void {
 		timer.unref?.();
 		child.once('exit', () => clearTimeout(timer));
 	}
+}
+
+/**
+ * Ends a shell with everything it started, such as a setup script in the
+ * middle of installing packages: `child` was spawned `detached`, so it leads
+ * a process group of its own, which is signalled whole. What ignores SIGTERM
+ * is killed after `killAfterMs`. On Windows the tree goes, as in `stopProcess`.
+ */
+export function stopProcessGroup(child: ChildProcess): void {
+	const pid = child.pid;
+	if (process.platform === 'win32' || !pid) {
+		stopProcess(child);
+		return;
+	}
+	const signal = (name: NodeJS.Signals) => {
+		try {
+			process.kill(-pid, name);
+		} catch {
+			// The group has ended.
+		}
+	};
+	signal('SIGTERM');
+	const timer = setTimeout(() => signal('SIGKILL'), killAfterMs);
+	timer.unref?.();
+	// `close` comes once every process holding its output has ended, not only the shell.
+	child.once('close', () => clearTimeout(timer));
 }

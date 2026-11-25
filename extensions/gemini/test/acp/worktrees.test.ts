@@ -7,7 +7,7 @@ import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { branchExists, commitAll, createWorktree, createWorktreeFrom, currentBranch, folderInRepository, folderSize, freeFolder, git, inBatches, mainRepository, mergeBranch, mergeRefusal, pathExists, removeWorktree, repositoryRoot, restoreWorktree, unfinishedOperation, worktreesHome, worktreeStatus } from '../../src/acp/worktrees';
+import { isAgentFolder, branchExists, commitAll, createWorktree, createWorktreeFrom, currentBranch, folderInRepository, folderSize, freeFolder, git, inBatches, mainRepository, mergeBranch, mergeRefusal, pathExists, removeWorktree, repositoryRoot, restoreWorktree, unfinishedOperation, worktreesHome, worktreeStatus } from '../../src/acp/worktrees';
 
 let root: string;
 let repo: string;
@@ -117,6 +117,41 @@ describe('worktrees', () => {
 		await removeWorktree(repo, second, true);
 		expect(await branchExists(repo, 'gemini/second')).toBe(false);
 		expect(await git(repo, ['worktree', 'list'])).not.toContain('second');
+	});
+
+	it('removes what a removal that stopped half way left: files git no longer knows as a worktree', async () => {
+		const worktree = await createWorktree(repo, 'gemini/half', '', home);
+		// As git leaves it when something still wrote in the folder: its record dropped, files left.
+		await fs.rm(path.join(worktree.folder, '.git'));
+		await git(repo, ['worktree', 'prune']);
+		await fs.mkdir(path.join(worktree.folder, 'node_modules', 'pkg'), { recursive: true });
+		await fs.writeFile(path.join(worktree.folder, 'node_modules', 'pkg', 'index.js'), 'x');
+		await removeWorktree(repo, worktree, true, home);
+		expect({ folder: await pathExists(worktree.folder), branch: await branchExists(repo, 'gemini/half') }).toEqual({ folder: false, branch: false });
+	});
+
+	it('removes a locked worktree', async () => {
+		const worktree = await createWorktree(repo, 'gemini/locked', '', home);
+		await git(repo, ['worktree', 'lock', worktree.folder]);
+		await removeWorktree(repo, worktree, true, home);
+		expect({ folder: await pathExists(worktree.folder), branch: await branchExists(repo, 'gemini/locked'), listed: (await git(repo, ['worktree', 'list'])).includes('locked') }).toEqual({ folder: false, branch: false, listed: false });
+	});
+
+	it('removes a worktree whose workspace is no longer a repository: the worktree says whose it is', async () => {
+		const worktree = await createWorktree(repo, 'gemini/moved', '', home);
+		await removeWorktree(path.join(root, 'moved-away'), worktree, true, home);
+		expect({ folder: await pathExists(worktree.folder), branch: await branchExists(repo, 'gemini/moved') }).toEqual({ folder: false, branch: false });
+	});
+
+	it('deletes left-over files only in the folders GeminiCode makes for agents', async () => {
+		const outside = path.join(root, 'elsewhere', 'notes');
+		await fs.mkdir(outside, { recursive: true });
+		await fs.writeFile(path.join(outside, 'keep.txt'), 'mine\n');
+		await expect(removeWorktree(repo, { folder: outside, cwd: outside, branch: 'gemini/none', base: 'main' }, false, home)).rejects.toThrow();
+		expect({
+			kept: await fs.readFile(path.join(outside, 'keep.txt'), 'utf8'),
+			agentFolders: [path.join(home, '.geminicode', 'worktrees', 'shop', 'fix'), path.join(home, '.geminicode', 'threads', 'p', 'fix', 'shop'), path.join(home, '.geminicode', 'worktrees', 'shop'), path.join(home, '.geminicode', 'index', 'code', 'x'), path.join(home, '.geminicode', 'worktrees', 'shop', '..', '..', '..', 'x')].map(folder => isAgentFolder(folder, home)),
+		}).toEqual({ kept: 'mine\n', agentFolders: [true, true, false, false, false] });
 	});
 });
 

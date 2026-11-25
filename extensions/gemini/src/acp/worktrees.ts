@@ -14,6 +14,7 @@ import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { writeFileAtomic } from './fsUtil';
+import { stopProcessGroup } from './processStop';
 
 /** An agent's own branch and folder. Plain data, kept with the agent. */
 export interface AgentWorktree {
@@ -395,15 +396,44 @@ export async function currentBranch(repository: string): Promise<string> {
 	return head === 'HEAD' ? (await git(repository, ['rev-parse', '--short', 'HEAD'])).trim() : head;
 }
 
-/** Deletes the worktree's folder and, with `deleteBranch`, its branch, even with unmerged work. */
-export async function removeWorktree(repository: string, worktree: AgentWorktree, deleteBranch: boolean): Promise<void> {
-	try {
-		await git(repository, ['worktree', 'remove', '--force', worktree.folder]);
-	} catch (err) {
-		// Already gone from disk: forget it.
-		await fs.access(worktree.folder).then(() => { throw err; }, () => git(repository, ['worktree', 'prune']));
+/** How long `removeWorktree` waits before asking git a second time. */
+const removeRetryMs = 400;
+
+/** Whether `folder` is one GeminiCode made for an agent: inside ~/.geminicode/worktrees, reviews or threads, below the folder that groups it. */
+export function isAgentFolder(folder: string, home: string = os.homedir()): boolean {
+	const parts = path.relative(path.join(home, '.geminicode'), folder).split(path.sep);
+	return parts.length >= 3 && ['worktrees', 'reviews', 'threads'].includes(parts[0]) && !parts.includes('..');
+}
+
+/**
+ * Deletes the worktree's folder and, with `deleteBranch`, its branch, even
+ * with unmerged work. The worktree says which repository it belongs to, so
+ * one whose workspace has moved still goes; `repository` is used when it
+ * can't. Git gives up half way when something still writes in the folder,
+ * having dropped its own record of the worktree: it is asked once more, and
+ * what is then left of a folder GeminiCode made (`isAgentFolder`) is deleted
+ * as plain files. Rejects when the folder is still there.
+ */
+export async function removeWorktree(repository: string, worktree: AgentWorktree, deleteBranch: boolean, home: string = os.homedir()): Promise<void> {
+	const folder = worktree.folder;
+	if (await isCheckout(folder)) {
+		repository = await mainRepository(folder).catch(() => repository);
 	}
-	if (deleteBranch && await branchExists(repository, worktree.branch)) {
+	// Forced twice: a locked worktree goes too.
+	const remove = () => git(repository, ['worktree', 'remove', '--force', '--force', folder]);
+	try {
+		await remove().catch(() => new Promise(resolve => setTimeout(resolve, removeRetryMs)).then(remove));
+	} catch (err) {
+		if (await pathExists(folder)) {
+			if (!isAgentFolder(folder, home)) {
+				throw err;
+			}
+			await fs.rm(folder, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+		}
+		// Gone from disk: git forgets it.
+		await git(repository, ['worktree', 'prune']).catch(() => undefined);
+	}
+	if (deleteBranch && await branchExists(repository, worktree.branch).catch(() => false)) {
 		await git(repository, ['branch', '-D', worktree.branch]);
 	}
 }
@@ -497,7 +527,9 @@ function shellQuote(value: string): string {
  * Runs `command` through the shell in the new worktree's top folder, with
  * GEMINI_SOURCE_REPOSITORY naming the repository it came from (to copy files
  * such as .env that Git does not carry). Resolves with the exit code; the
- * output goes to `onOutput` as it comes. `signal` stops it.
+ * output goes to `onOutput` as it comes. `signal` stops it, with everything
+ * it started (an install still running, say): it runs in a process group of
+ * its own.
  */
 export function runWorktreeSetup(command: string, worktree: AgentWorktree, repository: string, onOutput: (text: string) => void, signal?: AbortSignal): Promise<number> {
 	return new Promise(resolve => {
@@ -505,15 +537,23 @@ export function runWorktreeSetup(command: string, worktree: AgentWorktree, repos
 			cwd: worktree.folder,
 			shell: process.env.SHELL || true,
 			env: { ...process.env, GEMINI_SOURCE_REPOSITORY: repository, GEMINI_WORKTREE: worktree.folder, GEMINI_BRANCH: worktree.branch },
-			signal,
+			detached: process.platform !== 'win32',
 		});
+		const stop = () => stopProcessGroup(child);
+		if (signal?.aborted) {
+			stop();
+		}
+		signal?.addEventListener('abort', stop, { once: true });
 		child.stdout.on('data', data => onOutput(String(data)));
 		child.stderr.on('data', data => onOutput(String(data)));
 		child.on('error', err => {
 			onOutput(`${err.message}\n`);
 			resolve(-1);
 		});
-		child.on('close', code => resolve(code ?? -1));
+		child.on('close', code => {
+			signal?.removeEventListener('abort', stop);
+			resolve(code ?? -1);
+		});
 	});
 }
 
@@ -529,9 +569,9 @@ export async function freeBranchName(repositories: readonly string[], branch: st
 
 /** Removes a multi-repository thread's worktrees, then its folder, which GeminiCode made and holds nothing else of the user's. */
 export async function removeThreadFolder(repos: readonly RepoWorktree[], folder: string, deleteBranch: boolean, home: string = os.homedir()): Promise<void> {
-	const results = await Promise.allSettled(repos.map(repo => removeWorktree(repo.repository, repo, deleteBranch)));
+	const results = await Promise.allSettled(repos.map(repo => removeWorktree(repo.repository, repo, deleteBranch, home)));
 	if (path.dirname(path.dirname(folder)) === allThreadsHome(home)) {
-		await fs.rm(folder, { recursive: true, force: true });
+		await fs.rm(folder, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
 	}
 	const failed = results.find(result => result.status === 'rejected');
 	if (failed) {

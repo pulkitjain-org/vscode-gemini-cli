@@ -16,6 +16,7 @@ import { errorMessage } from '../../acp/errors';
 import type { CheckpointStore } from '../../acp/checkpointStore';
 import type { TranscriptStore } from '../../acp/transcriptStore';
 import { AgentWorktree, coordinatorHome, removeThreadFolder, removeWorktree, repositoryRoot, threadsHome, worktreeStatus } from '../../acp/worktrees';
+import { extensionChunk } from '../lazyFeature';
 import type { AgentNotifier } from '../agentNotifier';
 import type { AgentTerminals } from '../agentTerminals';
 import type { ReviewController } from '../reviewController';
@@ -27,6 +28,10 @@ import type { AgentFeatures } from './agentFeatures';
 import type { AgentTabs } from './agentTabs';
 import type { AgentTree, AgentTreeNode } from './agentTree';
 import type { LiveAgent } from './agentStart';
+import type { AgentWorktrees } from './agentWorktrees';
+
+/** How long a removed agent's running turn gets to end, and its command with it, before its folder is removed anyway. */
+const turnEndMs = 3_000;
 
 /** What removing, archiving and stopping agents reach into the Agents pane for. */
 export interface AgentRemovalHost {
@@ -47,6 +52,9 @@ export interface AgentRemovalHost {
 	readonly features: Pick<AgentFeatures, 'loadedAgentFiles' | 'tries'>;
 	/** The agents' tabs: a stopped agent's leaves the Changes view. */
 	readonly tabs: Pick<AgentTabs, 'unfocus'>;
+	readonly worktrees: Pick<AgentWorktrees, 'stopSetups'>;
+	/** The file that lists the folders a removal left behind (worktreeCleanup.ts). */
+	readonly leftoverFile: string;
 }
 
 export class AgentRemoval {
@@ -66,6 +74,25 @@ export class AgentRemoval {
 		}
 		const record = host.model.agent(id);
 		const workspace = record && host.model.workspace(record.workspaceId);
+		if (record?.worktree) {
+			// Nothing may still write in its folder, or git removes only part of it: its setup script ends, then its turn and the command that runs.
+			await host.worktrees.stopSetups(record.worktree.folder);
+			const live = host.live.get(id);
+			if (live?.activity.busy) {
+				await Promise.race([
+					new Promise<void>(resolve => {
+						const listener = live.controller.onDidChangeActivity(activity => {
+							if (!activity.busy) {
+								listener.dispose();
+								resolve();
+							}
+						});
+						void live.session.cancel();
+					}),
+					new Promise(resolve => setTimeout(resolve, turnEndMs)),
+				]);
+			}
+		}
 		this.stop(id, false);
 		if (record) {
 			this.forkGone(record);
@@ -79,13 +106,14 @@ export class AgentRemoval {
 		host.terminals.closeAgent(id);
 		host.view.teamTools?.forgetAgent(id);
 		host.view.index?.forgetAgent(id);
-		if (record?.worktree && record.repos?.length) {
-			await removeThreadFolder(record.repos, record.worktree.folder, deleteBranch).catch(err =>
-				vscode.window.showWarningMessage(vscode.l10n.t("The agent was removed, but its folder {0} could not be: {1}", tildify(record.worktree!.folder), errorMessage(err))));
-		} else if (record?.worktree && workspace) {
-			const repository = await repositoryRoot(workspace.folder) ?? workspace.folder;
-			await removeWorktree(repository, record.worktree, deleteBranch).catch(err =>
-				vscode.window.showWarningMessage(vscode.l10n.t("The agent was removed, but its folder {0} could not be: {1}", tildify(record.worktree!.folder), errorMessage(err))));
+		const folder = record?.worktree?.folder;
+		const repository = workspace && (await repositoryRoot(workspace.folder) ?? workspace.folder);
+		if (folder && (record.repos?.length || repository)) {
+			await (record.repos?.length ? removeThreadFolder(record.repos, folder, deleteBranch) : removeWorktree(repository!, record.worktree!, deleteBranch)).catch(err => {
+				// Remembered, so the next start tries again and Clean Up lists it.
+				void extensionChunk<typeof import('../../onDemand')>('onDemand')().rememberLeftover(host.leftoverFile, folder);
+				void vscode.window.showWarningMessage(vscode.l10n.t("The agent was removed, but its folder {0} could not be: {1} GeminiCode tries again when it next starts.", tildify(folder), errorMessage(err)));
+			});
 		}
 		if (record?.worktree) {
 			// The worktree is gone, and its index with it.
