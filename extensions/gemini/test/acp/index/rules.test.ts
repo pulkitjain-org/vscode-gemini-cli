@@ -10,6 +10,7 @@ import { IgnoreRules } from '../../../src/acp/index/ignore';
 import { canInclude, contentSkipReason, pathSkipReason, SkipRules } from '../../../src/acp/index/inventory';
 import { isTestPath, queryTerms } from '../../../src/acp/index/query';
 import { resolveImport } from '../../../src/acp/index/resolve';
+import { limitMs, medianMs } from '../../timing';
 
 describe('IgnoreRules', () => {
 	it('matches names at any depth, anchored paths, folders, ** and negation', () => {
@@ -22,9 +23,8 @@ describe('IgnoreRules', () => {
 	it('reads a glob it can\'t make sense of as its own text, and stays fast on many **', () => {
 		expect(new IgnoreRules(['[z-a].ts', '*(x']).ignores('[z-a].ts')).toBe(true);
 		const rules = new IgnoreRules(['**/a/**/b/**/c/**/d/**/e/**/f/**/x.ts']);
-		const started = performance.now();
 		expect(rules.ignores(`${'a/'.repeat(40)}y.ts`)).toBe(false);
-		expect(performance.now() - started).toBeLessThan(500);
+		expect(medianMs(3, () => rules.ignores(`${'a/'.repeat(40)}y.ts`))).toBeLessThan(limitMs(500));
 	});
 });
 

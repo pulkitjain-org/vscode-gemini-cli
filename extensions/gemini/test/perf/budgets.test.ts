@@ -28,6 +28,7 @@ import { matchCommands, mentionAt, slashQuery } from '../../webview-src/chatLogi
 import { scanStreaming } from '../../webview-src/streaming';
 import { fakeAgentCommand, waitFor } from '../helpers';
 import { page, sendToPage, showChatPage, startScript } from '../webview/pages';
+import { limitMs, medianMs } from '../timing';
 
 /**
  * Bundle size budgets in bytes, minified: every script in media/ and dist/ has one. KaTeX and the
@@ -166,17 +167,6 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	'dist/indexer.js': 120_000,
 };
 
-/** Median time of `run` over `rounds` runs, in ms. */
-function median(rounds: number, run: () => void): number {
-	const times: number[] = [];
-	for (let i = 0; i < rounds; i++) {
-		const start = performance.now();
-		run();
-		times.push(performance.now() - start);
-	}
-	return times.sort((a, b) => a - b)[Math.floor(rounds / 2)];
-}
-
 describe('bundle size', () => {
 	const root = path.join(__dirname, '..', '..');
 	// Locally a bundle that is not built is skipped; CI builds them all first (gemini-ci.yml), so there a missing one fails.
@@ -216,27 +206,27 @@ describe('a project with 500 threads', () => {
 
 	it('opens it starting only a few threads, and lists the rest quickly', () => {
 		expect(warmThreads(model.threadsOf('c'))).toHaveLength(6);
-		const ms = median(51, () => {
+		const ms = medianMs(51, () => {
 			const all = model.threadsOf('c');
 			warmThreads(all);
 			all.filter(record => !isArchived(record, now));
 		});
-		expect(ms).toBeLessThan(5);
+		expect(ms).toBeLessThan(limitMs(5));
 	});
 
 	it('keeps the coordinator\'s wake short', () => {
 		const lines = wakeThreadLines(threads);
 		expect(lines.length).toBeLessThanOrEqual(20 + 10 + 1);
-		expect(median(51, () => wakeThreadLines(threads))).toBeLessThan(2);
+		expect(medianMs(51, () => wakeThreadLines(threads))).toBeLessThan(limitMs(2));
 	});
 
 	it('saves the agent list quickly', () => {
 		const json = JSON.stringify(model.snapshot());
 		expect(json.length).toBeLessThan(250_000);
-		expect(median(21, () => {
+		expect(medianMs(21, () => {
 			model.recordPrompt('t499', 'One more note');
 			JSON.stringify(model.snapshot());
-		})).toBeLessThan(10);
+		})).toBeLessThan(limitMs(10));
 	});
 });
 
@@ -244,12 +234,12 @@ describe('keystroke', () => {
 	it('matches "/" commands and "@" mentions in well under a frame', () => {
 		const commands = Array.from({ length: 600 }, (_, i) => ({ name: `command-${i}-${i % 7 ? 'review' : 'deploy'}` }));
 		const text = 'Please look at this file and then '.repeat(40) + '/rev';
-		const ms = median(201, () => {
+		const ms = medianMs(201, () => {
 			slashQuery(text, text.length, text.length);
 			mentionAt(text, text.length, text.length);
 			matchCommands(commands, 'rev');
 		});
-		expect(ms).toBeLessThan(2);
+		expect(ms).toBeLessThan(limitMs(2));
 	});
 });
 
@@ -267,12 +257,12 @@ describe('streaming', () => {
 		deltas.reset(transcript.items);
 		const reply = () => transcript.items[transcript.items.length - 1] as Extract<TranscriptItem, { kind: 'user' | 'agent' | 'thought' }>;
 		let scanned = scanStreaming(reply().text);
-		const ms = median(201, () => {
+		const ms = medianMs(201, () => {
 			transcript.apply(adapter.adapt({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'one more chunk ' } }));
 			deltas.toUpdates([reply()]);
 			scanned = scanStreaming(reply().text, scanned.stableEnd);
 		});
-		expect(ms).toBeLessThan(2);
+		expect(ms).toBeLessThan(limitMs(2));
 	});
 });
 
@@ -286,11 +276,11 @@ describe('agent switch', () => {
 			transcript.apply(adapter.adapt({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'An answer of moderate length. '.repeat(40) } }));
 		}
 		const deltas = new TextDeltas();
-		const ms = median(51, () => {
+		const ms = medianMs(51, () => {
 			deltas.reset(transcript.items);
 			JSON.stringify(transcript.items);
 		});
-		expect(ms).toBeLessThan(25);
+		expect(ms).toBeLessThan(limitMs(25));
 	});
 
 	it('opens a 300-turn chat in the view drawing only its latest items', async () => {
@@ -310,7 +300,7 @@ describe('agent switch', () => {
 		const reset = () => sendToPage({ type: 'reset', items, busy: false, status: { phase: 'ready', text: '' }, settings: {} });
 		// Drawing the latest 60 items: about 30 ms on a laptop and about 112 ms on CI's runner, with happy-dom's DOM. The count
 		// below is what holds the view to its latest items on any machine; the time catches only a return to drawing all 1,200.
-		const ms = median(11, reset);
+		const ms = medianMs(11, reset);
 		expect(ms).toBeLessThan(300);
 		const drawn = [...transcript.children].filter(child => !child.classList.contains('turn-slot'));
 		expect(drawn.length).toBeLessThanOrEqual(80);
@@ -346,6 +336,6 @@ describe('enter to send', () => {
 			await turn;
 		}
 		// The fake agent answers at once, so this is GeminiCode's own overhead plus one round trip over stdio.
-		expect(times.sort((a, b) => a - b)[5]).toBeLessThan(30);
+		expect(times.sort((a, b) => a - b)[5]).toBeLessThan(limitMs(30));
 	});
 });

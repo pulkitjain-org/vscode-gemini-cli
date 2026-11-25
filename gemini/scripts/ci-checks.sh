@@ -85,6 +85,12 @@ fi
 # shellcheck disable=SC2046
 step 'Hygiene (fork files)' node build/hygiene.ts product.json .eslint-ignore build/lib/extensions.ts $(git ls-files extensions/gemini gemini .github/workflows/gemini-*.yml) $(cat gemini/patches/ADDED)
 step 'Patch series matches HEAD' gemini/scripts/upstream-series.sh check
+# The weekly move's own steps, tried on the pinned tag, when what they run changed and the tag is here.
+# A full checkout of the tag in a scratch worktree, so only with the full checks.
+if [ "$full" = 1 ] && touches '^(gemini/scripts/upstream-series\.sh|\.github/workflows/gemini-upstream\.yml|gemini/patches/|gemini/upstream\.json)' \
+	&& git rev-parse --verify --quiet "refs/tags/$(node -p "require('./gemini/upstream.json').tag")^{commit}" > /dev/null; then
+	step 'The upstream move, rehearsed on the pinned tag' gemini/scripts/upstream-series.sh rehearse
+fi
 
 if touches '^extensions/gemini/'; then
 	step 'Type check the extension, tests and webview' sh -c '

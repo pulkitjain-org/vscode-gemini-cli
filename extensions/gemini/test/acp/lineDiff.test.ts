@@ -5,6 +5,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { acceptHunk, diffLines, hunkLines, minimalEdit, rebaseOriginal, revertHunk, splitLines } from '../../src/acp/lineDiff';
+import { limitMs } from '../timing';
 
 const lines = (text: string) => splitLines(text);
 
@@ -33,7 +34,7 @@ describe('diffLines', () => {
 		const modified = ['same', ...Array.from({ length: 5_000 }, (_, i) => `new ${i}`), 'end'];
 		const started = Date.now();
 		expect(diffLines(['same', ...original, 'end'], modified)).toEqual([{ originalStart: 1, originalEnd: 5_001, modifiedStart: 1, modifiedEnd: 5_001 }]);
-		expect(Date.now() - started).toBeLessThan(500);
+		expect(Date.now() - started).toBeLessThan(limitMs(500));
 	});
 
 	it('keeps or undoes each hunk on its own, and all of them get back to either text', () => {

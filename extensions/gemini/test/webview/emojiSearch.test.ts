@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { buildIndex, emojiNameIn, moveInGrid, recentEmoji, searchEmoji, type EmojiEntry } from '../../webview-src/emojiSearch';
+import { limitMs, medianMs } from '../timing';
 
 const data = JSON.parse(readFileSync(path.join(__dirname, '..', '..', 'webview-src', 'emojiData.json'), 'utf8')) as { source: string; groups: EmojiEntry[][] };
 const index = buildIndex(data.groups, Infinity);
@@ -35,11 +36,12 @@ describe('searchEmoji', () => {
 	});
 
 	it('searches all of the emoji in a few milliseconds', () => {
-		const started = performance.now();
-		for (const query of ['s', 'sm', 'smile', 'face with', 'heart']) {
-			searchEmoji(index, query);
-		}
-		expect((performance.now() - started) / 5).toBeLessThan(5);
+		const ms = medianMs(5, () => {
+			for (const query of ['s', 'sm', 'smile', 'face with', 'heart']) {
+				searchEmoji(index, query);
+			}
+		});
+		expect(ms / 5).toBeLessThan(limitMs(5));
 	});
 });
 

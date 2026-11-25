@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { attachConfig, breakpointSpec, describeConfigs, parseJsonc, formatSnapshot, handleStop, Holds, OutputLines, OutputTail, reloadsItself, resolveLaunchConfig, SessionTracker, smallConfig, type StoppedEvent, takeSnapshot, type Timers, trackedNonce } from '../../../src/acp/debug/debugBridgeLogic';
 import type { Point } from '../../../src/acp/debug/points';
 import { dapEvent, dapResponse, FakeDap, never, output, stopped, stoppedThreadScript } from '../../fake-dap/fakeDap';
+import { limitMs, medianMs } from '../../timing';
 
 function tracker() {
 	const seen = { marked: [] as string[], stops: [] as StoppedEvent[], exits: [] as (number | undefined)[], ended: 0 };
@@ -65,11 +66,12 @@ describe('the tracker', () => {
 	it('skips 100,000 mixed messages quickly', () => {
 		const { session } = tracker();
 		const messages = [dapResponse('stackTrace'), output('a plain line of output\n'), { type: 'request', command: 'next' }];
-		const start = performance.now();
-		for (let i = 0; i < 100_000; i++) {
-			session.onMessage(messages[i % 3]);
-		}
-		expect(performance.now() - start).toBeLessThan(500);
+		const ms = medianMs(3, () => {
+			for (let i = 0; i < 100_000; i++) {
+				session.onMessage(messages[i % 3]);
+			}
+		});
+		expect(ms).toBeLessThan(limitMs(500));
 	});
 
 	it('caps a line in progress and the tail of plain output', () => {

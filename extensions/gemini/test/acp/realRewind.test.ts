@@ -99,6 +99,10 @@ describeRealCli('rewinding a session on the real CLI', () => {
 		expect(await rewindCliSession(work, sessionId, 'Add the tax line', 0, geminiHome)).toBe(true);
 		updates.length = 0;
 		await connection.loadSession(sessionId, work);
+		// A loaded session is back on the CLI's automatic model, whose router asks a small model for a choice as
+		// JSON. The fake API answers "Done.", so the CLI asked five times with a growing wait, about 100 s, before
+		// carrying on: the session's model is set again, as it was before the load, and no router runs.
+		await connection.setModel(sessionId, 'gemini-2.5-flash');
 		await new Promise(resolve => setTimeout(resolve, 500));
 		const replayed = updates.flatMap(u => u.sessionUpdate === 'user_message_chunk' ? [contentBlockToText(u.content)] : []).filter(isPrompt);
 		expect(replayed).toEqual(['Fix the rounding in the cart total']);
