@@ -129,6 +129,7 @@ gemini/scripts/upstream-series.sh files        # the upstream files the fork mod
 gemini/scripts/upstream-series.sh regenerate   # rewrite gemini/patches/ from the working tree against the pinned tag
 gemini/scripts/upstream-series.sh check        # what CI runs: every patch still matches HEAD, every upstream code file it edits has a GEMINI-FORK marker, and none of upstream's workflows is back
 gemini/scripts/upstream-series.sh prune        # remove upstream's workflows and Dependabot config, after merging an upstream tag by hand
+gemini/scripts/upstream-series.sh rehearse     # the weekly move's own steps, tried on the pinned tag in a scratch worktree: the result must be HEAD
 ```
 
 After editing an upstream file, run `regenerate` and commit `gemini/patches/` with the change; Gemini CI fails otherwise. `gemini/scripts/list-fork-touches.sh` prints the markers.
@@ -139,7 +140,7 @@ The fork is built on one upstream release tag, pinned in `gemini/upstream.json` 
 
 [`gemini-upstream.yml`](../.github/workflows/gemini-upstream.yml) runs once a week and by hand. It fetches upstream's tags and takes the newest release above the pin. It checks that tag out, applies the series with a three-way merge, copies the fork's own files over from `main`, moves the pin and regenerates the series against the new tag. It also bumps the bundled Gemini CLI to the newest release, with its checksum from npm. It commits as the repository's git user and opens one pull request from `task/upstream-<tag>`, or `task/gemini-cli-<version>` for a CLI-only bump.
 
-Gemini CI builds and tests that pull request like any other. Merge it once Gemini CI is green; main's ruleset enforces that once its required checks are on ([CI](#ci)). A patch that does not apply leaves conflict markers in the branch, and the pull request names it: finish it on that branch, run `regenerate`, and push. While that branch exists, later runs leave it alone.
+Gemini CI builds and tests that pull request like any other. Merge it once Gemini CI is green; main's ruleset enforces that once its required checks are on ([CI](#ci)). A patch that does not apply leaves conflict markers in the branch, and the pull request names it: finish it on that branch, run `regenerate`, and push. While that branch exists, later runs leave it alone, and fail once it has had no commit for two weeks, so a move nobody finished does not pass for a quiet week. A new Gemini CLI does not wait for a move that is held up: when the move's branch is waiting, a patch did not apply or the move's job failed, a second job pins the CLI on `task/gemini-cli-<version>` from `main` (`gemini/scripts/bump-cli.sh`).
 
 Pushing an upstream move needs the `GEMINI_UPSTREAM_TOKEN` repository secret: a fine-grained token for this repository with contents, pull requests and workflows write access. GitHub refuses a push that changes `.github/workflows` from a workflow's own token, and upstream's commits do. A pull request opened with that token starts Gemini CI by itself. Without the secret, a CLI-only bump still goes through, and the job starts Gemini CI on its branch, since a pull request opened with a workflow's own token starts no workflows.
 
@@ -149,12 +150,14 @@ To do the same by hand, with `<tag>` the upstream release to move to:
 git remote add upstream https://github.com/microsoft/vscode.git
 git fetch upstream tag <tag>
 git checkout -b task/upstream-<tag> <tag>
+# a bare upstream tag has no gemini/ folder, so bring it over before running its script
+git checkout main -- gemini
 FROM=main gemini/scripts/upstream-series.sh apply <tag>
 # resolve anything it names, and set "tag" in gemini/upstream.json to <tag>, then:
 gemini/scripts/upstream-series.sh regenerate
 ```
 
-`apply` copies `gemini/upstream.json` from `main` unchanged, and `regenerate` writes the series against the tag it pins, so move the pin before regenerating. `apply` also removes upstream's workflows again. Merging a tag into the branch instead (`git merge <tag>`) brings back any workflow upstream added or changed, and a changed one shows as a conflict: run `gemini/scripts/upstream-series.sh prune` before committing the merge.
+`gemini/scripts/ci-checks.sh` runs `rehearse` with the full checks whenever the script, the workflow, the series or the pin changed, so a step that only fails on a bare tag is found before the week a release comes out. `apply` copies `gemini/upstream.json` from `main` unchanged, and `regenerate` writes the series against the tag it pins, so move the pin before regenerating. `apply` also removes upstream's workflows again. Merging a tag into the branch instead (`git merge <tag>`) brings back any workflow upstream added or changed, and a changed one shows as a conflict: run `gemini/scripts/upstream-series.sh prune` before committing the merge.
 
 After each move:
 

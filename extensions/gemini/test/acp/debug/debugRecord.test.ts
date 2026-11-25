@@ -72,14 +72,18 @@ describe('debug record', () => {
 		const dir = await storage();
 		const file = recordPath(dir, 'agent-1');
 		const writes: number[] = [];
+		// Resolves when the delayed write is on disk, however long this machine takes over it.
+		let written!: () => void;
+		const firstWrite = new Promise<void>(resolve => written = resolve);
 		const writer = new DebugRecordWriter(file, 20, async (f, r) => {
 			writes.push(r.startedAt);
 			await writeDebugRecord(f, r);
+			written();
 		});
 		writer.update({ ...record, startedAt: 1 });
 		writer.update({ ...record, startedAt: 2 });
 		writer.update({ ...record, startedAt: 3 });
-		await new Promise(r => setTimeout(r, 60));
+		await firstWrite;
 		const onDisk = (await readDebugRecord(file))?.startedAt;
 		writer.update({ ...record, startedAt: 4 });
 		await writer.flush();

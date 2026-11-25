@@ -1129,6 +1129,7 @@ What upstream's AI needs only to run is left out of the app. Release builds dele
   - `perf-first-reply.mts`: the same against a stand-in API;
   - `probe-enhance.mts`: Enhance prompt's routes;
   - `coordinator-spike.mts`: a project's coordinator.
+- **Time limits in tests** go through `test/timing.ts`: `medianMs` takes the middle of a few runs and `limitMs` widens a limit four times under CI, where a hosted runner is slower and shares its cores. A limit is there to catch work that became many times slower, never to measure a machine. A test that waits for work to finish waits for that work (a promise the test resolves, `waitFor`), never for a fixed time.
 - **Site checks** (`gemini/site/check-a11y.mts`, `check-lighthouse.mts`) run axe-core on every built page and Lighthouse on the landing and docs pages, in Gemini CI on the sample build and in the Pages workflow before a deploy.
 - **Theme tests** (`test/themes`) check that every text colour pair in GeminiCode Dark and Light reads at 4.5:1, and that nothing blurs.
 - **Webview tests** (`test/webview`) cover the streaming Markdown splitter and the chat's view logic (file names in replies, mentions, attachments, permission defaults, durations, scrolling, the composer height, folded turns), emoji search, the settings popup's state, and that no bare `<select>` opens a system menu.
@@ -1148,6 +1149,7 @@ What was learnt the hard way, kept with the design it belongs to. [AGENTS.md](..
 - Never ask an agent for a whole diff or log in one command. Give it the file list and have it read a few files at a time, as `reviewPrompt` in `src/acp/teamFlowLogic.ts` does.
 - A policy rule's `commandRegex` is matched by gemini-cli 0.67 against the call's arguments as JSON (`"command":"<text>`), anchored at the command's start, and a quantified `(?:...)` group is rejected as a nested quantifier. A rule that must match anywhere in the command starts with `([^"]|\\")*` (`toolPolicy.ts`); `test/acp/toolPolicy.test.ts` applies each regex the way the CLI does.
 - A long MCP tool call fails twice over. The CLI's fetch (undici) gives up on a reply whose headers take 5 minutes, reported as "fetch failed", so `localMcpServer.ts` answers a tool call as an event stream with its headers at once. gemini-cli 0.67 also ends any MCP tool call after 10 minutes (`MCP_DEFAULT_TIMEOUT_MSEC`), passing no progress handler, so progress notices don't extend it: a tool that may run long must stop itself in time, as agents' `research` does at `agentResearchMs` (`src/acp/research.ts`) and merges what it has.
+- A session reopened with `session/load` is back on the CLI's automatic model. Its router then asks a small model for a choice as JSON before the next prompt, and retries five times with a growing wait (about 100 s in all) when the answer is not JSON, as a stand-in API's is. A real-CLI test that prompts after a load sets the session's model again first (`test/acp/realRewind.test.ts`).
 
 ### Where pages open
 

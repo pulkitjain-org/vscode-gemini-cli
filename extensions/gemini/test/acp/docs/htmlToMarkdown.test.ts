@@ -6,6 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import { sectionsOf } from '../../../src/acp/docs/docsLibrary';
 import { htmlToMarkdown } from '../../../src/acp/docs/htmlToMarkdown';
+import { limitMs, medianMs } from '../../timing';
 
 describe('htmlToMarkdown', () => {
 	it('keeps the main content as Markdown, without the site\'s chrome or scripts', () => {
@@ -53,10 +54,9 @@ describe('htmlToMarkdown on hostile pages', () => {
 		const deep = `<main>${'<div>'.repeat(100_000)}<p>Deep text.</p>${'</div>'.repeat(100_000)}</main>`;
 		expect(htmlToMarkdown(deep, 'https://x.dev/').markdown).toBe('Deep text.');
 		const scripts = `<main>${'<SCRIPT>var a = 1;</SCRIPT><p>Kept.</p>'.repeat(5_000)}</main>`;
-		const started = performance.now();
 		const page = htmlToMarkdown(scripts, 'https://x.dev/');
 		expect([page.markdown.split('\n\n').length, page.markdown.includes('var a')]).toEqual([5_000, false]);
-		expect(performance.now() - started).toBeLessThan(2_000);
+		expect(medianMs(3, () => htmlToMarkdown(scripts, 'https://x.dev/'))).toBeLessThan(limitMs(2_000));
 	});
 });
 

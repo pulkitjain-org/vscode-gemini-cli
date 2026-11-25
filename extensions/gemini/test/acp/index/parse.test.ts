@@ -5,6 +5,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { parseFile } from '../../../src/acp/index/parse';
+import { limitMs, medianMs } from '../../timing';
 
 const symbolsOf = (relative: string, text: string) => parseFile(relative, text).symbols.map(s => `${s.kind} ${s.container ? `${s.container}.` : ''}${s.name} ${s.line}-${s.endLine}${s.exported ? ' exported' : ''}`);
 
@@ -127,16 +128,14 @@ describe('parseFile', () => {
 		// Ends and chunk names used to look back over every earlier member: 312 ms for 16,000 methods, 21 ms now.
 		const members = 32_000;
 		const text = ['export class Generated {', ...Array.from({ length: members }, (_, i) => `\tmethod${i}(value: number): number { return value + ${i}; }`), '}'].join('\n');
-		const started = performance.now();
 		const parsed = parseFile('generated.ts', text);
-		const elapsed = performance.now() - started;
 		expect([parsed.symbols.length, parsed.symbols[1], parsed.symbols[members], parsed.chunks[1].symbol]).toEqual([
 			members + 1,
 			{ name: 'method0', kind: 'method', line: 2, endLine: 2, container: 'Generated', exported: false },
 			{ name: `method${members - 1}`, kind: 'method', line: members + 1, endLine: members + 1, container: 'Generated', exported: false },
 			'Generated.method39',
 		]);
-		expect(elapsed).toBeLessThan(500);
+		expect(medianMs(3, () => parseFile('generated.ts', text))).toBeLessThan(limitMs(500));
 	});
 
 	it('names a chunk inside a long definition after the innermost one around it', () => {

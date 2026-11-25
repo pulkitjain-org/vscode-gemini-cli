@@ -8,10 +8,14 @@
 #   gemini/scripts/upstream-series.sh check              # fail if a patch no longer matches the working tree, or an edit has no marker (no tag needed)
 #   gemini/scripts/upstream-series.sh markers            # only the marker check: every upstream code file the series edits names GEMINI-FORK
 #   gemini/scripts/upstream-series.sh apply <tag>        # in a checkout of <tag>: apply the series and copy the fork's files from <from>
+#   gemini/scripts/upstream-series.sh rehearse           # the move's own steps, tried on the pinned tag in a scratch worktree: the result must be HEAD
 #   gemini/scripts/upstream-series.sh prune              # remove upstream's GitHub automation (after merging a tag by hand)
 #   gemini/scripts/upstream-series.sh files              # list the upstream files the fork modifies
 #
 # `apply` takes the branch to copy fork-only files from in FROM (default: main).
+# A checkout of a bare upstream tag has no gemini/ folder, so this script is not
+# there to run: bring the folder over first (git checkout main -- gemini), as
+# the Gemini Upstream workflow does and `rehearse` tries.
 # Patches carry binary data (`git diff --binary`), so icons are part of the
 # series too; a binary that upstream also changed has to be redone by hand.
 # The fork runs only its own workflows (gemini-*.yml): upstream's workflows and
@@ -184,8 +188,31 @@ case "${1:-}" in
 		fi
 		echo "Applied the series to $tag cleanly."
 		;;
+	rehearse)
+		# What the Gemini Upstream workflow does on a new tag, on the tag the fork is on: a bare
+		# checkout of it, the fork's folder brought over, then `apply`. The series and the fork's
+		# files over the pinned tag must give HEAD, file for file; a step that only fails on a
+		# bare tag (this script missing there, say) fails here, before a release week.
+		pin=$(pin)
+		need_tag "$pin"
+		head=$(git rev-parse HEAD)
+		tmp=$(mktemp -d)
+		trap 'git worktree remove --force "$tmp/tree" >/dev/null 2>&1 || true; rm -rf "$tmp"' EXIT
+		git worktree add --quiet --detach "$tmp/tree" "$pin"
+		(
+			cd "$tmp/tree"
+			git checkout "$head" -- gemini
+			FROM=$head gemini/scripts/upstream-series.sh apply "$pin" >/dev/null
+		)
+		if ! git -C "$tmp/tree" diff --cached --quiet "$head"; then
+			echo "The series applied to $pin does not give HEAD:" >&2
+			git -C "$tmp/tree" diff --cached --stat "$head" | tail -20 >&2
+			exit 1
+		fi
+		echo "The move's steps on $pin give HEAD."
+		;;
 	*)
-		sed -n '2,20p' "$0"
+		sed -n '2,24p' "$0"
 		exit 2
 		;;
 esac
