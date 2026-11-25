@@ -329,8 +329,12 @@ describe('Indexer', () => {
 			await idle.ensure({ root: folder, settings, build: true });
 			await eventually(async () => (await idle.findSymbol({ root: folder, name: 'beforeIdle' })).result.definitions.length === 1);
 			now += 11 * 60 * 1000;
-			await idle.closeIdle();
-			expect(existsSync(path.join(idleBase, 'code', await workspaceId(folder), 'index.lock'))).toBe(false);
+			// The symbol can be read before the run that indexed it has ended, and an index is not closed mid-run; the app's timer asks again each minute, as this does.
+			const lock = path.join(idleBase, 'code', await workspaceId(folder), 'index.lock');
+			await eventually(async () => {
+				await idle.closeIdle();
+				return !existsSync(lock);
+			});
 			write(folder, 'b.ts', 'export function afterIdle() {}\n');
 			await idle.update({ root: folder, paths: ['b.ts'] });
 			await eventually(async () => (await idle.findSymbol({ root: folder, name: 'afterIdle' })).result.definitions.length === 1);
