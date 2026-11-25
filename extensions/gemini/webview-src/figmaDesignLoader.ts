@@ -20,7 +20,7 @@ let module: Promise<{ openFigmaDesign(options: FigmaDesignOptions): void } | und
 
 /** Opens the dialog, empty or with a design's frames to change; the new design's chip replaces the old one. */
 export function openFigmaDesign(current?: readonly DesignFrame[]): void {
-	// eslint-disable-next-line no-restricted-syntax
+	// eslint-disable-next-line eslint-js/no-restricted-syntax
 	module ??= url ? import(/* webpackIgnore: true */ url).catch((err: unknown) => {
 		// Not kept: the next Add Figma Design loads it again.
 		module = undefined;

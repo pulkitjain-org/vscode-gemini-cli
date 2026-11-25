@@ -35,7 +35,7 @@ let refocus: string | undefined;
 
 function loadPicker(): NonNullable<typeof picker> {
 	// Loaded on demand on purpose: most chats never open the picker, and the chat opens faster without its data.
-	// eslint-disable-next-line no-restricted-syntax
+	// eslint-disable-next-line eslint-js/no-restricted-syntax
 	return picker ??= pickerUrl ? import(/* webpackIgnore: true */ pickerUrl).catch(() => undefined) : Promise.resolve(undefined);
 }
 

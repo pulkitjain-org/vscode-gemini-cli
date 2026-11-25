@@ -25,7 +25,6 @@ import { DiagnosticsController } from './diagnosticsController';
 import { ImagePasteController } from './imagePasteController';
 import { createTaskProgressProvider, isTaskProgressLabels } from './taskProgress/taskProgressProvider';
 import { codeBlockEditorTheme } from './codeBlockEditorTheme';
-import { mermaidProvider } from './mermaid/mermaidProvider';
 import { renderDollarProse } from './geminiDollarText'; // GEMINI-FORK: prices in prose are not math
 import type { MarkdownEditorInitialState } from '../src/preview/webviewInitialState';
 
@@ -183,6 +182,7 @@ class Editor extends Disposable {
 
 		this.model.sourceText.set(new StringValue(initialState.content), undefined);
 		this.model.readonlyMode.set(initialState.readonly, undefined);
+		this.model.renderWhitespace.set(initialState.renderWhitespace, undefined);
 
 		this._register(this.#connection.register(markdownEditorRenderer, {
 			readClipboardMedia: (request, _context, { signal }) => {
@@ -277,8 +277,9 @@ class Editor extends Disposable {
 			highlightThemeChanged: () => {
 				this.#syntaxHighlighter.themeChanged();
 			},
-			configurationChanged: ({ highlightActiveBlock }) => {
+			configurationChanged: ({ highlightActiveBlock, renderWhitespace }) => {
 				this.#view?.highlightActiveBlock.set(highlightActiveBlock, undefined);
+				this.model.renderWhitespace.set(renderWhitespace, undefined);
 			},
 			richLinkPresentations: ({ presentations }) => {
 				this.#linkPresentationProvider?.updatePresentations(presentations);
@@ -461,7 +462,20 @@ class Editor extends Disposable {
 				window.removeEventListener('blur', postEditorFocus);
 			},
 		});
+		// When the webview gets focus, for example right after the editor opens, and nothing in it
+		// has focus yet, put the caret into the document so typing works right away.
+		const focusEditorOnWindowFocus = (): void => {
+			const active = document.activeElement;
+			if (!this.model.readonlyMode.get() && (!active || active === document.body || active === document.documentElement)) {
+				view.focus();
+			}
+		};
+		window.addEventListener('focus', focusEditorOnWindowFocus);
+		this._register({ dispose: () => window.removeEventListener('focus', focusEditorOnWindowFocus) });
 		host.appendChild(view.element);
+		if (document.hasFocus()) {
+			focusEditorOnWindowFocus();
+		}
 		postEditorFocus();
 
 		// Render comments as the VS Code V2 markdown cards. The card colours come
@@ -589,9 +603,6 @@ class Editor extends Disposable {
 	}
 
 	#createIframeProviders(definitions: readonly CodeBlockEditorProviderDefinition[]): readonly IframeEmbeddedEditorProvider[] {
-		const hasMermaidProvider = definitions.some(definition =>
-			Object.entries(definition.selector).some(([key, language]) =>
-				key === 'language' ? language === 'mermaid' : key === 'languagePrefix' && 'mermaid'.startsWith(language)));
 		return [...definitions.map<IframeEmbeddedEditorProvider>(definition => ({
 			id: definition.id,
 			selector: definition.selector,
@@ -599,7 +610,7 @@ class Editor extends Disposable {
 			resolve: definition.source.kind === 'static'
 				? async () => definition.source.kind === 'static' ? definition.source.descriptor : undefined
 				: language => this.#resolveCodeBlockEditor(definition.id, language),
-		})), this.#taskProgressProvider, ...(hasMermaidProvider ? [] : [mermaidProvider])];
+		})), this.#taskProgressProvider];
 	}
 
 	#createCodeBlockEditorHostTransport(providerId: string, runtimeKey: string): CodeBlockEditorHostTransport {
@@ -687,6 +698,7 @@ function isInitialState(value: unknown): value is InitialState {
 		&& candidate.editEpoch >= 0
 		&& typeof candidate.readonly === 'boolean'
 		&& typeof candidate.highlightActiveBlock === 'boolean'
+		&& typeof candidate.renderWhitespace === 'boolean'
 		&& typeof candidate.richLinksEnabled === 'boolean'
 		&& Array.isArray(candidate.linkPresentationRules);
 }

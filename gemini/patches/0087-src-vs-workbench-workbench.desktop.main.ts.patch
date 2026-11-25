@@ -1,0 +1,14 @@
+diff --git a/src/vs/workbench/workbench.desktop.main.ts b/src/vs/workbench/workbench.desktop.main.ts
+index 213bf58a577237118e4d07aebdac2c0c751f0cd9..a7cb6319891f81ca1f27cb4d3333aebb524a5be8 100644
+--- a/src/vs/workbench/workbench.desktop.main.ts
++++ b/src/vs/workbench/workbench.desktop.main.ts
+@@ -202,6 +202,9 @@ import './contrib/remoteTunnel/electron-browser/remoteTunnel.contribution.js';
+ import './contrib/chat/electron-browser/chat.contribution.js';
+ import './contrib/chat/electron-browser/tunnelHost.contribution.js';
+ 
++// GEMINI-FORK: OS notifications and the Dock badge for the Gemini extension
++import './contrib/gemini/electron-browser/gemini.contribution.js';
++
+ // Copilot Voice
+ import './contrib/agentsVoice/electron-browser/agentsVoiceNativeCommands.js';
+ 

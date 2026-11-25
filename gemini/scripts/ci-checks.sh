@@ -8,7 +8,7 @@
 #                    bundles, hygiene of the generated webview files, the unit
 #                    tests (size budgets included), and the site's build and
 #                    SEO check when gemini/site changed
-#   Compile & hygiene  `npm run compile`, and hygiene of the changed files,
+#   Compile & hygiene  `pnpm run compile`, and hygiene of the changed files,
 #                    only when a file outside extensions/gemini, gemini and the
 #                    Gemini workflows changed, since those are the only files
 #                    they add
@@ -72,14 +72,14 @@ step 'Workflow files parse' node -e '
 ' .github/workflows/gemini-*.yml
 if [ "$full" = 1 ]; then
 	# shellcheck disable=SC2046
-	step 'Lint fork files' npx eslint --max-warnings 0 extensions/gemini gemini/site build/hygiene.ts build/filters.ts build/npm/dirs.ts build/gulpfile.extensions.ts build/lib/extensions.ts $(grep '\.ts$' gemini/patches/ADDED)
+	step 'Lint fork files' node build/oxlint.ts extensions/gemini gemini/site build/hygiene.ts build/filters.ts build/npm/dirs.ts build/gulpfile.extensions.ts build/lib/extensions.ts $(grep '\.ts$' gemini/patches/ADDED)
 else
 	# Only the changed fork files: the rest passed on the base already.
 	lintable=$(printf '%s\n' "$changed" | grep -E '^(extensions/gemini/|gemini/site/).*\.(ts|mts)$' | while read -r file; do [ -f "$file" ] && printf '%s\n' "$file"; done || true)
 	if [ -n "$lintable" ]; then
-		# A file ESLint's config ignores (test/fixtures/) is skipped, as CI's lint of whole folders skips it, rather than warned about.
+		# oxlint with the rules of eslint.config.js, whose ignore patterns (test/fixtures/) apply to files named here too.
 		# shellcheck disable=SC2086
-		step 'Lint changed fork files' npx eslint --max-warnings 0 --no-warn-ignored $lintable
+		step 'Lint changed fork files' node build/oxlint.ts $lintable
 	fi
 fi
 # shellcheck disable=SC2046
@@ -92,11 +92,15 @@ if [ "$full" = 1 ] && touches '^(gemini/scripts/upstream-series\.sh|\.github/wor
 	step 'The upstream move, rehearsed on the pinned tag' gemini/scripts/upstream-series.sh rehearse
 fi
 
+if touches '^build/lib/(nodeCompileCache\.ts|test/geminiNodeCompileCacheTag\.test\.ts)$'; then
+	step "The fork's tests of its build script edits" node --test build/lib/test/geminiNodeCompileCacheTag.test.ts
+fi
+
 if touches '^extensions/gemini/'; then
 	step 'Type check the extension, tests and webview' sh -c '
-		npx tsc -p extensions/gemini/tsconfig.json --noEmit &&
-		npm run --silent typecheck-tests --prefix extensions/gemini &&
-		npx tsc -p extensions/gemini/webview-src/tsconfig.json --noEmit'
+		pnpm -C extensions/gemini exec tsc -p tsconfig.json --noEmit &&
+		pnpm -C extensions/gemini --silent run typecheck-tests &&
+		pnpm -C extensions/gemini exec tsc -p webview-src/tsconfig.json --noEmit'
 	if [ "$full" = 1 ]; then
 		step 'Bundle extension and webview' sh -c 'node extensions/gemini/esbuild.mts && node extensions/gemini/esbuild.webview.mts'
 		generated=$(git ls-files --others --ignored --exclude-standard extensions/gemini/media | grep -E '\.(css|js)$' || true)
@@ -104,7 +108,7 @@ if touches '^extensions/gemini/'; then
 			# shellcheck disable=SC2086
 			step 'Hygiene (generated webview files)' node build/hygiene.ts product.json $generated
 		fi
-		step 'Unit tests' npm test --silent --prefix extensions/gemini
+		step 'Unit tests' pnpm -C extensions/gemini --silent test
 	fi
 fi
 
@@ -118,9 +122,9 @@ fi
 # Compile & hygiene: the fork's own files are covered above; anything else is upstream code or the build.
 if printf '%s\n' "$changed" | grep -vE '^(extensions/gemini/|gemini/|\.github/workflows/gemini-)' > /dev/null; then
 	if [ "$full" = 1 ]; then
-		step 'Compile' npm run compile
+		step 'Compile' pnpm run compile
 	fi
-	# CI runs `npm run hygiene` on a clean checkout. Locally that globs ignored
+	# CI runs `pnpm run hygiene` on a clean checkout. Locally that globs ignored
 	# files too (the bundled CLI in extensions/gemini/cli, build output), so check
 	# the changed files instead: unchanged ones passed on the base already.
 	# product.json goes along so a change of only Markdown still has a file to check.

@@ -32,7 +32,7 @@ function host(): import('./sideChat').SideHost | undefined {
 }
 
 function load(): Promise<Panel | undefined> {
-	// eslint-disable-next-line no-restricted-syntax
+	// eslint-disable-next-line eslint-js/no-restricted-syntax
 	return loading ??= url ? import(/* webpackIgnore: true */ url).catch((err: unknown) => {
 		// Not kept: the next side question tries again.
 		loading = undefined;

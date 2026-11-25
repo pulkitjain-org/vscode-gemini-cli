@@ -52,6 +52,7 @@ export class EditorTitleControl extends Themable {
 		private readonly showHeader: boolean,
 		private readonly reserveHeaderSpace: IEditorGroupViewOptions['reserveHeaderSpace'],
 		private readonly useModernUITabs: boolean,
+		private readonly showHeaderFor: IEditorGroupViewOptions['showHeaderFor'],
 		@IInstantiationService private instantiationService: IInstantiationService,
 		@IThemeService themeService: IThemeService
 	) {
@@ -102,7 +103,7 @@ export class EditorTitleControl extends Themable {
 	}
 
 	private createHeaderControl(): EditorHeaderControl {
-		const control = this.instantiationService.createInstance(EditorHeaderControl, this.parent, this.groupView, this.groupsView, this.menuIds, this.showHeader, this.reserveHeaderSpace);
+		const control = this.instantiationService.createInstance(EditorHeaderControl, this.parent, this.groupView, this.groupsView, this.menuIds, this.showHeader, this.reserveHeaderSpace, this.showHeaderFor);
 		this.headerControlDisposable.value = control;
 		return control;
 	}
@@ -175,6 +176,10 @@ export class EditorTitleControl extends Themable {
 		this.editorTabsControl.updateEditorSelections();
 	}
 
+	updateEditorActions(): void {
+		this.editorTabsControl.updateEditorActions();
+	}
+
 	updateEditorLabel(editor: EditorInput): void {
 		this.editorTabsControl.updateEditorLabel(editor);
 		if (this.groupView.activeEditor === editor) {
@@ -220,12 +225,12 @@ export class EditorTitleControl extends Themable {
 		this.headerControl = this.createHeaderControl();
 	}
 
-	layout(dimensions: IEditorTitleControlDimensions, headerWidth = dimensions.container.width): Dimension {
+	layout(dimensions: IEditorTitleControlDimensions, headerWidth = dimensions.container.width, headerLeft = 0): Dimension {
 
 		// Layout tabs control
 		this.editorTabsControl.layout(dimensions);
 
-		this.headerControl.layout(headerWidth);
+		this.headerControl.layout(headerWidth, headerLeft);
 
 		return new Dimension(dimensions.container.width, this.getHeight().total);
 	}

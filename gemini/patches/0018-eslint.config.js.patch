@@ -1,8 +1,8 @@
 diff --git a/eslint.config.js b/eslint.config.js
-index 6c967c6c6331bcf7ceb484863b852295bfea951b..4d81b8c6b020fcfb7bff1328227f0a85c09a7d4c 100644
+index 9db9923e5d76f890d0fafca5d8a9c8b2dcd5a8e4..298ae76f79bb06f8dca69ff6276c5cf9391adc82 100644
 --- a/eslint.config.js
 +++ b/eslint.config.js
-@@ -24,6 +24,11 @@ const ignores = fs.readFileSync(path.join(import.meta.dirname, '.eslint-ignore')
+@@ -12,6 +12,11 @@ const ignores = fs.readFileSync(path.join(import.meta.dirname, '.eslint-ignore')
  	.split(/\r\n|\n/)
  	.filter(line => line && !line.startsWith('#'));
  
@@ -14,11 +14,10 @@ index 6c967c6c6331bcf7ceb484863b852295bfea951b..4d81b8c6b020fcfb7bff1328227f0a85
  const allowedJavaScriptFiles = fs.readFileSync(path.join(import.meta.dirname, '.eslint-allowed-javascript-files'), 'utf8')
  	.toString()
  	.split(/\r\n|\n/)
-@@ -3081,4 +3086,43 @@ export default defineConfig(
- 		rules: {
+@@ -3006,4 +3011,43 @@ export default [
  			'local/code-no-new-javascript-files': 'error',
  		},
-+	},
+ 	},
 +	// GEMINI-FORK: fork-owned code carries its own copyright header, the files the fork adds (gemini/patches/ADDED, see forkAddedFiles) included.
 +	{
 +		files: [
@@ -57,4 +56,5 @@ index 6c967c6c6331bcf7ceb484863b852295bfea951b..4d81b8c6b020fcfb7bff1328227f0a85
 +				}
 +			]
 +		}
- 	});
++	},
+ ];

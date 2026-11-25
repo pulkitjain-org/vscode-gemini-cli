@@ -10,7 +10,7 @@
 // removes the download. The JSON it writes is checked in, so builds never
 // need the network. Run when a new emoji release should reach the picker:
 //
-//   npm run emoji-data
+//   pnpm run emoji-data
 //
 // then raise `version` and `integrity` below, and check the picker.
 

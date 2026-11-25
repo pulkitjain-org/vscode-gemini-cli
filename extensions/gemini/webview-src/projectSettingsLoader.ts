@@ -29,7 +29,7 @@ export function showProjectSettings(view: ProjectSettingsView, show: boolean): v
 	if (!show) {
 		return;
 	}
-	// eslint-disable-next-line no-restricted-syntax
+	// eslint-disable-next-line eslint-js/no-restricted-syntax
 	loading ??= url ? import(/* webpackIgnore: true */ url).then((module: Panel) => loaded = module, (err: unknown) => {
 		// Not kept: opening them again tries again.
 		loading = undefined;

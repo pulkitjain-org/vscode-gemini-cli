@@ -17,7 +17,7 @@ export function onDebug(message: Extract<ToWebview, { readonly type: 'debug' }>)
 	if (!message.view && !loading) {
 		return;
 	}
-	// eslint-disable-next-line no-restricted-syntax
+	// eslint-disable-next-line eslint-js/no-restricted-syntax
 	loading ??= data?.debugCard ? import(/* webpackIgnore: true */ data.debugCard).catch(() => {
 		loading = undefined;
 		return undefined;

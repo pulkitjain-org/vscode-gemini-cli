@@ -101,7 +101,7 @@ function renderThreadCard(item: ItemOf<'thread'>): HTMLElement {
 		return card;
 	}
 	card.append(el('div', 'thread-title', item.title));
-	// eslint-disable-next-line no-restricted-syntax
+	// eslint-disable-next-line eslint-js/no-restricted-syntax
 	loadingThreadCards ??= threadCardUrl ? import(/* webpackIgnore: true */ threadCardUrl).then(module => { threadCards = module; }, () => undefined) : Promise.resolve();
 	void loadingThreadCards.then(() => {
 		if (threadCards && strings.project) {

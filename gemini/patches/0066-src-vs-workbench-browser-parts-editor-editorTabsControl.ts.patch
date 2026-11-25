@@ -1,0 +1,17 @@
+diff --git a/src/vs/workbench/browser/parts/editor/editorTabsControl.ts b/src/vs/workbench/browser/parts/editor/editorTabsControl.ts
+index c8330623fcb03b03fc300b1a2c21d046e99a7f76..bad9f044a1dfba63f1c3ae1524ae1732ea0fc27e 100644
+--- a/src/vs/workbench/browser/parts/editor/editorTabsControl.ts
++++ b/src/vs/workbench/browser/parts/editor/editorTabsControl.ts
+@@ -397,6 +397,12 @@ export abstract class EditorTabsControl extends Themable implements IEditorTabsC
+ 			return;
+ 		}
+ 
++		// GEMINI-FORK: a control without a tab row (NoEditorTabsControl, which the agents' group gets in
++		// Agents mode) never creates this toolbar, and the assertion below then failed on every editor open.
++		if (!this.editorActionsToolbar) {
++			return;
++		}
++
+ 		this.editorActionsDisposables.clear();
+ 
+ 		const editorActions = this.groupView.createEditorActions(this.editorActionsDisposables, this.menuIds?.editorActions ?? MenuId.EditorTitle, { useEditorTitleMenu: true });

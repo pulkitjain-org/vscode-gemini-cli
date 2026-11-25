@@ -29,7 +29,7 @@ function load(): Promise<Katex | undefined> {
 			document.head.append(link);
 		}
 		// Loaded on demand on purpose: most replies have no math.
-		// eslint-disable-next-line no-restricted-syntax
+		// eslint-disable-next-line eslint-js/no-restricted-syntax
 		loading = url ? import(/* webpackIgnore: true */ url).catch(() => undefined) : Promise.resolve(undefined);
 	}
 	return loading;

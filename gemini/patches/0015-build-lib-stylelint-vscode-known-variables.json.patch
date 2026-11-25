@@ -1,11 +1,11 @@
 diff --git a/build/lib/stylelint/vscode-known-variables.json b/build/lib/stylelint/vscode-known-variables.json
-index bce0dc9666f0d4ba56fcdde15c8df15d1adb7f10..7158f9dcffcb558e0fc516d51bd25cf353b14c7a 100644
+index c7335d620a3ed9e1e114dcacf47a0882463be968..73cab9f198911ef9c0bddec3bad41e3e16d3dab1 100644
 --- a/build/lib/stylelint/vscode-known-variables.json
 +++ b/build/lib/stylelint/vscode-known-variables.json
-@@ -1009,6 +1009,16 @@
- 		"--agents-session-frame-inset",
- 		"--agents-side-pane-frame-inset",
+@@ -1024,6 +1024,16 @@
  		"--agents-window-corner-radius",
+ 		"--chat-window-controls-width",
+ 		"--chat-window-frame-inset",
 +		"--gemini-gradient",
 +		"--gemini-soft-tint",
 +		"--gemini-indent",
@@ -18,4 +18,4 @@ index bce0dc9666f0d4ba56fcdde15c8df15d1adb7f10..7158f9dcffcb558e0fc516d51bd25cf3
 +		"--gemini-glass-sheen",
  		"--session-chat-base-height",
  		"--session-group-depth",
- 		"--session-group-indent",
+ 		"--session-group-focus-foreground",

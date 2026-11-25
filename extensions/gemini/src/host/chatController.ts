@@ -749,7 +749,7 @@ export class ChatController implements vscode.Disposable {
 	/** The view's script is ready: sends it everything the chat shows. */
 	private onReady(message: Extract<FromWebview, { readonly type: 'ready' }>): void {
 		if (message.protocol !== chatProtocolVersion) {
-			void vscode.window.showWarningMessage(vscode.l10n.t("The Gemini chat view's script is out of date. Rebuild it with \"npm run gulp compile-extension-media\" (or keep \"npm run watch\" running) and reload the window."));
+			void vscode.window.showWarningMessage(vscode.l10n.t("The Gemini chat view's script is out of date. Rebuild it with \"pnpm run gulp compile-extension-media\" (or keep \"pnpm run watch\" running) and reload the window."));
 		}
 		this.viewReady = true;
 		// Before the items, so their shell blocks show Run, and the empty chat's hints the keys, as they are drawn.

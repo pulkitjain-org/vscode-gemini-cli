@@ -111,7 +111,7 @@ async function loadMarkdown(): Promise<void> {
 		return;
 	}
 	try {
-		// eslint-disable-next-line no-restricted-syntax
+		// eslint-disable-next-line eslint-js/no-restricted-syntax
 		const module = await import(/* webpackIgnore: true */ markdownUrl) as { renderDraft(text: string, label: (kind: string) => string): Node[] };
 		renderMarkdown = text => module.renderDraft(text, kind => kind.charAt(0).toUpperCase() + kind.slice(1));
 		render();

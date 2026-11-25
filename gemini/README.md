@@ -66,12 +66,14 @@ Commits are authored as the repository owner, branches start with `task/`, `feat
 
 ```sh
 nvm use                  # Node from .nvmrc
-npm ci
-npm run watch            # keep running; rebuilds the workbench, extensions and the chat webview
+pnpm install             # the pnpm version package.json pins; another pnpm downloads it
+pnpm run watch            # keep running; rebuilds the workbench, extensions and the chat webview
 ./scripts/code.sh        # launches the branded dev build
 ```
 
-To run the dev build on the bundled CLI, as a release does, run `npm run bundle-cli --prefix extensions/gemini` once. Without it, the dev build uses a copy you installed from GeminiCode or `gemini` on your `PATH`.
+The repository installs with pnpm, as upstream does from 1.146. `extensions/gemini` is an install root of its own (`separateRoots` in `build/npm/dirs.ts`), with its own `pnpm-workspace.yaml` and `pnpm-lock.yaml`: the root `pnpm install` installs it in its postinstall, and `pnpm install` in `extensions/gemini` installs it alone, which is all the extension's own checks need besides the built-in extensions' shared esbuild. An upstream release then never rewrites the fork's lockfile. Both lockfiles hold back a release until it is seven days old (`minimumReleaseAge`).
+
+To run the dev build on the bundled CLI, as a release does, run `pnpm -C extensions/gemini run bundle-cli` once. Without it, the dev build uses a copy you installed from GeminiCode or `gemini` on your `PATH`.
 
 Before a pull request, run Gemini CI's checks for what your branch changes. The pre-push hook runs the quick set, once the hooks are installed (`gemini/scripts/git-hooks/install.sh`); CI runs the full set on every push:
 
@@ -86,39 +88,39 @@ While working, run the extension's checks:
 
 ```sh
 cd extensions/gemini
-npm run check    # both bundles, the unit tests (budgets included) and the three type checks
+pnpm run check    # both bundles, the unit tests (budgets included) and the three type checks
 ```
 
-`npm run check` runs `node esbuild.mts`, `node esbuild.webview.mts`, `npx vitest run`, then `tsc --noEmit` on `tsconfig.json`, `webview-src/tsconfig.json` and `tsconfig.test.json`. Then, from the repository root, lint the files you changed with `npm run eslint -- <files>`.
+`pnpm run check` runs `node esbuild.mts`, `node esbuild.webview.mts`, `vitest run`, then `tsc --noEmit` on `tsconfig.json`, `webview-src/tsconfig.json` and `tsconfig.test.json`. Then, from the repository root, lint the files you changed with `pnpm run oxlint <files>`.
 
-Most tests run against a scripted fake ACP agent. The real-CLI tests (`test/acp/real*.test.ts`: the `initialize` handshake, the tool policy, sessions, Rewind and the contract in `src/acp/cli/`) run against the CLI `GEMINI_CLI_PATH` names: its `gemini` executable, its `bundle/gemini.js`, or `bundled` for the copy `npm run bundle-cli` puts in `cli/<version>/`. Locally they are skipped without it; in CI they run against the bundled copy, and fail when it is missing.
+Most tests run against a scripted fake ACP agent. The real-CLI tests (`test/acp/real*.test.ts`: the `initialize` handshake, the tool policy, sessions, Rewind and the contract in `src/acp/cli/`) run against the CLI `GEMINI_CLI_PATH` names: its `gemini` executable, its `bundle/gemini.js`, or `bundled` for the copy `pnpm run bundle-cli` puts in `cli/<version>/`. Locally they are skipped without it; in CI they run against the bundled copy, and fail when it is missing.
 
-If you changed an upstream file, also run `gemini/scripts/upstream-series.sh regenerate` and commit `gemini/patches/` ([Touching upstream files](#touching-upstream-files)), and run the fork's tests in upstream code after `npm run compile`:
+If you changed an upstream file, also run `gemini/scripts/upstream-series.sh regenerate` and commit `gemini/patches/` ([Touching upstream files](#touching-upstream-files)), and run the fork's tests in upstream code after `pnpm run compile`:
 
 ```sh
 ./scripts/test.sh --run src/vs/platform/browserView/test/electron-main/geminiAgentFiles.test.ts \
   --run src/vs/workbench/services/extensionManagement/test/browser/extensionEnablementService.test.ts
 ```
 
-`node esbuild.mts` and `node esbuild.webview.mts` in `extensions/gemini` rebuild `dist/` and `media/`. The size budgets in `test/perf/budgets.test.ts` read those files, so rebuild before trusting them. If the chat view warns that its script is out of date, the webview bundle in `media/` is older than the extension: run `npm run gulp compile-extension-media`, or keep `npm run watch` running, then reload the window.
+`node esbuild.mts` and `node esbuild.webview.mts` in `extensions/gemini` rebuild `dist/` and `media/`. The size budgets in `test/perf/budgets.test.ts` read those files, so rebuild before trusting them. If the chat view warns that its script is out of date, the webview bundle in `media/` is older than the extension: run `pnpm run gulp compile-extension-media`, or keep `pnpm run watch` running, then reload the window.
 
 ## CI
 
 [`gemini-ci.yml`](../.github/workflows/gemini-ci.yml) runs on pull requests and pushes to `main`, and can be run by hand. Its jobs:
 
 - **Policy**, on pull requests: the branch starts with `task/`, `feature/` or `bugfix/`, and every commit from the base branch to the pull request's head is authored and committed as the repository owner and names no AI tool (`scripts/commit-policy.sh`, as the git hooks run it). A pull request that moves the upstream tag leaves out upstream's own history up to that tag. A merge commit made with GitHub's **Update branch** button is GitHub's, so merge `main` into a branch locally instead.
-- **Checks**: the Gemini workflow files parse, and the fork's files pass lint and hygiene, including its own files beside upstream's (listed in `gemini/patches/ADDED`). The patch series matches `HEAD`, with every edited upstream code file marked. The extension, its tests and the webview type-check, and both bundles build. The bundled CLI is downloaded and checked as a release build does it (checksum, patch, ripgrep and the contract in `src/acp/cli/`), and the third-party notices are written. When the site or what it is built from changed, the download page builds from a sample release and passes its SEO, axe and Lighthouse checks. Then the unit tests run, the real-CLI tests among them against the bundled CLI. The job also prints knip's list of unused exports and files, as a report that never fails.
+- **Checks**: the Gemini workflow files parse, and the fork's files pass lint and hygiene, including its own files beside upstream's (listed in `gemini/patches/ADDED`). The patch series matches `HEAD`, with every edited upstream code file marked. The fork's test of its build script edit runs. The extension, its tests and the webview type-check, and both bundles build. The bundled CLI is downloaded and checked as a release build does it (checksum, patch, ripgrep and the contract in `src/acp/cli/`), and the third-party notices are written. When the site or what it is built from changed, the download page builds from a sample release and passes its SEO, axe and Lighthouse checks. Then the unit tests run, the real-CLI tests among them against the bundled CLI. The job also prints knip's list of unused exports and files, as a report that never fails.
 - **Real CLI (bundled, latest, preview)**: only the real-CLI, contract and patch tests, against the version the app bundles and npm's `latest` and `preview`. A failure on `preview` shows on the run without failing it.
 - **Snyk on the fork's code**, when the repository has a `SNYK_TOKEN` secret; without it the job passes with a note.
-- **Compile & hygiene**: the whole fork compiles, upstream's hygiene check passes, and the fork's tests in upstream code (the agents' browser file policy and the extension's enablement) run in Electron under `xvfb-run`. A pull request that only changes `extensions/gemini/`, `gemini/`, the Gemini workflows or top-level Markdown files skips this job, because Checks covers those files; a skipped job counts as passing. It restores `node_modules` from a cache keyed on the lockfiles, so it reinstalls only when dependencies change.
+- **Compile & hygiene**: the whole fork compiles, upstream's hygiene check passes, and the fork's tests in upstream code (the agents' browser file policy and the extension's enablement) run in Electron under `xvfb-run`. A pull request that only changes `extensions/gemini/`, `gemini/`, the Gemini workflows or top-level Markdown files skips this job, because Checks covers those files; a skipped job counts as passing. It restores pnpm's store from a cache keyed on the lockfiles, so an install downloads only what changed.
 
-Checks, Real CLI and Snyk install with npm's cache. A newer push to a pull request cancels its older run; every push to `main` keeps its run, since a release is cut only from a commit Gemini CI passed on.
+Every job installs with pnpm, from a store cached on the lockfiles. A newer push to a pull request cancels its older run; every push to `main` keeps its run, since a release is cut only from a commit Gemini CI passed on.
 
 The intended protection for `main`, which the owner turns on in the repository's ruleset: pull requests only, with **Policy**, **Checks**, **Real CLI (bundled)** and **Compile & hygiene** required to pass, and no bypass outside pull requests. Until it is on, nothing stops a red build from merging, so check the run before merging.
 
 Packaged builds come from [`gemini-release.yml`](../.github/workflows/gemini-release.yml), which a version tag starts, and the download page from [`gemini-pages.yml`](../.github/workflows/gemini-pages.yml); see [RELEASING.md](docs/RELEASING.md).
 
-Gemini CI, Gemini Release and Gemini Pages, with [`gemini-upstream.yml`](../.github/workflows/gemini-upstream.yml) below, are the only workflows the repository runs. The repository never goes back to upstream, so upstream's workflows (its pull request tests, CodeQL, the component fixtures and the rest) and its Dependabot config are not in it. Turning them off in the repository's settings would not last, since a workflow a later upstream release adds would start out on. The helper scripts they share with the Gemini workflows, such as `.github/workflows/node_modules_cache/`, and upstream's `.github/actions/` stay.
+Gemini CI, Gemini Release and Gemini Pages, with [`gemini-upstream.yml`](../.github/workflows/gemini-upstream.yml) below, are the only workflows the repository runs. The repository never goes back to upstream, so upstream's workflows (its pull request tests, CodeQL, the component fixtures and the rest) and its Dependabot config are not in it. Turning them off in the repository's settings would not last, since a workflow a later upstream release adds would start out on. Upstream's `.github/actions/` stay: the Gemini workflows use `setup-pnpm` and `setup-electron`.
 
 ## Touching upstream files
 
@@ -136,7 +138,7 @@ After editing an upstream file, run `regenerate` and commit `gemini/patches/` wi
 
 ## Upstream releases
 
-The fork is built on one upstream release tag, pinned in `gemini/upstream.json` (`1.144.0`). Its edits to upstream files are the patch series in `gemini/patches/`, one patch per file, binaries included; everything else the fork owns lives in `extensions/gemini/`, `gemini/`, the `gemini-*.yml` workflows and the files listed in `gemini/patches/ADDED`, which apply to any base.
+The fork is built on one upstream release tag, pinned in `gemini/upstream.json` (`1.147.0`). Its edits to upstream files are the patch series in `gemini/patches/`, one patch per file, binaries included; everything else the fork owns lives in `extensions/gemini/`, `gemini/`, the `gemini-*.yml` workflows and the files listed in `gemini/patches/ADDED`, which apply to any base.
 
 [`gemini-upstream.yml`](../.github/workflows/gemini-upstream.yml) runs once a week and by hand. It fetches upstream's tags and takes the newest release above the pin. It checks that tag out, applies the series with a three-way merge, copies the fork's own files over from `main`, moves the pin and regenerates the series against the new tag. It also bumps the bundled Gemini CLI to the newest release, with its checksum from npm. It commits as the repository's git user and opens one pull request from `task/upstream-<tag>`, or `task/gemini-cli-<version>` for a CLI-only bump.
 

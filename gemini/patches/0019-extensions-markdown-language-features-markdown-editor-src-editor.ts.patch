@@ -1,5 +1,5 @@
 diff --git a/extensions/markdown-language-features/markdown-editor-src/editor.ts b/extensions/markdown-language-features/markdown-editor-src/editor.ts
-index 5de8ac758143311f298d234b10001406f2c9ca4d..0d0accf9e0ab4a06e76d53cab6d69cea2118ae95 100644
+index c18d6305a2a1510ae4ea9a058381d6c4e2b2c95f..373a6581b7c6fb3d716b411d97f0631e22a306f6 100644
 --- a/extensions/markdown-language-features/markdown-editor-src/editor.ts
 +++ b/extensions/markdown-language-features/markdown-editor-src/editor.ts
 @@ -13,6 +13,7 @@ import '@vscode/markdown-editor/themes/vscode-default.css';
@@ -10,15 +10,15 @@ index 5de8ac758143311f298d234b10001406f2c9ca4d..0d0accf9e0ab4a06e76d53cab6d69cea
  import { WebviewSyntaxHighlighter } from './syntaxHighlighter';
  import { WebviewLinkPresentationProvider } from './linkPresentationProvider';
  import { markdownEditorHost, markdownEditorRenderer, type CodeBlockEditorProviderDefinition, type MarkdownEditorHost } from '../src/preview/markdownEditorProtocol';
-@@ -25,6 +26,7 @@ import { ImagePasteController } from './imagePasteController';
+@@ -24,6 +25,7 @@ import { DiagnosticsController } from './diagnosticsController';
+ import { ImagePasteController } from './imagePasteController';
  import { createTaskProgressProvider, isTaskProgressLabels } from './taskProgress/taskProgressProvider';
  import { codeBlockEditorTheme } from './codeBlockEditorTheme';
- import { mermaidProvider } from './mermaid/mermaidProvider';
 +import { renderDollarProse } from './geminiDollarText'; // GEMINI-FORK: prices in prose are not math
  import type { MarkdownEditorInitialState } from '../src/preview/webviewInitialState';
  
  interface VsCodeApi {
-@@ -397,6 +399,7 @@ class Editor extends Disposable {
+@@ -398,6 +400,7 @@ class Editor extends Disposable {
  			highlightActiveBlock,
  			presentation: model.readonlyMode.get() ? 'reading' : 'editing',
  			syntaxHighlighter: this.#syntaxHighlighter,
@@ -26,7 +26,7 @@ index 5de8ac758143311f298d234b10001406f2c9ca4d..0d0accf9e0ab4a06e76d53cab6d69cea
  			linkPresentationProvider: this.#linkPresentationProvider,
  			embeddedCodeEditorFactory,
  			onEmbeddedCodeEditorEdit: (block: CodeBlockAstNode, contentEdit: StringEdit) => {
-@@ -463,6 +466,10 @@ class Editor extends Disposable {
+@@ -477,6 +480,10 @@ class Editor extends Disposable {
  
  		// Render comments as the VS Code V2 markdown cards. The card colours come
  		this.#commentsView = this._register(new CommentsView(this.#comments, view));
