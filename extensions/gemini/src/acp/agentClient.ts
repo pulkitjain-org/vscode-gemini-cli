@@ -519,6 +519,7 @@ export class AgentClient {
 			const deferred = this.deferredMode;
 			if (--this.turns === 0) {
 				this.stallWatch.end();
+				this.adapter.turnEnded();
 				if (deferred && this.connection === connection) {
 					this.deferredMode = undefined;
 					void connection.setMode(state.sessionId, deferred).catch(err => this.runtime.debug(`Could not switch ${state.sessionId} to ${deferred} after the turn: ${errorMessage(err)}`));

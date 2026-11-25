@@ -628,6 +628,8 @@ export class AgentRuntime {
 			dispose: () => {
 				if (this.sessions.get(sessionId) === handlers) {
 					this.sessions.delete(sessionId);
+					// A closed session's folder is asked for by nothing; it was kept for the process's life.
+					this.sessionCwds.delete(sessionId);
 					if (folder && this.sessionFolders.get(sessionId) === folder) {
 						this.sessionFolders.delete(sessionId);
 						folder.sessions.delete(sessionId);
@@ -827,6 +829,8 @@ export class AgentRuntime {
 		}
 		this.sessionFolders.clear();
 		this.sessionCwds.clear();
+		// Folders may have been moved or linked anew by the time the next process starts.
+		this.realFolders.clear();
 		this.connection?.dispose();
 		this.connection = undefined;
 		this.spare = undefined;

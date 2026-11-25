@@ -8,7 +8,8 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { isInside } from '../acp/fileAccess';
 import { changedBetween, findGitDir, headPosition, HeadPosition } from '../acp/gitHead';
-import { ChangeBatch } from '../acp/index/changeBatch';
+import { ignoredPaths } from '../acp/gitIgnore';
+import { ChangeBatch, maxBatchPaths, maxWatchedPaths } from '../acp/index/changeBatch';
 
 /** File events are passed on in batches, this long after the last one. */
 const filesDebounceMs = 1_000;
@@ -98,19 +99,24 @@ export class IndexWatchers implements vscode.Disposable {
 		}
 		let batch = this.pending.get(folder);
 		if (!batch) {
-			batch = new ChangeBatch();
+			// Room to tell a build's output, which git ignores, from a change of many files.
+			batch = new ChangeBatch(maxBatchPaths, maxWatchedPaths);
 			this.pending.set(folder, batch);
 		}
 		batch.add(uri.fsPath);
 		clearTimeout(this.filesTimer);
-		this.filesTimer = setTimeout(() => this.flush(), filesDebounceMs);
+		this.filesTimer = setTimeout(() => void this.flush(), filesDebounceMs);
 	}
 
-	private flush(): void {
+	private async flush(): Promise<void> {
 		const batches = [...this.pending];
 		this.pending.clear();
 		for (const [folder, batch] of batches) {
-			const changed = batch.changed;
+			// A batch too big as it is loses what git ignores first: a build writing 2,000 files into dist/ is no reason to compare the whole folder.
+			const changed = await batch.settled(paths => ignoredPaths(folder, paths));
+			if (!this.watched.has(folder) || changed?.length === 0) {
+				continue;
+			}
 			if (changed) {
 				this.target.changed(folder, changed);
 			} else {

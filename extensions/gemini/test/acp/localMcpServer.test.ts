@@ -161,6 +161,22 @@ describe('local MCP server', () => {
 		expect([await starting.then(() => 'started', () => 'stopped'), server.listening]).toEqual(['stopped', false]);
 	});
 
+	it('keeps an agent\'s latest two session slots, and another agent\'s as they are', async () => {
+		const server = new AgentMcpServer({ name: 'test-server', version: '1', instructions: '', tools: () => [], call: async () => ({ content: [{ type: 'text', text: 'ok' }] }), notReady: 'Not ready.' });
+		servers.push(server);
+		await server.start();
+		// Four sessions of one agent, one after another, and one of another agent.
+		const mine = Array.from({ length: 4 }, () => {
+			const slot = server.configForSlot()!;
+			server.bind(slot.url, 'agent-1');
+			return slot;
+		});
+		const other = server.configForSlot()!;
+		server.bind(other.url, 'agent-2');
+		const status = async (slot: typeof other) => (await post(slot, { jsonrpc: '2.0', id: 1, method: 'ping' })).status;
+		expect([await status(mine[0]), await status(mine[1]), await status(mine[2]), await status(mine[3]), await status(other)]).toEqual([404, 404, 200, 200, 200]);
+	});
+
 	it('keeps only the newest unused spare-session slots', async () => {
 		const server = new AgentMcpServer({ name: 'test-server', version: '1', instructions: '', tools: () => [], call: async () => ({ content: [] }), notReady: 'Not ready.' });
 		servers.push(server);

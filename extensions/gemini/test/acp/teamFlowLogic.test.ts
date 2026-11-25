@@ -101,7 +101,11 @@ describe('team flow logic', () => {
 		const findings = findingsFromSnyk([{ id: 'SNYK-1', severity: 'high', title: 'SSRF', where: 'axios@1.6.0', fix: 'upgrade to axios@1.7.4' }], false);
 		expect(checksFixPrompt(findings)).toContain('- Snyk (dependencies) [high] SSRF · axios@1.6.0 · upgrade to axios@1.7.4');
 		const prompt = mrFixPrompt({ iid: 318, url: 'u' }, [{ name: 'test:e2e', id: 9, log: 'FAIL' }], [{ id: 'd1', author: 'tom.k', body: 'Trim it?', path: 'a.ts', line: 3 }]);
-		expect(prompt).toMatch(/^Fix the failing pipeline job and this review comment on merge request !318/);
+		// The log and the threads to read first, the ask after them.
+		const lines = prompt.split('\n');
+		expect([lines[0], lines.findIndex(line => line.startsWith('<external')) < lines.findIndex(line => line.startsWith('Fix the failing pipeline job and this review comment on merge request !318.')), lines.at(-1)]).toEqual([
+			'From merge request !318 (u):', true, 'Once your commits are pushed, I\'ll ask you to reply to each thread.',
+		]);
 		expect(prompt).toContain('[discussion d1] tom.k on a.ts:3: Trim it?');
 		expect(prompt).toContain('Don\'t push');
 		expect(mrFixRepliesPrompt({ branch: 'feature/gift', head: 'abcdef1234', commits: 2 }, [{ id: 'd1' }])).toBe('GeminiCode pushed your 2 commits to feature/gift (now at abcdef12).\nNow draft a one-line reply to the review thread (discussion d1) saying what you changed, with the commit, and post each with gitlab_reply and resolve: true. I approve each reply first.');

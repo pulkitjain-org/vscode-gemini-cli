@@ -86,18 +86,23 @@ export function failurePrompt(result: VerifyResult, folder: string, errors?: str
 		return undefined;
 	}
 	const report = external('checks', failed.command, fenced(commandReport({ commandLine: failed.command, cwd: folder, exitCode: failed.exitCode, lines: failed.lines, dropped: failed.dropped })));
-	const head = result.status === 'weakened'
+	// What happened and the output first, what to do about it last: the model acts on the last thing it read.
+	const [what, ask] = result.status === 'weakened'
 		? [
-			'The repository\'s checks pass with your changes to its tests, but fail once these files are put back as they were before you changed them:',
-			...result.protectedChanged.map(file => `- ${file}`),
+			[
+				'The repository\'s checks pass with your changes to its tests, but fail once these files are put back as they were before you changed them:',
+				...result.protectedChanged.map(file => `- ${file}`),
+			],
 			'Fix the code so the original tests pass. Change a test only where the task itself changes what the code should do, and say so when you do.',
 		]
-		: ['The repository\'s checks failed on your changes. Fix the code, not the tests: never weaken or delete a test to make it pass.'];
+		: [['The repository\'s checks failed on your changes:'], 'Fix the code, not the tests: never weaken or delete a test to make it pass.'];
 	return [
-		...head,
+		...what,
 		'',
 		report,
 		...errors ? ['', external('checks', 'editor errors', fenced(errors))] : [],
+		'',
+		ask,
 	].join('\n');
 }
 

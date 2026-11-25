@@ -7,9 +7,12 @@
 // What goes first is read first: the steering note (why the last turn
 // stopped), the notes of the reactions sent with it, the reaction rule, the
 // window's context, a conversation carried over from a session the chat
-// left, and the note of what Undo put back; then the user's message with its
-// attachments; then what the agent should read last, once it knows the ask:
-// the index hint, the design system and the shared page.
+// left, and the note of what Undo put back; then what is long and only to be
+// read, the design system's note and the shared page; then the user's message
+// with its attachments; then the one-line index hint. Long context comes
+// before the ask and the ask near the end, as Google's prompting guidance for
+// Gemini has it: the model answers the last thing it read about what came
+// before it.
 
 import type * as acp from '@agentclientprotocol/sdk';
 
@@ -46,9 +49,9 @@ export function assembleTurnContent(parts: TurnContentParts): acp.ContentBlock[]
 		...text(parts.context),
 		...text(parts.carried),
 		...text(parts.undoNote),
-		...parts.content,
-		...text(parts.hint),
 		...text(parts.design),
 		...text(parts.page),
+		...parts.content,
+		...text(parts.hint),
 	];
 }

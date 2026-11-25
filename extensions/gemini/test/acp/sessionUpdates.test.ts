@@ -22,6 +22,17 @@ describe('SessionUpdateAdapter', () => {
 		});
 	});
 
+	it('keeps no content of a tool call the turn left unfinished, and still merges a late update into it', () => {
+		const adapter = new SessionUpdateAdapter();
+		const diff = { type: 'diff' as const, path: '/w/cart.ts', oldText: 'a'.repeat(1000), newText: 'b'.repeat(1000) };
+		adapter.adapt({ sessionUpdate: 'tool_call', toolCallId: 't1', title: 'Edit cart.ts', kind: 'edit', status: 'in_progress', content: [diff] });
+		// While the turn runs, an update that leaves the content out keeps it.
+		const during = adapter.adapt({ sessionUpdate: 'tool_call_update', toolCallId: 't1', title: 'Edit cart.ts (2)' });
+		adapter.turnEnded();
+		const after = adapter.adapt({ sessionUpdate: 'tool_call_update', toolCallId: 't1', status: 'failed' });
+		expect([during.kind === 'toolCall' && during.call.content, after.kind === 'toolCall' && [after.call.title, after.call.status, after.call.content]]).toEqual([[diff], ['Edit cart.ts (2)', 'failed', []]]);
+	});
+
 	it('shows why GeminiCode refused a file request where the CLI wrote [object Object]', () => {
 		const failure = (text: string) => ({ sessionUpdate: 'tool_call_update' as const, toolCallId: 't1', status: 'failed' as const, content: [{ type: 'content' as const, content: { type: 'text' as const, text } }] });
 		const text = (event: ReturnType<SessionUpdateAdapter['adapt']>) => event.kind === 'toolCall' && event.call.content[0]?.type === 'content' && event.call.content[0].content.type === 'text' ? event.call.content[0].content.text : undefined;

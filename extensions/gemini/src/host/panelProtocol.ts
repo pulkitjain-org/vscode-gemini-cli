@@ -7,6 +7,7 @@
 // panel (webview-src/changes.ts) and Agent Home (webview-src/home.ts), and the
 // Project Helpers page (webview-src/settings.ts).
 
+import type { CliTuningKey } from '../acp/cliPreferences';
 import type { ChangeTotals } from '../acp/agentChanges';
 import type { Attachment } from '../acp/attachments';
 import type { JiraCommentVisibility } from '../acp/jira';
@@ -366,6 +367,8 @@ export interface PreferencesView {
 	readonly keepChats: string;
 	/** The choices, in order, with their labels; includes `keepChats` when it was set by hand. */
 	readonly keepChatsChoices: readonly { readonly value: string; readonly label: string }[];
+	/** The numbers the CLI is tuned by (cliPreferences.ts, `cliTunings`), each with its words and choices from the host. */
+	readonly tuning: readonly { readonly key: CliTuningKey; readonly label: string; readonly hint: string; readonly current: string; readonly choices: readonly { readonly value: string; readonly label: string }[] }[];
 	/** The settings file, shown as `~/...`. */
 	readonly display: string;
 }
@@ -556,6 +559,7 @@ export type FromSettingsPage =
 	| { readonly type: 'signIn'; readonly name: string }
 	| { readonly type: 'setPreference'; readonly key: 'permanentApproval' | 'planRouting' | 'usageStatistics'; readonly value: boolean }
 	| { readonly type: 'setPreference'; readonly key: 'keepChats' | 'defaultApprovalMode'; readonly value: string }
+	| { readonly type: 'setPreference'; readonly key: CliTuningKey; readonly value: number }
 	| { readonly type: 'extension'; readonly action: 'enable' | 'disable' | 'update' | 'uninstall'; readonly name: string }
 	| { readonly type: 'openFile'; readonly path: string; readonly server?: string; readonly needle?: string }
 	| { readonly type: 'createRules'; readonly path: string }

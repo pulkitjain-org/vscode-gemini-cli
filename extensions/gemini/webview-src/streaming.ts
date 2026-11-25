@@ -61,3 +61,28 @@ export function thoughtPreview(text: string): string {
 	const headings = [...text.matchAll(/\*\*([^*\n]+)\*\*/g)];
 	return (headings.at(-1)?.[1] ?? text.trimEnd().split('\n').at(-1) ?? '').trim();
 }
+
+/**
+ * The unfinished part of a reply is rendered again on each update. A long
+ * one, such as a table or a list with no blank lines, is rendered at most
+ * this often, so a 200-row table does not cost a full parse 30 times a second;
+ * and less often still once a draw gets slow (`renderGap`).
+ */
+const longTail = 4_000;
+const longTailIntervalMs = 150;
+/** The longest a tail waits to be drawn again, however slow its last draw was. */
+const maxGapMs = 1_000;
+
+/**
+ * How long to leave between two draws of a reply's unfinished tail, in ms; 0
+ * draws every update. A tail with no blank line in it (a long table, a long
+ * list) is drawn whole each time, so its cost grows with its length: the gap
+ * follows what the last draw cost, so drawing takes about a fifth of the time
+ * however long the tail gets, and a long tail waits `longTailIntervalMs` at least.
+ */
+export function renderGap(tailLength: number, lastCostMs: number | undefined): number {
+	const byCost = Math.min(maxGapMs, (lastCostMs ?? 0) * 4);
+	const gap = Math.max(tailLength > longTail ? longTailIntervalMs : 0, byCost);
+	// Under a frame is no wait worth a timer.
+	return gap < 16 ? 0 : Math.round(gap);
+}

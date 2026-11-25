@@ -15,7 +15,7 @@
 
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import * as path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { AgentClient, type AgentClientState } from '../../src/acp/agentClient';
 import { AgentsModel, archiveAfterMs, isArchived, warmThreads } from '../../src/acp/agents';
 import { wakeThreadLines, type ThreadInfo } from '../../src/acp/projectHub';
@@ -274,6 +274,15 @@ describe('streaming', () => {
 	});
 });
 
+/** The chat's real page under happy-dom, started once for the tests that time the view. */
+let chatPageShown: Promise<void> | undefined;
+function chatPage(): Promise<void> {
+	return chatPageShown ??= (async () => {
+		await showChatPage();
+		await startScript('chat');
+	})();
+}
+
 describe('agent switch', () => {
 	it('snapshots a long transcript for the view quickly', () => {
 		const transcript = new ChatTranscript(() => 0);
@@ -295,8 +304,7 @@ describe('agent switch', () => {
 		// The chat's real page under happy-dom: the view draws the latest 60 items and a slot per older turn
 		// (webview-src/virtualBlocks.ts), so opening costs the same however long the chat is. Before the slots,
 		// the view drew 30 items at once (about 12 ms here) and the other 1,170 in idle time, about 490 ms more.
-		await showChatPage();
-		await startScript('chat');
+		await chatPage();
 		const items: TranscriptItem[] = [];
 		for (let turn = 0; turn < 300; turn++) {
 			items.push({ id: `u${turn}`, kind: 'user', text: `Question ${turn}` });
@@ -313,6 +321,44 @@ describe('agent switch', () => {
 		const drawn = [...transcript.children].filter(child => !child.classList.contains('turn-slot'));
 		expect(drawn.length).toBeLessThanOrEqual(80);
 		expect(transcript.querySelectorAll('.turn-slot').length).toBe(285);
+	});
+});
+
+describe('streaming in the view', () => {
+	// The chat's real page under happy-dom. A reply's unfinished tail is drawn whole on each
+	// update, so a tail with no blank line in it costs more with every row: 400 rows drawn 400 times is 80,000 rows
+	// drawn. The view spaces its draws by what the last one cost (webview-src/streamingReply.ts, `renderGap`), so the
+	// whole stream costs a few draws however many updates carry it.
+	const stream = async (id: string, head: string, row: (i: number) => string) => {
+		sendToPage({ type: 'reset', items: [{ id: `u-${id}`, kind: 'user', text: 'Go' }, { id, kind: 'agent', text: head }], busy: true, status: { phase: 'ready', text: '' }, settings: {} });
+		const started = performance.now();
+		for (let i = 0; i < 400; i++) {
+			sendToPage({ type: 'items', items: [{ kind: 'append', id, append: row(i) }] });
+		}
+		const ms = performance.now() - started;
+		// The draw the view put off comes within its longest wait.
+		await new Promise(resolve => setTimeout(resolve, 1_100));
+		return ms;
+	};
+	const transcript = () => page.document.getElementById('transcript')!;
+	beforeAll(() => chatPage());
+
+	it('streams a 400-row table without drawing it 400 times', async () => {
+		const ms = await stream('table', '| File | Lines | Note |\n| --- | --- | --- |\n', i => `| src/module${i}.ts | ${i * 3} | Changed in step ${i}, with \`code\` |\n`);
+		expect(transcript().querySelectorAll('tbody tr').length).toBe(400);
+		expect(ms).toBeLessThan(limitMs(1_500));
+	});
+
+	it('streams a 400-item list without drawing it 400 times', async () => {
+		const ms = await stream('list', 'The steps:\n', i => `- Step ${i}: update **module${i}** and its \`test\`\n`);
+		expect(transcript().querySelectorAll('li').length).toBe(400);
+		expect(ms).toBeLessThan(limitMs(1_500));
+	});
+
+	it('streams a 400-line code block by adding its lines', async () => {
+		const ms = await stream('fence', '```ts\n', i => `export const value${i} = compute(${i}, 'argument');\n`);
+		expect(transcript().querySelector('pre code')!.textContent!.split('\n').length).toBe(401);
+		expect(ms).toBeLessThan(limitMs(500));
 	});
 });
 

@@ -321,6 +321,8 @@ export interface AgentMcpServerOptions {
 
 /** Slots kept for spare sessions no agent took: a spare that was replaced is never bound, so older ones go. */
 const maxUnboundSlots = 8;
+/** Slots kept for one agent: its session's, and the one before it. They were all kept until the agent was removed. */
+const maxBoundSlots = 2;
 
 /**
  * A local MCP server with one route per agent (its id), and slots for spare
@@ -392,6 +394,11 @@ export class AgentMcpServer {
 			return false;
 		}
 		this.slots.set(slot, agent);
+		// An agent's earlier sessions are closed by the time it takes another: their slots go, but for the one before, which a session being replaced may still call.
+		const bound = [...this.slots].filter(([, each]) => each === agent).map(([each]) => each).filter(each => each !== slot);
+		for (const old of bound.slice(0, Math.max(0, bound.length - (maxBoundSlots - 1)))) {
+			this.slots.delete(old);
+		}
 		return true;
 	}
 

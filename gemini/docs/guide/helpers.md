@@ -64,7 +64,7 @@ Changes go to the [audit log](team-tools.md#audit-log), and agents pick them up 
 
 ## Gemini CLI settings
 
-Five of the CLI's own settings, in your personal `~/.gemini/settings.json`:
+Nine of the CLI's own settings, in your personal `~/.gemini/settings.json`:
 
 | On the page | Setting | Default |
 | --- | --- | --- |
@@ -73,8 +73,21 @@ Five of the CLI's own settings, in your personal `~/.gemini/settings.json`:
 | Plan with Pro, build with Flash | `general.plan.modelRouting` | On |
 | Send usage statistics | `privacy.usageStatisticsEnabled` | On |
 | Keep saved chats for | `general.sessionRetention` | 30 days |
+| Wait for the model to start answering | `model.requestTimeoutMs` | 60 s |
+| Compress the chat at | `model.compressionThreshold` | 50% of the context |
+| Tries for each request | `general.maxAttempts` | 10 |
+| Most of one tool result the model reads | `tools.truncateToolOutputThreshold` | 40,000 characters |
 
 **Default approval mode** offers Default, Auto Edit and Plan, never YOLO. When `gemini.agents.defaultMode` is set, it decides instead, and the page says so.
+
+The last four tune how the CLI talks to the model, and GeminiCode leaves them at the CLI's defaults until you choose otherwise:
+
+- **Wait for the model to start answering.** Raise it when requests that think for a long time end in a timeout and a retry.
+- **Compress the chat at.** Lower, and the CLI summarises the chat sooner, so each request sends less; higher keeps more of the chat word for word.
+- **Tries for each request.** Fewer tries fail a turn sooner when the service is struggling.
+- **Most of one tool result the model reads.** A longer result is saved to a file, and the model gets its start and end with the file's path.
+
+Choosing the default takes the key out of the file again, so a later CLI's own default applies. To see what a value is worth on your team's tasks, run the [benchmark](../../bench/README.md#variants) with and without it.
 
 A project's `.gemini/settings.json` can override these, as in the CLI. GeminiCode edits a settings file in place and keeps its comments, as the CLI does. A file that isn't valid JSON is never rewritten: GeminiCode opens it at the right place so you can make the change yourself.
 

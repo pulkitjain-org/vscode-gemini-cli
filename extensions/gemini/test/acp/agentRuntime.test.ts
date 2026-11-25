@@ -478,6 +478,17 @@ describe('AgentRuntime', () => {
 		expect(a.texts).toEqual(['closed:fake-session-1,fake-session-2']);
 	});
 
+	it('forgets the folder of a session its chat closed', async () => {
+		start({});
+		await ready(runtime!);
+		const a = await session('/work/a');
+		const b = await session('/work/b');
+		const [first, second] = [(a.state as { sessionId: string }).sessionId, (b.state as { sessionId: string }).sessionId];
+		const before = [runtime!.folderOf(first), runtime!.folderOf(second)];
+		a.client.dispose();
+		expect([before, runtime!.folderOf(first), runtime!.folderOf(second)]).toEqual([['/work/a', '/work/b'], undefined, '/work/b']);
+	});
+
 	it('does not give a prepared session to a chat with other servers', async () => {
 		start({});
 		await ready(runtime!);

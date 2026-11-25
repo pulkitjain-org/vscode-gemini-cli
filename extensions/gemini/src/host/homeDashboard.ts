@@ -3,6 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+import { shortCount, type DailyTokens } from '../acp/dailyTokens';
 import * as vscode from 'vscode';
 import { cardOrder, DashboardCardId, DashboardLayout, firstName, hiddenCards, isReadyToMerge, partOfDay, rankReviews, sprintProgress, ticketGroups } from '../acp/dashboard';
 import type { AuditEntry } from '../acp/auditLog';
@@ -30,6 +31,8 @@ export interface DashboardInput {
 	readonly agents: readonly AgentSummary[];
 	readonly layout?: DashboardLayout;
 	readonly usage?: readonly ModelQuota[];
+	/** What the Gemini CLI's chat files say it used today (dailyTokens.ts), once read. */
+	readonly tokens?: DailyTokens;
 	readonly versions: { readonly app: string; readonly cli?: string };
 	/** The Google Cloud project usage is billed to. */
 	readonly projectId?: string;
@@ -537,12 +540,22 @@ function geminiCard(input: DashboardInput, title: string): HomeCard {
 	if (used !== undefined) {
 		rows.push({ title: vscode.l10n.t("Today: {0}% of daily requests", Math.round(used * 100)), bar: used, link: { label: vscode.l10n.t("Usage details"), action: command('gemini.showUsage') } });
 	}
+	// The CLI's own counts, for every chat on this Mac today; nothing while there has been no request.
+	if (input.tokens?.requests) {
+		const { requests, input: sent, cached, output } = input.tokens;
+		rows.push({
+			icon: 'pulse',
+			title: cached
+				? vscode.l10n.t("Today on this Mac: {0} requests, {1} tokens in ({2} from cache), {3} out", requests.toLocaleString('en-US'), shortCount(sent), shortCount(cached), shortCount(output))
+				: vscode.l10n.t("Today on this Mac: {0} requests, {1} tokens in, {2} out", requests.toLocaleString('en-US'), shortCount(sent), shortCount(output)),
+		});
+	}
 	const about = [
 		vscode.l10n.t("GeminiCode {0}", input.versions.app),
 		input.versions.cli ? vscode.l10n.t("CLI {0}", input.versions.cli) : '',
 		input.projectId ? vscode.l10n.t("project {0}", input.projectId) : '',
 	].filter(Boolean).join(' · ');
 	rows.push({ icon: 'versions', title: about, link: { label: vscode.l10n.t("Audit log"), action: command('gemini.openAuditLog') } });
-	return { id: 'gemini', title, tool: 'gemini', rows, query: 'retrieveUserQuota · audit/*.jsonl' };
+	return { id: 'gemini', title, tool: 'gemini', rows, query: 'retrieveUserQuota · chats/*.jsonl · audit/*.jsonl' };
 }
 

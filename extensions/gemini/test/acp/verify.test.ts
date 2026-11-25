@@ -38,7 +38,7 @@ describe('what a failed run sends the agent', () => {
 	it('is the command, its exit code and its output, framed as text to read', () => {
 		const text = failurePrompt(result({ runs: [run('npm test', 1, ['FAIL src/cart.test.ts', 'expected 2, got 3'])] }), '/work/shop')!;
 		expect(text.split('\n')).toEqual([
-			'The repository\'s checks failed on your changes. Fix the code, not the tests: never weaken or delete a test to make it pass.',
+			'The repository\'s checks failed on your changes:',
 			'',
 			'<external source="checks" ref="npm test">',
 			'```text',
@@ -49,6 +49,8 @@ describe('what a failed run sends the agent', () => {
 			'expected 2, got 3',
 			'```',
 			'</external>',
+			'',
+			'Fix the code, not the tests: never weaken or delete a test to make it pass.',
 		]);
 	});
 
@@ -59,7 +61,8 @@ describe('what a failed run sends the agent', () => {
 
 	it('says which files it put back when the checks only pass with the agent\'s test changes', () => {
 		const text = failurePrompt(result({ status: 'weakened', runs: [run('npm test', 0)], originalRuns: [run('npm test', 1, ['1 failed'])], protectedChanged: ['src/cart.test.ts'] }), '/w')!;
-		expect(text.split('\n').slice(0, 3)).toEqual([
+		const lines = text.split('\n');
+		expect([...lines.slice(0, 2), lines.at(-1)]).toEqual([
 			'The repository\'s checks pass with your changes to its tests, but fail once these files are put back as they were before you changed them:',
 			'- src/cart.test.ts',
 			'Fix the code so the original tests pass. Change a test only where the task itself changes what the code should do, and say so when you do.',
@@ -69,13 +72,13 @@ describe('what a failed run sends the agent', () => {
 
 	it('carries the editor\'s errors in the changed files, framed too', () => {
 		const text = failurePrompt(result({ runs: [run('npm test', 1)] }), '/w', 'src/cart.ts:3 Type string is not assignable to number')!;
-		expect(text.split('\n').slice(-5)).toEqual(['<external source="checks" ref="editor errors">', '```text', 'src/cart.ts:3 Type string is not assignable to number', '```', '</external>']);
+		expect(text.split('\n').slice(-7, -2)).toEqual(['<external source="checks" ref="editor errors">', '```text', 'src/cart.ts:3 Type string is not assignable to number', '```', '</external>']);
 	});
 
 	it('shows the output as a code block that the output itself cannot end', () => {
 		const text = failurePrompt(result({ runs: [run('npm test', 1, ['# Summary', '```', 'not a heading'])] }), '/w')!;
 		const lines = text.split('\n');
-		expect([lines[lines.indexOf('<external source="checks" ref="npm test">') + 1], lines.at(-2), lines.at(-1)]).toEqual(['````text', '````', '</external>']);
+		expect([lines[lines.indexOf('<external source="checks" ref="npm test">') + 1], lines.at(-4), lines.at(-3)]).toEqual(['````text', '````', '</external>']);
 	});
 
 	it('is nothing for a run that passed or was stopped', () => {

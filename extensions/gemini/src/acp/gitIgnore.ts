@@ -145,3 +145,26 @@ function checkOne(filePath: string): Promise<boolean> {
 		execFile('git', ['check-ignore', '--quiet', '--', filePath], { cwd: path.dirname(filePath), timeout: 5_000, windowsHide: true }, err => resolve(!err));
 	});
 }
+
+/**
+ * The paths among `paths` (absolute, in `folder`'s repository) that git
+ * ignores, in one run of `git check-ignore`: for a batch of thousands, where
+ * a question per path would take longer than what it saves. Empty when the
+ * folder is no repository or git cannot be run.
+ */
+export function ignoredPaths(folder: string, paths: readonly string[]): Promise<Set<string>> {
+	return new Promise(resolve => {
+		if (!paths.length) {
+			resolve(new Set());
+			return;
+		}
+		const child = spawn('git', ['check-ignore', '-z', '--stdin'], { cwd: folder, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } });
+		let out = '';
+		child.stdout.on('data', data => out += String(data));
+		child.on('error', () => resolve(new Set()));
+		// 0: some are ignored; 1: none; anything else: not a repository.
+		child.on('close', code => resolve(new Set(code === 0 ? out.split('\0').filter(Boolean) : [])));
+		child.stdin.on('error', () => undefined);
+		child.stdin.end(paths.join('\0'));
+	});
+}

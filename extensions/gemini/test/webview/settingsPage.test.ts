@@ -36,7 +36,7 @@ function view(settings: readonly SettingSectionView[] = sections): SettingsPageV
 		servers: [], skills: [], hooks: [], rules: [],
 		extensions: { state: 'unavailable', message: 'Not running.' },
 		memory: { state: 'unavailable', message: 'Not running.' },
-		preferences: { defaultApprovalMode: 'default', defaultApprovalModeChoices: [{ value: 'default', label: 'Default' }], permanentApproval: true, planRouting: true, usageStatistics: false, keepChats: '30d', keepChatsChoices: [{ value: '30d', label: '30 days' }], display: '~/.gemini/settings.json' },
+		preferences: { defaultApprovalMode: 'default', defaultApprovalModeChoices: [{ value: 'default', label: 'Default' }], permanentApproval: true, planRouting: true, usageStatistics: false, keepChats: '30d', keepChatsChoices: [{ value: '30d', label: '30 days' }], tuning: [{ key: 'requestTimeoutMs', label: 'Wait for the model to start answering', hint: 'How long the Gemini CLI waits.', current: '60000', choices: [{ value: '60000', label: '60 s (the CLI\'s default)' }, { value: '180000', label: '180 s' }] }], display: '~/.gemini/settings.json' },
 		contextCost: { state: 'none', folder: 'shop', folderPath: '/code/shop', readings: [], tips: [], note: 'Measuring costs model calls.' },
 		developer: false,
 		trust: { state: 'off', message: 'Folder trust is off.' },
@@ -161,6 +161,20 @@ describe('the Settings page', () => {
 			{ type: 'resetSetting', key: 'gemini.developer.showTools' },
 			{ type: 'openTab', tab: 'connections' },
 		]);
+	});
+
+	it('offers the numbers the CLI is tuned by with the host\'s words, and posts a pick as a number', () => {
+		sendToPage({ type: 'view', view: view() });
+		// The page's own menu takes the id; the select behind it holds the choice.
+		const row = (main().querySelector('#tuning-requestTimeoutMs') as HTMLElement).closest('.row') as HTMLElement;
+		const select = row.querySelector('select') as unknown as { value: string; querySelectorAll(selector: string): Iterable<{ textContent: string }>; dispatchEvent(event: unknown): void };
+		posted.length = 0;
+		select.value = '180000';
+		select.dispatchEvent(new page.Event('change'));
+		expect({ label: row.querySelector('.name')!.textContent, hint: row.querySelector('.row-detail')!.textContent, options: Array.from(select.querySelectorAll('option')).map(option => option.textContent), posted }).toEqual({
+			label: 'Wait for the model to start answering', hint: 'How long the Gemini CLI waits.', options: ['60 s (the CLI\'s default)', '180 s'],
+			posted: [{ type: 'setPreference', key: 'requestTimeoutMs', value: 180000 }],
+		});
 	});
 
 	it('patches rows in place when the host sends the view again, keeping the search', () => {

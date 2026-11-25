@@ -31,9 +31,55 @@ export interface CliPreferences {
 	readonly usageStatistics: boolean;
 	/** `general.sessionRetention`: how long saved chats are kept. */
 	readonly keepChats: KeepChats;
+	/** The numbers the CLI is tuned by (`cliTunings`), each the CLI's default when the settings name none it takes. */
+	readonly requestTimeoutMs: number;
+	readonly compressionThreshold: number;
+	readonly maxAttempts: number;
+	readonly toolOutputChars: number;
 }
 
 export type CliPreference = keyof CliPreferences;
+
+/**
+ * Numbers the CLI is tuned by, which GeminiCode left at the CLI's defaults
+ * until they could be chosen from: the names and defaults are gemini-cli
+ * 0.71's. A value equal to the default is written as no value, so a later
+ * CLI's own default applies.
+ * - `requestTimeoutMs` (`model.requestTimeoutMs`): how long the CLI waits for the API to start answering before it retries.
+ * - `compressionThreshold` (`model.compressionThreshold`): the share of the context window at which the CLI compresses the chat.
+ * - `maxAttempts` (`general.maxAttempts`): how many times a request to the model is tried; the CLI allows 10 at most.
+ * - `toolOutputChars` (`tools.truncateToolOutputThreshold`): the most characters of one tool result the model is given; the rest is saved to a file it can read.
+ */
+export interface CliTuning {
+	readonly path: readonly [string, string];
+	/** The CLI's default. */
+	readonly fallback: number;
+	/** What the page offers; a value set by hand is shown as well. */
+	readonly choices: readonly number[];
+	readonly min: number;
+	readonly max: number;
+}
+
+export type CliTuningKey = 'requestTimeoutMs' | 'compressionThreshold' | 'maxAttempts' | 'toolOutputChars';
+
+export function cliTunings(): Readonly<Record<CliTuningKey, CliTuning>> {
+	return {
+		requestTimeoutMs: { path: ['model', 'requestTimeoutMs'], fallback: 60_000, choices: [60_000, 120_000, 180_000, 300_000, 600_000], min: 1_000, max: 3_600_000 },
+		compressionThreshold: { path: ['model', 'compressionThreshold'], fallback: 0.5, choices: [0.3, 0.4, 0.5, 0.6, 0.7], min: 0.05, max: 0.95 },
+		maxAttempts: { path: ['general', 'maxAttempts'], fallback: 10, choices: [3, 5, 10], min: 1, max: 10 },
+		toolOutputChars: { path: ['tools', 'truncateToolOutputThreshold'], fallback: 40_000, choices: [20_000, 40_000, 80_000], min: 1_000, max: 1_000_000 },
+	};
+}
+
+export function isCliTuningKey(key: string): key is CliTuningKey {
+	return Object.hasOwn(cliTunings(), key);
+}
+
+/** Whether `value` is one the CLI takes for `key`. */
+export function isCliTuning(key: CliTuningKey, value: unknown): value is number {
+	const tuning = cliTunings()[key];
+	return typeof value === 'number' && Number.isFinite(value) && value >= tuning.min && value <= tuning.max && (key === 'compressionThreshold' || Number.isInteger(value));
+}
 
 /** The modes the CLI's Default Approval Mode takes: never YOLO, which the CLI leaves out of it on purpose. */
 export const defaultApprovalModes: readonly string[] = ['default', 'autoEdit', 'plan'];
@@ -61,6 +107,10 @@ export function readCliPreferences(settings: Record<string, unknown>): CliPrefer
 		planRouting: bool(at(settings, 'general', 'plan', 'modelRouting'), true),
 		usageStatistics: bool(at(settings, 'privacy', 'usageStatisticsEnabled'), true),
 		keepChats: isRecord(retention) && retention.enabled === false ? keepChatsForever : maxAge,
+		...Object.fromEntries(Object.entries(cliTunings()).map(([key, tuning]) => {
+			const value = at(settings, ...tuning.path);
+			return [key, isCliTuning(key as CliTuningKey, value) ? value : tuning.fallback];
+		})) as Record<CliTuningKey, number>,
 	};
 }
 
@@ -105,6 +155,19 @@ export function applyCliPreference<K extends CliPreference>(settings: Record<str
 		case 'usageStatistics':
 			object(settings, 'privacy').usageStatisticsEnabled = value;
 			break;
+		case 'requestTimeoutMs':
+		case 'compressionThreshold':
+		case 'maxAttempts':
+		case 'toolOutputChars': {
+			const tuning = cliTunings()[key as CliTuningKey];
+			const parent = object(settings, tuning.path[0]);
+			if (value === tuning.fallback) {
+				delete parent[tuning.path[1]];
+			} else {
+				parent[tuning.path[1]] = value;
+			}
+			break;
+		}
 		case 'keepChats': {
 			const retention = object(object(settings, 'general'), 'sessionRetention');
 			if (value === keepChatsForever) {
@@ -139,6 +202,9 @@ export async function setCliPreference<K extends CliPreference>(file: string, ke
 	}
 	if (key === 'defaultApprovalMode' && !defaultApprovalModes.includes(value as string)) {
 		throw new Error(`Not a default approval mode the Gemini CLI accepts: ${value}`);
+	}
+	if (isCliTuningKey(key) && !isCliTuning(key, value)) {
+		throw new Error(`Not a value the Gemini CLI accepts for ${key}: ${value}`);
 	}
 	return updateSettingsFile(file, settings => applyCliPreference(settings, key, value));
 }

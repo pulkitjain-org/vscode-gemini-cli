@@ -7,7 +7,7 @@ import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { applyCliPreference, isKeepChats, keepChatsPeriod, readCliPreferences, setCliDefaultModel, setCliPreference } from '../../src/acp/cliPreferences';
+import { applyCliPreference, isCliTuning, isKeepChats, keepChatsPeriod, readCliPreferences, setCliDefaultModel, setCliPreference } from '../../src/acp/cliPreferences';
 import { readSettingsFile } from '../../src/acp/projectSettings';
 
 let dir: string;
@@ -16,7 +16,7 @@ afterEach(() => fs.rm(dir, { recursive: true, force: true }));
 
 describe('cliPreferences', () => {
 	it('reads the CLI defaults from empty settings', () => {
-		expect(readCliPreferences({})).toEqual({ defaultApprovalMode: 'default', permanentApproval: false, planRouting: true, usageStatistics: true, keepChats: '30d' });
+		expect(readCliPreferences({})).toEqual({ defaultApprovalMode: 'default', permanentApproval: false, planRouting: true, usageStatistics: true, keepChats: '30d', requestTimeoutMs: 60_000, compressionThreshold: 0.5, maxAttempts: 10, toolOutputChars: 40_000 });
 	});
 
 	it('reads set values, and forever when cleanup is off', () => {
@@ -24,8 +24,38 @@ describe('cliPreferences', () => {
 			security: { enablePermanentToolApproval: true },
 			general: { plan: { modelRouting: false }, sessionRetention: { enabled: true, maxAge: '90d' } },
 			privacy: { usageStatisticsEnabled: false },
-		})).toEqual({ defaultApprovalMode: 'default', permanentApproval: true, planRouting: false, usageStatistics: false, keepChats: '90d' });
+		})).toEqual({ defaultApprovalMode: 'default', permanentApproval: true, planRouting: false, usageStatistics: false, keepChats: '90d', requestTimeoutMs: 60_000, compressionThreshold: 0.5, maxAttempts: 10, toolOutputChars: 40_000 });
 		expect(readCliPreferences({ general: { sessionRetention: { enabled: false, maxAge: '7d' } } }).keepChats).toBe('forever');
+	});
+
+	it('reads the numbers the CLI is tuned by, and the CLI\'s default for one it would not take', () => {
+		const read = readCliPreferences({ model: { name: 'gemini-3.8-pro', requestTimeoutMs: 180_000, compressionThreshold: 7 }, general: { maxAttempts: 3.5 }, tools: { truncateToolOutputThreshold: 20_000 } });
+		expect([read.requestTimeoutMs, read.compressionThreshold, read.maxAttempts, read.toolOutputChars]).toEqual([180_000, 0.5, 10, 20_000]);
+	});
+
+	it('writes a tuned number beside its neighbours, and takes the key out again for the CLI\'s default', () => {
+		const settings: Record<string, unknown> = { model: { name: 'gemini-3.8-pro' }, general: { vimMode: true } };
+		applyCliPreference(settings, 'requestTimeoutMs', 180_000);
+		applyCliPreference(settings, 'compressionThreshold', 0.3);
+		applyCliPreference(settings, 'maxAttempts', 5);
+		applyCliPreference(settings, 'toolOutputChars', 20_000);
+		const tuned = JSON.parse(JSON.stringify(settings));
+		applyCliPreference(settings, 'requestTimeoutMs', 60_000);
+		applyCliPreference(settings, 'compressionThreshold', 0.5);
+		applyCliPreference(settings, 'maxAttempts', 10);
+		applyCliPreference(settings, 'toolOutputChars', 40_000);
+		expect([tuned, settings]).toEqual([
+			{ model: { name: 'gemini-3.8-pro', requestTimeoutMs: 180_000, compressionThreshold: 0.3 }, general: { vimMode: true, maxAttempts: 5 }, tools: { truncateToolOutputThreshold: 20_000 } },
+			{ model: { name: 'gemini-3.8-pro' }, general: { vimMode: true }, tools: {} },
+		]);
+	});
+
+	it('takes only numbers the CLI accepts', async () => {
+		expect([
+			isCliTuning('requestTimeoutMs', 120_000), isCliTuning('requestTimeoutMs', 500), isCliTuning('requestTimeoutMs', 120_000.5), isCliTuning('compressionThreshold', 0.35),
+			isCliTuning('compressionThreshold', 1), isCliTuning('maxAttempts', 11), isCliTuning('maxAttempts', '5'), isCliTuning('toolOutputChars', 0),
+		]).toEqual([true, false, false, true, false, false, false, false]);
+		await expect(setCliPreference(path.join(dir, 'settings.json'), 'maxAttempts', 11)).rejects.toThrow(/maxAttempts/);
 	});
 
 	it('sets one key and keeps its neighbours', () => {

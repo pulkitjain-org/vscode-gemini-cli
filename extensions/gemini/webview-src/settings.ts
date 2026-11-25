@@ -138,6 +138,10 @@ function preferencesSection(preferences: PreferencesView): HTMLElement {
 		preferenceRow(strings.usageStatistics, strings.usageStatisticsHint, preferences.usageStatistics, value => post({ type: 'setPreference', key: 'usageStatistics', value })),
 	);
 	list.append(selectRow('keep-chats', strings.keepChats, strings.keepChatsHint, preferences.keepChatsChoices, preferences.keepChats, value => post({ type: 'setPreference', key: 'keepChats', value })));
+	// The numbers the CLI is tuned by: their words and choices are the host's.
+	for (const row of preferences.tuning) {
+		list.append(selectRow(`tuning-${row.key}`, row.label, row.hint, row.choices, row.current, value => post({ type: 'setPreference', key: row.key, value: Number(value) })));
+	}
 	node.append(list);
 	return node;
 }

@@ -8,7 +8,7 @@
 import { emptyFence } from './chatLogic';
 import { el } from './dom';
 import { renderBlocks } from './items';
-import { scanStreaming } from './streaming';
+import { renderGap, scanStreaming, type StreamingScan } from './streaming';
 
 /**
  * A reply that is still streaming. Its first `stableCount` child nodes show
@@ -25,17 +25,12 @@ export interface StreamingReply {
 	fence?: StreamingCode;
 	/** When the unfinished part was last rendered, and the text waiting for the next render. */
 	renderedAt?: number;
+	/** What the last draw of the tail cost, in ms. */
+	costMs?: number;
 	waiting?: string;
 	timer?: ReturnType<typeof setTimeout>;
 }
 
-/**
- * The unfinished part of a reply is rendered again on each update. A long
- * one, such as a table or a list with no blank lines, is rendered at most
- * this often, so a 200-row table does not cost a full parse 30 times a second.
- */
-const longTail = 4_000;
-const longTailIntervalMs = 150;
 
 /**
  * The code of an open code block, in blocks of whole lines. New code only
@@ -86,7 +81,7 @@ export function updateStreamingReply(reply: StreamingReply, text: string): boole
 		return false;
 	}
 	const scan = scanStreaming(text, reply.stableText.length);
-	const { node, fence } = reply;
+	const { fence } = reply;
 	if (fence && scan.openFence?.start === fence.start && text.length >= fence.shown) {
 		// Still the same open code block, and nothing before it changed: add the new code.
 		appendCode(fence, text.slice(fence.shown));
@@ -94,7 +89,8 @@ export function updateStreamingReply(reply: StreamingReply, text: string): boole
 		return true;
 	}
 	const now = performance.now();
-	if (text.length - Math.max(scan.stableEnd, reply.stableText.length) > longTail && reply.renderedAt !== undefined && now - reply.renderedAt < longTailIntervalMs) {
+	const gap = renderGap(text.length - Math.max(scan.stableEnd, reply.stableText.length), reply.costMs);
+	if (gap && reply.renderedAt !== undefined && now - reply.renderedAt < gap) {
 		reply.waiting = text;
 		reply.timer ??= setTimeout(() => {
 			reply.timer = undefined;
@@ -104,11 +100,19 @@ export function updateStreamingReply(reply: StreamingReply, text: string): boole
 			if (waiting !== undefined && reply.node.isConnected && [...streamingReplies.values()].includes(reply)) {
 				updateStreamingReply(reply, waiting);
 			}
-		}, longTailIntervalMs - (now - reply.renderedAt));
+		}, gap - (now - reply.renderedAt));
 		return true;
 	}
 	reply.renderedAt = now;
 	reply.waiting = undefined;
+	drawTail(reply, text, scan);
+	reply.costMs = performance.now() - now;
+	return true;
+}
+
+/** Draws what follows the reply's finished blocks: the blocks that just finished, once, then the unfinished tail. */
+function drawTail(reply: StreamingReply, text: string, scan: StreamingScan): void {
+	const { node } = reply;
 	// A wide table keeps its horizontal scroll when it is drawn again.
 	const scrolled = lastTable(node)?.scrollLeft ?? 0;
 	reply.fence = undefined;
@@ -137,7 +141,7 @@ export function updateStreamingReply(reply: StreamingReply, text: string): boole
 			code.replaceChildren(tail);
 			reply.fence = { start: open.start, code, shown: text.length, tail, tailLines: 0 };
 			appendCode(reply.fence, text.slice(open.codeStart));
-			return true;
+			return;
 		}
 	}
 	// A code block still open (one in a list item) is highlighted once it is finished.
@@ -146,7 +150,6 @@ export function updateStreamingReply(reply: StreamingReply, text: string): boole
 	if (table) {
 		table.scrollLeft = scrolled;
 	}
-	return true;
 }
 
 function lastTable(node: HTMLElement): HTMLElement | undefined {
