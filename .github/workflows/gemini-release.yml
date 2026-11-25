@@ -329,8 +329,7 @@ jobs:
           set -euo pipefail
           APP="${{ steps.app.outputs.path }}"
           ditto -c -k --sequesterRsrc --keepParent "$APP" "$RUNNER_TEMP/GeminiCode.zip"
-          bash gemini/scripts/notarize.sh "$RUNNER_TEMP/GeminiCode.zip"
-          xcrun stapler staple "$APP"
+          bash gemini/scripts/notarize.sh "$RUNNER_TEMP/GeminiCode.zip" "$APP"
           spctl --assess --type execute --verbose=2 "$APP"
 
       - name: Create the .dmg
@@ -358,8 +357,7 @@ jobs:
           set -euo pipefail
           DMG="${{ steps.dmg.outputs.path }}"
           codesign --sign "${{ steps.keychain.outputs.identity }}" --timestamp "$DMG"
-          bash gemini/scripts/notarize.sh "$DMG"
-          xcrun stapler staple "$DMG"
+          bash gemini/scripts/notarize.sh "$DMG" "$DMG"
           spctl --assess --type open --context context:primary-signature --verbose=2 "$DMG"
 
       - name: Checksum
