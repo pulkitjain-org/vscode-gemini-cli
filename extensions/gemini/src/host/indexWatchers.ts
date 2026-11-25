@@ -128,7 +128,12 @@ export class IndexWatchers implements vscode.Disposable {
 		}
 		const common = (await fs.readFile(path.join(gitDir, 'commondir'), 'utf8').catch(() => '')).trim();
 		const commonDir = common ? path.resolve(gitDir, common) : gitDir;
-		this.heads.set(folder, await headPosition(folder));
+		const position = await headPosition(folder);
+		// Unwatched while git was read: `store` is disposed already, and watchers added to it now would never be.
+		if (!this.watched.has(folder)) {
+			return;
+		}
+		this.heads.set(folder, position);
 		const moved = () => {
 			clearTimeout(this.headTimers.get(folder));
 			this.headTimers.set(folder, setTimeout(() => {

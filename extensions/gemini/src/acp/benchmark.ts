@@ -202,7 +202,11 @@ async function runTask(task: BenchTask, repo: string, options: BenchOptions): Pr
 			throw new Error('cancelled');
 		}
 		agent = startAgent(options.agent, repo);
-		const exited = new Promise<never>((_, reject) => agent!.child.once('exit', code => reject(new Error(options.signal?.aborted ? 'cancelled' : `the CLI exited with code ${code}`))));
+		const exited = new Promise<never>((_, reject) => {
+			agent!.child.once('exit', code => reject(new Error(options.signal?.aborted ? 'cancelled' : `the CLI exited with code ${code}`)));
+			// A CLI that is not there to start: the task fails with why, where an `error` nobody listens for would end the process.
+			agent!.child.once('error', err => reject(new Error(`the CLI could not start: ${err.message}`)));
+		});
 		// The process is killed once the task ends, which rejects this after every race is over.
 		exited.catch(() => { });
 		const ask = <T>(method: string, params: unknown) => Promise.race([agent!.request(method, params) as Promise<T>, exited]);

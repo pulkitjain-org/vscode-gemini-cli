@@ -215,7 +215,8 @@ export const jiraVia = {
 		return idOf(await callJson(server, 'jira_add_worklog', { issue_key: key, time_spent: spent, ...comment ? { comment } : {}, ...started ? { started: started.toISOString() } : {} }));
 	},
 	async transitions(server: ChildServer, key: string): Promise<{ id: string; name: string; to: string }[]> {
-		const list = JSON.parse(await callText(server, 'jira_get_transitions', { issue_key: key })) as { id?: unknown; name?: unknown; to_status?: unknown; to?: unknown }[];
+		// A reply that is not JSON (a message from the server) offers no transitions; it must not throw a parse error at the user.
+		const list = (await callJson(server, 'jira_get_transitions', { issue_key: key })).value as { id?: unknown; name?: unknown; to_status?: unknown; to?: unknown }[] | undefined;
 		return (Array.isArray(list) ? list : []).map(t => ({ id: String(t.id ?? ''), name: String(t.name ?? ''), to: String(t.to_status ?? t.to ?? t.name ?? '') }));
 	},
 	async transition(server: ChildServer, key: string, transitionId: string, comment?: string, fields?: Readonly<Record<string, string>>): Promise<void> {

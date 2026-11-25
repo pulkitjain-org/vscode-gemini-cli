@@ -22,6 +22,7 @@ import type { AgentTerminals } from '../agentTerminals';
 import type { ReviewController } from '../reviewController';
 import type { CommitSettler } from '../commitSettler';
 import { tildify } from '../displayText';
+import { forgetCommandFolder } from '../teamCommands';
 import type { Projects } from '../projects';
 import type { AgentsView } from '../agentsView';
 import type { AgentFeatures } from './agentFeatures';
@@ -116,7 +117,9 @@ export class AgentRemoval {
 			});
 		}
 		if (record?.worktree) {
-			// The worktree is gone, and its index with it.
+			// The worktree is gone: its index with it, and the watchers on its commands and skills.
+			forgetCommandFolder(record.worktree.cwd);
+			forgetCommandFolder(record.worktree.folder);
 			void host.view.index?.remove(record.worktree.cwd).catch(() => undefined);
 		}
 	}

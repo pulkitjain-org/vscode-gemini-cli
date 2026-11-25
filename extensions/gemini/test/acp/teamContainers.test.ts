@@ -17,7 +17,7 @@ import { JiraSites } from '../../src/acp/jiraSites';
 import { ChildServer, ChildServerOptions, McpCallResult, McpServerUnavailableError } from '../../src/acp/mcpStdio';
 import { changedFiles } from '../../src/acp/checksBranch';
 import { SnykCli } from '../../src/acp/snyk';
-import { analyzeFiles, bindMount, containerSpec, findDocker, FolderChildren, pinnedReference, teamImages } from '../../src/acp/teamContainers';
+import { analyzeFiles, bindMount, containerSpec, findDocker, FolderChildren, jiraVia, pinnedReference, teamImages } from '../../src/acp/teamContainers';
 import type { TeamDefaults } from '../../src/acp/teamDefaults';
 import { callTeamTool, TeamToolContext, teamWrite } from '../../src/acp/teamTools';
 import { markdownToAdf } from '../../webview-src/commentAdf';
@@ -167,6 +167,11 @@ describe('the team\'s servers as children', () => {
 				{ name: 'jira_add_comment', arguments: { issue_key: 'ACME-412', body: 'Ready.', visibility: '{"type":"role","value":"Developers"}' } },
 			],
 		});
+	});
+
+	it('offers no transitions when the server answers with a message, not a list', async () => {
+		const { server } = await child('jira', { tools: { jira_get_transitions: { text: 'Error: issue not found' } } });
+		expect(await jiraVia.transitions(server, 'ACME-404')).toEqual([]);
 	});
 
 	it('posts a comment from Home with the team\'s visibility, as an agent\'s jira_comment does', async () => {

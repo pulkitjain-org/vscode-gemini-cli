@@ -742,7 +742,12 @@ export class AgentTries implements vscode.Disposable {
 					timer = setTimeout(() => this.headMoved(repository), 500);
 				};
 				this.heads.set(repository, vscode.Disposable.from(watcher, watcher.onDidChange(moved), watcher.onDidCreate(moved), new vscode.Disposable(() => clearTimeout(timer))));
-			}, () => undefined);
+			}, () => {
+				// Git could not say where its folder is: the next update asks again, which a placeholder left here would stop.
+				if (this.heads.get(repository) === placeholder) {
+					this.heads.delete(repository);
+				}
+			});
 		}
 	}
 

@@ -72,6 +72,19 @@ class TeamCommandStore implements vscode.Disposable {
 		this.skillCache.clear();
 	}
 
+	/** Drops what was read and watched for an agent's folder that is gone, such as a removed worktree: its watchers would otherwise stay until the window closes. */
+	forgetFolder(cwd: string): void {
+		this.cache.delete(cwd);
+		this.skillCache.delete(cwd);
+		for (const [key, watcher] of this.watchers) {
+			const folder = key.slice(0, key.indexOf('\0'));
+			if (folder === cwd || folder.startsWith(cwd + path.sep)) {
+				watcher.dispose();
+				this.watchers.delete(key);
+			}
+		}
+	}
+
 	dispose(): void {
 		this.trustListener.dispose();
 		this.watchers.forEach(watcher => watcher.dispose());
@@ -101,6 +114,11 @@ let store: TeamCommandStore | undefined;
 export function initTeamCommands(log: vscode.LogOutputChannel): vscode.Disposable {
 	store = new TeamCommandStore(log);
 	return store;
+}
+
+/** Forgets an agent's folder that was removed, with its watchers. */
+export function forgetCommandFolder(cwd: string): void {
+	store?.forgetFolder(cwd);
 }
 
 /** The skills for `cwd`; none before `initTeamCommands`, as in tests. */
