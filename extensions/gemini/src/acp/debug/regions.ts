@@ -32,7 +32,7 @@ export interface FoundRegion {
 }
 
 /** `text` without any whitespace. */
-export function normalizeRegion(text: string): string {
+function normalizeRegion(text: string): string {
 	return text.replace(/\s+/g, '');
 }
 

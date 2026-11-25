@@ -43,8 +43,8 @@ export const teamImages = {
 } as const satisfies Record<string, PinnedImage>;
 
 /** The containers' tools the adapter calls; each container is started with only these. */
-export const jiraContainerTools = ['jira_get_issue', 'jira_search', 'jira_get_transitions', 'jira_transition_issue', 'jira_add_comment', 'jira_add_worklog', 'jira_assign_issue'] as const;
-export const gitlabContainerTools = ['get_issue', 'create_merge_request', 'create_merge_request_note', 'create_merge_request_discussion_note', 'resolve_merge_request_thread', 'merge_merge_request', 'approve_merge_request'] as const;
+const jiraContainerTools = ['jira_get_issue', 'jira_search', 'jira_get_transitions', 'jira_transition_issue', 'jira_add_comment', 'jira_add_worklog', 'jira_assign_issue'] as const;
+const gitlabContainerTools = ['get_issue', 'create_merge_request', 'create_merge_request_note', 'create_merge_request_discussion_note', 'resolve_merge_request_thread', 'merge_merge_request', 'approve_merge_request'] as const;
 
 /** The image reference Docker runs: `<image>:<tag>@<digest>`, so a moved tag changes nothing. */
 export function pinnedReference(pin: PinnedImage): string {
@@ -61,7 +61,7 @@ export function findDocker(exists: (file: string) => boolean = existsSync): stri
  * on this Mac addressed as Docker Desktop's name for it, since the container's own localhost is
  * the container.
  */
-export function containerProxyEnv(base: NodeJS.ProcessEnv): Record<string, string> {
+function containerProxyEnv(base: NodeJS.ProcessEnv): Record<string, string> {
 	const env: Record<string, string> = {};
 	for (const name of proxyVariables) {
 		const value = base[name];
@@ -215,7 +215,8 @@ export const jiraVia = {
 		return idOf(await callJson(server, 'jira_add_worklog', { issue_key: key, time_spent: spent, ...comment ? { comment } : {}, ...started ? { started: started.toISOString() } : {} }));
 	},
 	async transitions(server: ChildServer, key: string): Promise<{ id: string; name: string; to: string }[]> {
-		const list = JSON.parse(await callText(server, 'jira_get_transitions', { issue_key: key })) as { id?: unknown; name?: unknown; to_status?: unknown; to?: unknown }[];
+		// A reply that is not JSON (a message from the server) offers no transitions; it must not throw a parse error at the user.
+		const list = (await callJson(server, 'jira_get_transitions', { issue_key: key })).value as { id?: unknown; name?: unknown; to_status?: unknown; to?: unknown }[] | undefined;
 		return (Array.isArray(list) ? list : []).map(t => ({ id: String(t.id ?? ''), name: String(t.name ?? ''), to: String(t.to_status ?? t.to ?? t.name ?? '') }));
 	},
 	async transition(server: ChildServer, key: string, transitionId: string, comment?: string, fields?: Readonly<Record<string, string>>): Promise<void> {
@@ -295,7 +296,7 @@ export const sonarVia = {
 };
 
 /** The files SonarQube's local analysers read, by extension (its server's list of languages). */
-export function isSonarAnalysable(file: string): boolean {
+function isSonarAnalysable(file: string): boolean {
 	return /\.(java|kt|kts|py|rb|go|js|jsx|mjs|cjs|ts|tsx|mts|cts|php|jsp|html|css|scss|less|xml|tf|ya?ml|json)$|(^|\/)Dockerfile$/.test(file);
 }
 
@@ -310,7 +311,7 @@ export const snykVia = {
 };
 
 /** The most files one local analysis reads, so Checks finishes in a minute or two. */
-export const localAnalysisMaxFiles = 25;
+const localAnalysisMaxFiles = 25;
 
 /**
  * SonarQube's analysis of `files` (paths in the folder `server` has mounted), one file at a time:

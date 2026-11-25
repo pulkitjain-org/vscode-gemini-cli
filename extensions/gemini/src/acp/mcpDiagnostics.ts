@@ -131,6 +131,8 @@ export class McpDiagnostics {
 			await fs.mkdir(path.dirname(this.file), { recursive: true });
 			void removeEndedDebugLogs(path.dirname(this.file));
 			await fs.writeFile(this.file, '');
+			// A reset that ran meanwhile has its own watcher by now, which assigning over would leave open.
+			this.stopWatching();
 			this.watcher = watch(this.file, () => this.schedule());
 			this.watcher.on('error', () => this.stopWatching());
 			return true;

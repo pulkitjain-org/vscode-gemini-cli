@@ -60,6 +60,13 @@ describe('benchmark', () => {
 		expect(benchResultsFileName(summary)).toBe('1.2.0-0.64.0-gemini-3.8-flash.json');
 	});
 
+	it('reports a CLI that is not there to start as the task\'s error', async () => {
+		const { repo, sha } = await repository();
+		const tasks: BenchTask[] = [{ key: 'ACME-9', repo, baseSha: sha, prompt: 'Go', grader: { command: 'true' } }];
+		const summary = await runBenchmark({ tasks, agent: { command: path.join(repo, 'no-such-gemini'), args: [], env: process.env, shell: false }, model: 'm' });
+		expect(summary.results.map(r => [r.key, r.completed, /could not start/.test(r.error ?? '')])).toEqual([['ACME-9', false, true]]);
+	});
+
 	it('stops before the next task once cancelled, keeping what finished', async () => {
 		const { repo, sha } = await repository();
 		const tasks: BenchTask[] = ['ACME-1', 'ACME-2', 'ACME-3'].map(key => ({ key, repo, baseSha: sha, prompt: 'Go', grader: { command: 'true' } }));

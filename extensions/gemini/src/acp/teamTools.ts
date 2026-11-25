@@ -115,7 +115,9 @@ interface TeamTool extends McpTool {
 	readonly runsCode?: boolean;
 }
 
-export const teamTools: readonly TeamTool[] = [
+// Each list below is marked pure: a bundle that imports this module for one name or helper (the pages, the on-demand
+// tools) then leaves the table out, which a call or a spread at the top of a module would otherwise keep in it.
+const teamTools: readonly TeamTool[] = /* @__PURE__ */ (() => [
 	{
 		tool: 'jira', name: 'jira_get_issue',
 		description: 'Reads a Jira ticket: summary, status, description with acceptance criteria, fix versions, the last comments and links in it (Figma frames, merge requests).',
@@ -268,23 +270,23 @@ export const teamTools: readonly TeamTool[] = [
 		description: 'A screenshot of a Figma frame from its link, to compare with what you built.',
 		inputSchema: { type: 'object', properties: { link: text, viewport: viewportParam }, required: ['link'] },
 	},
-];
+])();
 
 /** The tools that only read, which run without asking; not the ones that run the project's code. */
-export const teamReadTools: readonly McpTool[] = teamTools.filter(tool => !tool.write && !tool.runsCode);
-export const teamWriteTools: readonly McpTool[] = teamTools.filter(tool => tool.write);
+export const teamReadTools: readonly McpTool[] = /* @__PURE__ */ teamTools.filter(tool => !tool.write && !tool.runsCode);
+export const teamWriteTools: readonly McpTool[] = /* @__PURE__ */ teamTools.filter(tool => tool.write);
 /** The confirm class: a card every time, with Allow once and Reject only. */
-export const teamConfirmTools: readonly McpTool[] = teamTools.filter(tool => tool.confirm);
+export const teamConfirmTools: readonly McpTool[] = /* @__PURE__ */ teamTools.filter(tool => tool.confirm);
 
 /**
  * The same actions in the MCP servers a team may run beside GeminiCode's
  * (mcp-atlassian and gitlab-mcp, as in a repository's `.gemini/settings.json`),
  * so they ask the same way.
  */
-export const confirmToolNames: readonly string[] = [
+const confirmToolNames: readonly string[] = /* @__PURE__ */ (() => [
 	...teamConfirmTools.map(tool => tool.name),
 	'jira_transition_issue', 'jira_add_worklog', 'create_merge_request', 'merge_merge_request',
-];
+])();
 
 /** The writes in the servers a team may run beside GeminiCode's (mcp-atlassian and gitlab-mcp) that are not the confirm class: a comment, a reply, an assignment. */
 const childWriteToolNames: readonly string[] = ['jira_add_comment', 'jira_assign_issue', 'create_merge_request_note', 'create_merge_request_discussion_note', 'resolve_merge_request_thread', 'approve_merge_request'];
@@ -309,7 +311,7 @@ export function isConfirmToolCall(request: { readonly toolCall: { readonly title
 }
 
 /** Every write among GeminiCode's own team tools, with the writes' names from a team's own servers. */
-const writeToolNames: readonly string[] = [...new Set([...teamTools.filter(tool => tool.write).map(tool => tool.name), ...confirmToolNames, ...childWriteToolNames])];
+const writeToolNames: readonly string[] = /* @__PURE__ */ (() => [...new Set([...teamTools.filter(tool => tool.write).map(tool => tool.name), ...confirmToolNames, ...childWriteToolNames])])();
 
 /**
  * Whether a permission request is for a team tool that writes: a comment, a
@@ -390,7 +392,7 @@ const pageTools: readonly TeamTool[] = [
 /** Files a page may attach, at most: well past Jira Cloud's own default limit, so Jira's message is the one people see. */
 const maxAttachmentBytes = 256 * 1024 * 1024;
 /** Files Open Merge Request may upload to GitLab, at most: GitLab's own default limit for an attachment. */
-export const maxUploadBytes = 100 * 1024 * 1024;
+const maxUploadBytes = 100 * 1024 * 1024;
 
 /**
  * Home's comment box: `document`, the comment as Jira rich text the box made
@@ -552,7 +554,7 @@ function refOf(args: Record<string, unknown>): string | undefined {
 }
 
 /** One line a person reads in the audit log, from the tool and its arguments. */
-export function effectOf(name: string, args: Record<string, unknown>): string {
+function effectOf(name: string, args: Record<string, unknown>): string {
 	const key = refOf(args);
 	switch (name) {
 		case 'jira_comment': return `Comment on ${key}`;

@@ -15,7 +15,7 @@ import type { DebugMode } from './debugMode';
 import type { EvidenceFilter, FromEvidence, ToEvidence } from './debugProtocol';
 import { evidenceStrings } from './debugStrings';
 
-export const evidenceViewType = 'gemini.debugEvidence';
+const evidenceViewType = 'gemini.debugEvidence';
 const pageRows = 200;
 
 export class EvidencePage implements vscode.Disposable {

@@ -9,7 +9,7 @@
 import type { TeamToolId } from './teamHttp';
 
 /** The tools only reachable over the client's VPN. */
-export const vpnOnlyTools: ReadonlySet<TeamToolId> = new Set(['gitlab', 'sonar', 'snyk']);
+const vpnOnlyTools: ReadonlySet<TeamToolId> = new Set(['gitlab', 'sonar', 'snyk']);
 
 export type TeamToolStateKind = 'off' | 'checking' | 'connected' | 'unreachable' | 'auth' | 'failed' | 'notInstalled';
 

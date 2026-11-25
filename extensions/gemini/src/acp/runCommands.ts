@@ -19,7 +19,7 @@ export function canRun(language: string): boolean {
 }
 
 /** The most lines of a command's output kept, and sent to a chat. */
-export const maxOutputLines = 200;
+const maxOutputLines = 200;
 
 /**
  * The commands a block runs, one per line. In a `console` block only lines

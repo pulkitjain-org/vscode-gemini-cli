@@ -395,3 +395,16 @@ export type FromChangesTeam =
 	| { readonly type: 'team'; readonly action: 'merge'; readonly squash: boolean; readonly removeSourceBranch: boolean; readonly moveTicket: boolean }
 	| { readonly type: 'team'; readonly action: 'fixJob'; readonly job: number }
 	| { readonly type: 'team'; readonly action: 'fixMr'; readonly jobs: boolean; readonly threads: readonly string[] };
+
+/** What the merge request panel asks the merge to do besides GitLab's defaults. */
+export interface MergeOptions {
+	readonly squash?: boolean;
+	readonly removeSourceBranch?: boolean;
+	/** The ticket to move to Done once merged. */
+	readonly moveTicket?: string;
+}
+
+/** The tone of a pipeline's pill, from GitLab's status. */
+export function pipelineTone(status: string): Tone {
+	return status === 'success' ? 'ok' : status === 'failed' ? 'error' : status === 'running' || status === 'pending' ? 'info' : 'muted';
+}

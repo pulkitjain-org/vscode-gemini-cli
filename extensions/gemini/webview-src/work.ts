@@ -19,7 +19,7 @@ import { runPeek, type FoldGroup, type StepKind, type WorkSummary } from './work
 const stepOrder: readonly StepKind[] = ['read', 'search', 'execute', 'edit', 'fetch', 'other'];
 
 /** "read 14 files, searched 11 patterns, ran 9 commands". */
-export function summaryText(summary: WorkSummary): string {
+function summaryText(summary: WorkSummary): string {
 	const { counts } = strings.work;
 	return stepOrder
 		.filter(kind => summary.counts[kind])

@@ -14,8 +14,7 @@ import type { AgentsView } from './agentsView';
 import type { ChangesSource } from './changesView';
 import type { TeamConnections } from './teamConnections';
 import { relativeTime } from './displayText';
-import { type MergeOptions, pipelineTone } from './teamFlows';
-import { ChangesTeamView, FromChangesTeam } from './teamFlowProtocol';
+import { ChangesTeamView, FromChangesTeam, type MergeOptions, pipelineTone } from './teamFlowProtocol';
 import { openTeamLink } from './teamLinks';
 
 /** How long an agent's merge request status is reused before it is read again. */

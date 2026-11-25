@@ -118,7 +118,9 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// The 1.8 review: ask rules for every team write, network git commands and variable expansion in approvals, the Run
 	// button's wrapper and download checks, the folder processes' restart handling and the restart hold, about 4 KB net
 	// once the CLI installer moved to dist/onDemand.js.
-	'dist/extension.js': 1_020_000,
+	// The team flows (teamFlows.ts with checksBranch.ts and what only they use of teamFlowLogic.ts and releaseMerge.ts), about 45 KB,
+	// moved to dist/onDemand.js, loaded with their first command: about 974 KB. The reviews in progress stay here.
+	'dist/extension.js': 1_000_000,
 	// The agent's connection with the ACP SDK and zod (English messages only), and the benchmark's own ACP client,
 	// about 254 KB (src/connection.ts), loaded when the first agent process starts, seconds after activation.
 	'dist/connection.js': 270_000,
@@ -134,7 +136,8 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// (indexPage.ts, docs/suggest.ts), about 21 KB, moved here from dist/extension.js.
 	// The Storage section's host (storageSection.ts) moved to dist/onDemand.js with the audit page, about 10 KB.
 	// 1.8's Settings page, every contributed setting with its control and the model that reads them (settingsModel.ts),
-	// took it to about 160.3 KB.
+	// took it to about 160.3 KB. The team tools' table (teamTools.ts), about 9 KB, which only its server's name was
+	// needed from, is left out: about 153 KB.
 	'dist/pages.js': 162_000,
 	// Confluence, about 27 KB, loaded the first time an agent or a page uses it (src/confluence.ts): its client, the
 	// agents' calls, the drafts and the Review Page's host, with publishing only the changes kept (draftReview.ts,
@@ -161,7 +164,9 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// The CLI installer with its streamed download and tar reader (cliInstall.ts), about 9 KB, moved here from
 	// dist/extension.js: it runs only when a copy is installed. What Clean Up may offer of the agents' folders, with the
 	// folders a removal left behind (worktreeCleanup.ts), about 4.5 KB, moved here from dist/extension.js.
-	'dist/onDemand.js': 185_000,
+	// The team flows, about 53 KB with their own copies of the GitLab and Jira helpers they call, moved here from
+	// dist/extension.js: about 237 KB.
+	'dist/onDemand.js': 245_000,
 	// The indexer process, about 66 KB: parsing, SQLite queries and docs conversion, forked on first use, never
 	// loaded in the extension host.
 	'dist/indexer.js': 120_000,

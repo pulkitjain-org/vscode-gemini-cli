@@ -48,7 +48,7 @@ export interface ResearchProgress {
 	readonly slices: readonly { readonly title: string; readonly state: 'queued' | 'reading' | 'done' | 'failed'; readonly files: number; readonly findings: number }[];
 }
 
-export const maxSlices = 8;
+const maxSlices = 8;
 export const defaultConcurrency = 4;
 /**
  * How long an agent's research tool reads before it stops the readers and merges what they found:
@@ -77,13 +77,13 @@ function jsonIn(text: string): unknown {
 
 const str = (value: unknown, max = 500) => typeof value === 'string' && value.trim() ? value.trim().slice(0, max) : undefined;
 
-export const plannerSystem = [
+const plannerSystem = [
 	'You split a question about a code repository into independent parts, so several read-only researchers can answer it at the same time, each reading one part of the code.',
 	`Answer with only a JSON array of at most ${maxSlices} parts, each {"title": short name, "focus": what to find there, "paths": [.gitignore patterns of where to look]}.`,
 	'Split by area of the code (folders, layers, services) so the parts don\'t overlap, using the outline. A small or narrow question is one part. Never more parts than the code has areas worth reading.',
 ].join('\n');
 
-export function plannerPrompt(question: string, outline: string | undefined, slices: number): string {
+function plannerPrompt(question: string, outline: string | undefined, slices: number): string {
 	return [
 		outline ? `<outline>\n${outline.slice(0, maxOutline)}\n</outline>` : 'No outline of the repository is available.',
 		'',
@@ -105,7 +105,7 @@ export function parseSlices(text: string, question: string, limit = maxSlices): 
 	return slices.length ? slices : [{ title: 'Whole repository', focus: question, paths: [] }];
 }
 
-export function workerPrompt(question: string, slice: ResearchSlice, others: number): string {
+function workerPrompt(question: string, slice: ResearchSlice, others: number): string {
 	return [
 		`You are one of ${others + 1} read-only researchers answering a question about this repository; each covers one part, so stay in yours.`,
 		`Question: ${question.slice(0, maxQuestion)}`,
@@ -143,7 +143,7 @@ export function parseWorkerReply(text: string, slice: ResearchSlice): WorkerResu
 	return { slice, summary: str(o.summary, 1_500) ?? text.replace(/```[\s\S]*?```/g, '').trim().slice(0, 1_500), findings };
 }
 
-export function verifierPrompt(question: string, findings: readonly ResearchFinding[]): string {
+function verifierPrompt(question: string, findings: readonly ResearchFinding[]): string {
 	return [
 		`Researchers answering "${question.slice(0, 300)}" reported these findings. Check each against the code: read the file at the line, and a little around it.`,
 		...findings.map((f, i) => `${i + 1}. ${f.claim}${f.file ? ` (${f.file}${f.line ? `:${f.line}` : ''})` : ''}`),
@@ -171,7 +171,7 @@ export function toVerify(results: readonly WorkerResult[]): ResearchFinding[] {
 	return [...all.filter(f => f.severity === 'high'), ...all.filter(f => f.severity === 'medium')].slice(0, maxVerified);
 }
 
-export const mergeSystem = [
+const mergeSystem = [
 	'You write the answer to a question about a code repository from what several read-only researchers found, each in one part of the code.',
 	'Lead with the answer in one or two sentences. Then the findings that matter, most serious first, each on one line with its place as `path:line`; mark those a verifier confirmed with "(verified)" and leave out those it refuted. Then, briefly, any part a researcher could not finish.',
 	'Merge findings that are the same thing. Add nothing the researchers did not find. Markdown, no preamble.',

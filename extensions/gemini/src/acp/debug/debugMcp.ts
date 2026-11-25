@@ -20,7 +20,7 @@ import { checkExpression, isPlainCondition, languageOf } from './expressions';
 import { checkHypotheses, findHypothesis, type Hypothesis } from './hypotheses';
 import { type Channel, isPointId, type PointInput, type PointSet } from './points';
 
-export const debugServerName = 'geminicode-debug';
+const debugServerName = 'geminicode-debug';
 
 /** What the server reads of one agent's Debug mode; the host owns and changes it. */
 export interface DebugSessionView {
@@ -232,7 +232,7 @@ export const debugTools: readonly McpTool[] = [
 	},
 ];
 
-export const debugModeOff = 'Debug mode is off for this session.';
+const debugModeOff = 'Debug mode is off for this session.';
 
 export class DebugMcpServer extends AgentMcpServer {
 	constructor(backend: DebugBackend, version: string) {

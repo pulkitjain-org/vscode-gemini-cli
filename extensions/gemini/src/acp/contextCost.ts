@@ -51,9 +51,6 @@ export interface RuleFile {
 	readonly bytes: number;
 }
 
-/** A rule file larger than this is worth trimming: every model call carries it. */
-export const largeRuleFileBytes = 20 * 1024;
-
 /** The chat's usage popover's breakdown of a folder's context (`/context`). */
 export interface ContextBreakdown {
 	readonly state: 'none' | 'measuring' | 'ready' | 'failed';
@@ -139,7 +136,7 @@ export function allowedServersFor(variant: ProbeVariant): string[] {
 }
 
 /** A reading at least this many times the one it builds on accounts for much of what every call carries. */
-export const heavyReadingRatio = 1.5;
+const heavyReadingRatio = 1.5;
 
 /**
  * What to point out in words, without a number: the MCP servers whose reading

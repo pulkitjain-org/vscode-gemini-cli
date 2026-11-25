@@ -49,7 +49,7 @@ export interface IndexToolBackend {
 }
 
 /** What research's workers are called: they get the index tools, but never research itself. */
-export const researchWorkerPrefix = 'research-';
+const researchWorkerPrefix = 'research-';
 
 /** The one line a session's first prompt carries once the folder's index is built: without it the model reaches for grep_search first (FINDINGS.md). */
 export function indexHint(options: { readonly languageServers?: boolean; readonly research?: boolean } = {}): string {

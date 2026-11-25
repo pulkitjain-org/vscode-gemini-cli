@@ -113,7 +113,7 @@ export async function suggestDocs(folder: string, have: ReadonlySet<string>): Pr
 	return suggestions;
 }
 
-export async function readDependencies(folder: string): Promise<Dependency[]> {
+async function readDependencies(folder: string): Promise<Dependency[]> {
 	const read = (name: string) => fs.readFile(path.join(folder, name), 'utf8').catch(() => undefined);
 	const out: Dependency[] = [];
 	const pkg = await read('package.json');
@@ -170,7 +170,7 @@ export async function readDependencies(folder: string): Promise<Dependency[]> {
 }
 
 /** The major and minor of a version range such as `^4.18.2` or `>=3.2`. */
-export function parseVersion(version: string | undefined): Version | undefined {
+function parseVersion(version: string | undefined): Version | undefined {
 	const match = version && /(\d+)(?:\.(\d+))?/.exec(version);
 	return match ? { major: Number(match[1]), minor: Number(match[2] ?? 0) } : undefined;
 }

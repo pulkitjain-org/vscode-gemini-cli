@@ -260,7 +260,7 @@ function toolAttachment(ref: ToolRef, name: string, text: string): ToolAttachmen
 }
 
 /** A chip whose item wasn't (or isn't yet) read: its note tells the agent which tool reads it. */
-export function placeholderAttachment(ref: ToolRef, problem?: string): ToolAttachment {
+function placeholderAttachment(ref: ToolRef, problem?: string): ToolAttachment {
 	const why = problem ? ` GeminiCode couldn't read it: ${problem}` : '';
 	switch (ref.tool) {
 		case 'jira':

@@ -14,7 +14,7 @@
 import * as vscode from 'vscode';
 
 /** The editor group after `panel`'s, or the group beside the active one when the panel has no column. */
-export function besideAgent(panel: vscode.WebviewPanel | undefined): vscode.ViewColumn {
+function besideAgent(panel: vscode.WebviewPanel | undefined): vscode.ViewColumn {
 	const column = panel?.viewColumn;
 	return column === undefined ? vscode.ViewColumn.Beside : Math.min(column + 1, vscode.ViewColumn.Nine);
 }
@@ -65,7 +65,7 @@ const focusGroupCommands = ['First', 'Second', 'Third', 'Fourth', 'Fifth', 'Sixt
  * Makes `column`'s group the active one (adding it when it is the next one),
  * for commands such as `vscode.changes` that only open in the active group.
  */
-export async function focusColumn(column: vscode.ViewColumn): Promise<void> {
+async function focusColumn(column: vscode.ViewColumn): Promise<void> {
 	const command = column === vscode.ViewColumn.Beside ? 'workbench.action.focusRightGroup' : focusGroupCommands[column - 1];
 	if (command) {
 		await vscode.commands.executeCommand(command);

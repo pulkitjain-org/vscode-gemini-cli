@@ -252,7 +252,7 @@ export class AgentStarter {
 				toolChips: () => host.view.teamTools && toolChipsFor(host.view.teamTools),
 				// Debug mode's phase and hypotheses, with every prompt while the agent is in it.
 				turnNote: () => host.view.debug?.turnNote(record.id),
-				debugAction: (action, arg) => void vscode.commands.executeCommand('gemini.debug.action', record.id, action, arg),
+				debugAction: (action, arg) => void vscode.commands.executeCommand('_gemini.debug.action', record.id, action, arg),
 				review: () => host.view.reviewChip?.(record.id),
 				openReview: () => host.view.openReview?.(record.id),
 				openMergeRequest: () => void vscode.commands.executeCommand('gemini.team.openMergeRequest', record.id),

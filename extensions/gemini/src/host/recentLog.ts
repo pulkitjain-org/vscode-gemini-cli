@@ -10,7 +10,7 @@
 import * as vscode from 'vscode';
 
 /** Lines kept. */
-export const recentLogLines = 300;
+const recentLogLines = 300;
 
 const levels = ['trace', 'debug', 'info', 'warn', 'error'] as const;
 

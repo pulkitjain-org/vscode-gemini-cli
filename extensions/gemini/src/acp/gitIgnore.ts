@@ -140,7 +140,7 @@ export class GitIgnoreChecker {
 }
 
 /** One `git check-ignore` run for one file: exit 0 means ignored. */
-export function checkOne(filePath: string): Promise<boolean> {
+function checkOne(filePath: string): Promise<boolean> {
 	return new Promise(resolve => {
 		execFile('git', ['check-ignore', '--quiet', '--', filePath], { cwd: path.dirname(filePath), timeout: 5_000, windowsHide: true }, err => resolve(!err));
 	});

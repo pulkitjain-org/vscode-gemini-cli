@@ -83,9 +83,9 @@ export class BoundedStore<K, V> {
 }
 
 /** Output over this many lines shows only its first and last lines, with the rest fetched on request. */
-export const longOutputLines = 80;
+const longOutputLines = 80;
 /** How many lines of a long output show at its start, and at its end. */
-export const shownOutputLines = 20;
+const shownOutputLines = 20;
 
 /** A tool's output as a tool card first shows it: whole, or its first and last lines and how many lines are hidden between them. */
 export interface TrimmedOutput {

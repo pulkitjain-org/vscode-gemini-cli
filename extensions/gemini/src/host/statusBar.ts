@@ -23,7 +23,7 @@ import { configSection, getProjectSettings } from './configuration';
 import { developerToolsOn } from './developerTools';
 import { escapeMarkdown } from './markdown';
 
-export const statusMenuCommand = 'gemini.showStatusMenu';
+const statusMenuCommand = 'gemini.showStatusMenu';
 
 /** A build smaller than this (a few saved files) never shows in the item. */
 const minIndexFilesShown = 50;

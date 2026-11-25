@@ -210,7 +210,7 @@ export class DebugEditor implements vscode.Disposable {
 				const range = new vscode.Range(found.start, 0, found.start, 0);
 				lenses.push(
 					new vscode.CodeLens(range, { title: this.labels.lens(region.point, about?.hypothesis ?? '', about?.hits ?? 0), command: 'gemini.debug.showEvidence', arguments: [source.agent, `${region.point}`] }),
-					new vscode.CodeLens(range, { title: this.labels.remove, command: 'gemini.debug.action', arguments: [source.agent, 'removePoint', region.point] }),
+					new vscode.CodeLens(range, { title: this.labels.remove, command: '_gemini.debug.action', arguments: [source.agent, 'removePoint', region.point] }),
 				);
 			}
 		}

@@ -114,7 +114,7 @@ export class DebugFeature implements DebugFeatureApi {
 			vscode.commands.registerCommand('gemini.debug.askWhy', (arg?: unknown) => this.askWhy(arg)),
 			vscode.commands.registerCommand('gemini.debug.stop', (arg?: unknown) => this.stop(agentOf(arg) ?? this.activeAgent())),
 			vscode.commands.registerCommand('gemini.debug.showEvidence', (arg?: unknown, focus?: unknown) => this.showEvidence(agentOf(arg) ?? this.activeAgent(), typeof focus === 'string' ? focus : undefined)),
-			vscode.commands.registerCommand('gemini.debug.action', (agent?: unknown, action?: unknown, arg?: unknown) => this.action(agentOf(agent), action as DebugAction, typeof arg === 'string' ? arg : undefined)),
+			vscode.commands.registerCommand('_gemini.debug.action', (agent?: unknown, action?: unknown, arg?: unknown) => this.action(agentOf(agent), action as DebugAction, typeof arg === 'string' ? arg : undefined)),
 			vscode.workspace.onDidChangeConfiguration(event => {
 				if (event.affectsConfiguration('gemini.debugMode.enabled') && !enabled()) {
 					// Turned off while a chat uses it: Clean up runs, and the chat says why.

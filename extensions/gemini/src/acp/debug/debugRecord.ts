@@ -42,7 +42,7 @@ export interface DebugRecord {
 	readonly routePort?: number;
 }
 
-export const recordWriteDelayMs = 500;
+const recordWriteDelayMs = 500;
 
 /** `<globalStorage>/debug/<agent>.json`. */
 export function recordPath(globalStorage: string, agent: string): string {

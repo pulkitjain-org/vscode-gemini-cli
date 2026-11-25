@@ -182,7 +182,7 @@ function toolKind(entry: AuditEntry): AuditRowView['toolKind'] {
 }
 
 /** One row per write, newest first: the intent, joined with its result or failure. */
-export function auditRows(entries: readonly AuditEntry[], agentTitle: (id: string) => string | undefined): AuditRowView[] {
+function auditRows(entries: readonly AuditEntry[], agentTitle: (id: string) => string | undefined): AuditRowView[] {
 	const byId = new Map<string, { intent?: AuditEntry; outcome?: AuditEntry }>();
 	for (const entry of entries) {
 		const group = byId.get(entry.id) ?? {};

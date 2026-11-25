@@ -47,7 +47,7 @@ function searchPath(): string {
 	return [process.env.PATH ?? '', ...extra].filter(Boolean).join(path.delimiter);
 }
 
-export const runProcess: Run = (file, args, cwd, timeoutMs) => new Promise(resolve => {
+const runProcess: Run = (file, args, cwd, timeoutMs) => new Promise(resolve => {
 	execFile(file, [...args], { cwd, timeout: timeoutMs, maxBuffer: 64 * 1024 * 1024, env: { ...process.env, PATH: searchPath(), FORCE_COLOR: '0' }, windowsHide: true }, (err, stdout, stderr) => {
 		const code = err ? typeof (err as { code?: unknown }).code === 'number' ? (err as { code: number }).code : -1 : 0;
 		resolve({ code, stdout: String(stdout), stderr: String(stderr) || (code === -1 && err ? err.message : '') });

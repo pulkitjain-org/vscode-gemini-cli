@@ -52,7 +52,7 @@ export function turnLayout(items: readonly TranscriptItem[]): TurnLayout {
 /** What a run of tool calls is about; calls of one kind in a row share a line. */
 export type StepKind = 'read' | 'search' | 'execute' | 'edit' | 'fetch' | 'other';
 
-export function stepKind(call: ToolCall): StepKind {
+function stepKind(call: ToolCall): StepKind {
 	switch (call.toolKind) {
 		case 'read':
 		case 'search':

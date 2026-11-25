@@ -16,7 +16,7 @@ import { isVersion } from '../acp/cliResolution';
 import { errorMessage } from '../acp/errors';
 import { configSection, productInfo } from './configuration';
 
-export const checkForAppUpdatesCommand = 'gemini.app.checkForUpdates';
+const checkForAppUpdatesCommand = 'gemini.app.checkForUpdates';
 
 const lastCheckKey = 'gemini.app.lastUpdateCheck';
 /** When a window last started a background read, so windows that start together read once. */

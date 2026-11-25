@@ -28,6 +28,8 @@ export { crawl } from './acp/docs/crawler';
 export { designSystemNoteFor } from './acp/designSystem';
 export { figmaDesignSystem } from './acp/designTokens';
 export { TraceRecorder } from './host/traceRecorder';
+// The team flows: starting on a ticket, opening and merging a merge request, moving a ticket, the checks and a review's start.
+export { TeamFlows } from './host/teamFlows';
 export { cloneFor } from './host/reviewClone';
 export { FigmaDesktop } from './acp/figma';
 export { pickAssignee } from './host/assigneePicker';

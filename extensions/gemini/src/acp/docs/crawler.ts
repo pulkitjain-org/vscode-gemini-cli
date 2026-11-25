@@ -70,7 +70,7 @@ const timeoutMs = 20_000;
 const maxSitemaps = 10;
 const signInPath = /(?:^|[/._-])(?:login|log-in|signin|sign-in|sso|auth|oauth|saml|idp)(?:$|[/._-])/i;
 
-export class CrawlError extends Error { }
+class CrawlError extends Error { }
 
 /** Where one crawl may send requests: allowed hosts, and no private address unless the source is at one. */
 interface Reach {
@@ -498,7 +498,7 @@ export function parseRobots(text: string, agent = 'geminicode'): { allowed: (pat
 }
 
 /** Links in an HTML page, absolute, for following links when a site offers no list. */
-export function extractLinks(html: string, base: string): string[] {
+function extractLinks(html: string, base: string): string[] {
 	const links = new Set<string>();
 	for (const match of html.matchAll(/<a\b[^>]*?\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi)) {
 		const href = decodeXml(match[1] ?? match[2] ?? match[3] ?? '');

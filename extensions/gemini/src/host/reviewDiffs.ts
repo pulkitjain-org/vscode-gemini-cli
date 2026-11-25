@@ -7,7 +7,7 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { git } from '../acp/worktrees';
 
-export const reviewScheme = 'gemini-review';
+const reviewScheme = 'gemini-review';
 
 /** File versions kept in memory, at most. */
 const maxCached = 120;

@@ -46,7 +46,7 @@ export function registerAgentCommands(view: AgentCommandsHost): vscode.Disposabl
 		vscode.commands.registerCommand('gemini.agents.tryInWorkspace', (node?: AgentTreeNode) => node?.kind === 'agent' && view.view.chooseTry(node.record.id, 'try')),
 		vscode.commands.registerCommand('gemini.agents.takeBack', (node?: AgentTreeNode) => node?.kind === 'agent' && view.view.tryAction(node.record.id, 'takeBack')),
 		// The status bar item of a try: Keep Changes, Take Back and the rest.
-		vscode.commands.registerCommand('gemini.tries.menu', (id?: unknown) => view.features.tries.showMenu(typeof id === 'string' ? id : undefined)),
+		vscode.commands.registerCommand('_gemini.tries.menu', (id?: unknown) => view.features.tries.showMenu(typeof id === 'string' ? id : undefined)),
 		vscode.commands.registerCommand('gemini.agents.fork', (node?: AgentTreeNode) => view.tabs.fork(node)),
 		// From a row's More menu with the agent, or from the agent tab's title bar: the agent in front.
 		vscode.commands.registerCommand('gemini.agents.moveToBranch', (node?: AgentTreeNode) => view.view.moveToBranch(node?.kind === 'agent' ? node.record.id : view.view.activeAgentId())),

@@ -13,7 +13,7 @@ import * as path from 'node:path';
 import { stripJsonComments } from './projectSettings';
 
 /** What the chat colours, and the TextMate scopes that stand for each, tried in order. */
-export const tokenCategories = {
+const tokenCategories = {
 	keyword: ['keyword', 'storage.type'],
 	string: ['string.quoted', 'string'],
 	comment: ['comment'],

@@ -15,7 +15,7 @@ import type { Point } from './points';
 /** About 3,000 tokens: well under the CLI's cap on one tool output, for a mode that runs many turns. */
 export const evidenceBudgetChars = 12_000;
 /** A value, in what the model gets. */
-export const maxValueChars = 500;
+const maxValueChars = 500;
 const timelineEvents = 40;
 const eventsPerPoint = 5;
 

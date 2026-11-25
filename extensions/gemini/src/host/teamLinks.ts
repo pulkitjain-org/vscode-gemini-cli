@@ -12,7 +12,7 @@ export type MergeRequestOpener = 'geminicode' | 'browser';
 const settingKey = 'team.openMergeRequestsIn';
 
 /** Whether `url` is a GitLab merge request page. */
-export function isMergeRequestUrl(url: string): boolean {
+function isMergeRequestUrl(url: string): boolean {
 	return /\/-\/merge_requests\/\d+/.test(url);
 }
 

@@ -418,7 +418,7 @@ class PlanReviewPage implements vscode.Disposable {
 
 }
 
-/** The page's words; exported for its tests. */
+/** The page's words; exported for its tests. @public: the page tests read it by name (`hostExport`). */
 export function planStrings(): PlanStrings {
 	return {
 		from: vscode.l10n.t("Plan from \"{0}\""),

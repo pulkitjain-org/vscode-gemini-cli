@@ -30,6 +30,10 @@
 		"webview-src/threadCard.ts",
 		"webview-src/projectSettings.ts",
 		"webview-src/sideChat.ts",
+		"webview-src/evidence.ts",
+		"webview-src/changesMenu.ts",
+		"webview-src/connectionsMenu.ts",
+		"webview-src/debugCard.ts",
 		"scripts/*.mts",
 		"esbuild*.mts",
 		"test/**/*.ts"
@@ -41,7 +45,6 @@
 		"test/**/*.ts"
 	],
 	"ignoreDependencies": [
-		"@vscode/codicons",
-		"katex"
+		"@vscode/codicons"
 	]
 }

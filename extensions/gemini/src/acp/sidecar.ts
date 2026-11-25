@@ -9,10 +9,9 @@ import { AgentErrorKind, FATAL_EXIT_CODES } from './errors';
 import { Emitter } from './events';
 import { stopProcess } from './processStop';
 
-export { stopProcess } from './processStop';
 
 /** The exit code the CLI uses to ask its parent wrapper to start it again. */
-export const RELAUNCH_EXIT_CODE = 199;
+const RELAUNCH_EXIT_CODE = 199;
 const maxRelaunches = 3;
 
 export type SidecarState =

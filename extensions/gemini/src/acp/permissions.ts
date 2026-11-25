@@ -190,12 +190,12 @@ function confirmOptions(request: acp.RequestPermissionRequest): acp.RequestPermi
 }
 
 /** Whether `option` is a request's "Allow for this session" (gemini-cli's `proceed_always`), not "for all future sessions". */
-export function isSessionOption(option: acp.PermissionOption): boolean {
+function isSessionOption(option: acp.PermissionOption): boolean {
 	return option.kind === 'allow_always' && (option.optionId === 'proceed_always' || /for this session/i.test(option.name));
 }
 
 /** Whether `option` is the CLI's "Allow for all future sessions" (`proceed_always_and_save`), which writes a policy rule. */
-export function isPermanentOption(option: acp.PermissionOption): boolean {
+function isPermanentOption(option: acp.PermissionOption): boolean {
 	return option.kind === 'allow_always' && (option.optionId === 'proceed_always_and_save' || /all future sessions/i.test(option.name));
 }
 
@@ -204,7 +204,7 @@ export function isPermanentOption(option: acp.PermissionOption): boolean {
  * (`~/.gemini/policies/auto-saved.toml`) applies in the mode the session is in
  * and the ones that approve more, never in a stricter one.
  */
-export function withPermanentScope(request: acp.RequestPermissionRequest): acp.RequestPermissionRequest {
+function withPermanentScope(request: acp.RequestPermissionRequest): acp.RequestPermissionRequest {
 	if (!request.options.some(isPermanentOption)) {
 		return request;
 	}

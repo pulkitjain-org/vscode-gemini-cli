@@ -29,7 +29,7 @@ import { keepSessionFolder } from './sessionFolder';
 import { AgentSidecar, SidecarState } from './sidecar';
 
 /** The one auth method the IDE ever selects. */
-export const AUTH_METHOD_ID = 'oauth-personal';
+const AUTH_METHOD_ID = 'oauth-personal';
 
 export type AgentRuntimeState =
 	| { readonly kind: 'idle' }

@@ -7,6 +7,7 @@ import type * as acp from '@agentclientprotocol/sdk';
 import { promises as fs } from 'node:fs';
 import type { AgentConnection } from '../acp/agentConnection';
 import { spawnAgent } from '../acp/agentProcess';
+import { stopProcess } from '../acp/processStop';
 import { allowedServersFor, ContextCost, measureContextCost, ProbeVariant } from '../acp/contextCost';
 import { readTurnUsage } from '../acp/turnUsage';
 import { getAgentCommand, ownServers } from './configuration';
@@ -50,6 +51,9 @@ async function probeOnce(options: ContextCostOptions, variant: ProbeVariant): Pr
 	const cwd = variant.kind === 'empty' ? options.emptyFolder : options.folder;
 	const command = await getAgentCommand({ ownFolderOnly: true, allowedMcpServers: [...allowedServersFor(variant), ...own ? ownServers : []] });
 	const child = spawnAgent(command, cwd);
+	// A CLI that is not there to start says so in an `error` event, which nobody listening for would end the extension host.
+	const failed = new Promise<never>((_, reject) => child.once('error', reject));
+	failed.catch(() => undefined);
 	child.stderr.resume();
 	const connection = new (await options.connection())(child.stdin, child.stdout, {
 		sessionUpdate: () => undefined,
@@ -57,7 +61,7 @@ async function probeOnce(options: ContextCostOptions, variant: ProbeVariant): Pr
 	});
 	const timer = setTimeout(() => child.kill(), probeTimeoutMs);
 	try {
-		await connection.initialize();
+		await Promise.race([connection.initialize(), failed]);
 		const session = await connection.newSession(cwd, own ? options.geminicodeServers() : []);
 		const model = lightestModel(session);
 		if (model) {
@@ -75,7 +79,7 @@ async function probeOnce(options: ContextCostOptions, variant: ProbeVariant): Pr
 	} finally {
 		clearTimeout(timer);
 		connection.dispose();
-		child.kill();
+		stopProcess(child);
 	}
 }
 

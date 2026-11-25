@@ -16,7 +16,7 @@ import type { TeamDefaults } from './teamDefaults';
 const tokenIndexes = new Map<string, { readonly mtimeMs: number; readonly index: TokenIndex }>();
 
 /** The token index of the design system's skill in `folder`, read again only when its tokens.md changes; empty without one. */
-export async function readTokenIndex(folder: string, config: DesignSystemConfig): Promise<TokenIndex> {
+async function readTokenIndex(folder: string, config: DesignSystemConfig): Promise<TokenIndex> {
 	const file = path.join(folder, config.skill, 'references', 'tokens.md');
 	try {
 		const { mtimeMs } = await fs.stat(file);

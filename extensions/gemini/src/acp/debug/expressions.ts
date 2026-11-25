@@ -12,8 +12,6 @@
 
 export type Language = 'javascript' | 'typescript' | 'python' | 'go' | 'java';
 
-export const languages: readonly Language[] = ['javascript', 'typescript', 'python', 'go', 'java'];
-
 /** The language of a file by its extension, or undefined for one the checks do not know. */
 export function languageOf(file: string): Language | undefined {
 	const ext = /\.([A-Za-z0-9]+)$/.exec(file)?.[1]?.toLowerCase();

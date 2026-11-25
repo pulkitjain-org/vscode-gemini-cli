@@ -17,7 +17,7 @@ export async function workspaceId(root: string): Promise<string> {
 }
 
 /** The index file of `root` under `baseDir` (~/.geminicode/index). */
-export async function indexFile(baseDir: string, root: string): Promise<string> {
+async function indexFile(baseDir: string, root: string): Promise<string> {
 	return path.join(baseDir, 'code', await workspaceId(root), 'index.db');
 }
 

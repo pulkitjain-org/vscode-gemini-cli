@@ -148,7 +148,7 @@ export function planBuildModels(planUsage: readonly { readonly model: string; re
 }
 
 /** The approval modes `gemini.agents.defaultMode` takes: gemini-cli 0.64's `ApprovalMode` ids. */
-export const startModeIds = [defaultModeId, autoEditModeId, planModeId, yoloModeId] as const;
+const startModeIds = [defaultModeId, autoEditModeId, planModeId, yoloModeId] as const;
 
 /** The mode a new agent's first session switches to, from `gemini.agents.defaultMode`: undefined for Default, an unknown value or one the approval settings turn off. */
 export function defaultStartMode(setting: unknown, isAllowed: (modeId: string) => boolean): string | undefined {
@@ -214,7 +214,7 @@ export function dropOldest<K>(collection: Set<K> | Map<K, unknown>): void {
 }
 
 /** How full the context is, as a share of the window, when the chat suggests compacting; the CLI compresses on its own at half. */
-export const suggestCompactAt = 0.4;
+const suggestCompactAt = 0.4;
 
 /**
  * Whether the chat should suggest compacting session `session`, now `used`

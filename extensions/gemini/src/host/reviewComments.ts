@@ -7,7 +7,7 @@ import * as vscode from 'vscode';
 import { errorMessage } from '../acp/errors';
 import { showError } from './errorNotice';
 
-export const reviewControllerId = 'gemini.review';
+const reviewControllerId = 'gemini.review';
 
 /** A thread in a review's diff: one of the draft's comments, or one of the merge request's threads. */
 export interface DiffThread {

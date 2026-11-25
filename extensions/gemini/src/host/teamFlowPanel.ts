@@ -9,7 +9,7 @@ import type { FlowRecordStore } from '../acp/flowRecords';
 import { FromTeamFlow, TeamFlowState, TeamFlowStrings, TeamFlowView, ToTeamFlow } from './teamFlowProtocol';
 import { PagePanel, PageShell } from './pagePanel';
 
-export const teamFlowViewType = 'gemini.teamFlow';
+const teamFlowViewType = 'gemini.teamFlow';
 
 /** How to start the flow again after a quit: the store, the command that opens it and its arguments. */
 export interface FlowRecording {

@@ -10,7 +10,7 @@
 // (FINDINGS.md, startup on real machines). Each mark is set once: a later
 // call for the same name is ignored, so a restart never moves it.
 
-export const startupMarkNames = [
+const startupMarkNames = [
 	'product loaded', 'records loaded', 'services up', 'home shown',
 	'agent spawned', 'agent ready', 'first session', 'first prompt sent', 'first text',
 ] as const;

@@ -55,7 +55,7 @@ interface Injection {
 }
 
 /** Whether a team command's prompt reads a file or runs a command. */
-export function usesInjections(prompt: string): boolean {
+function usesInjections(prompt: string): boolean {
 	return prompt.includes('!{') || prompt.includes('@{');
 }
 

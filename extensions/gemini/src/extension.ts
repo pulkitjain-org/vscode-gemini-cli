@@ -34,7 +34,9 @@ import { KeepAwake } from './acp/keepAwake';
 import { debugLogName } from './acp/mcpDiagnostics';
 import { BrowserTools } from './host/browserTools';
 import { editorFolder, TeamConnections } from './host/teamConnections';
-import { TeamFlows } from './host/teamFlows';
+import { inRepository } from './acp/worktrees';
+import { Reviews } from './host/reviews';
+import { setupCommandFor } from './host/agents/agentWorktrees';
 import { setTraceFile, setTraceFolder } from './host/traceCommand';
 import { scheduleStorageMaintenance } from './host/storageMaintenance';
 import { MrPanel } from './host/mrPanel';
@@ -232,22 +234,42 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	}));
 	// Debug mode: its route is in every session while it is turned on, and its code loads with its first command.
 	const debug = chunkLoader<typeof import('./debug')>(__dirname, 'debug');
-	const debugEntry = agentsView.debug = new DebugEntry(String(context.extension.packageJSON.version ?? ''), context.globalStorageUri, entry => new LazyFeature(['gemini.debug.start', 'gemini.debug.askWhy', 'gemini.debug.stop', 'gemini.debug.showEvidence', 'gemini.debug.action'], () => new (debug().DebugFeature)({
+	const debugEntry = agentsView.debug = new DebugEntry(String(context.extension.packageJSON.version ?? ''), context.globalStorageUri, entry => new LazyFeature(['gemini.debug.start', 'gemini.debug.askWhy', 'gemini.debug.stop', 'gemini.debug.showEvidence', '_gemini.debug.action'], () => new (debug().DebugFeature)({
 		context, log, agents: agentsView, entry, service,
 		fileAccess: (folder, file) => checkFileAccess(file, 'write', agentFileAccessPolicy(folder)),
 	})));
 	context.subscriptions.push(debugEntry);
-	const teamFlows = new TeamFlows(context.extensionUri, teamTools, agentsView, context.globalState, onDemand);
+	// The team flows (a ticket, a merge request, the checks, a review's start) load from dist/onDemand.js with their first
+	// command. The reviews in progress are the window's from the start: Home lists them, and a reviewer agent only reads.
+	const teamFlows: LazyFeature<import('./host/teamFlows').TeamFlows> = new LazyFeature([
+		'gemini.team.startOnTicket', 'gemini.team.openMergeRequest', 'gemini.team.moveTicket', 'gemini.team.logTime', 'gemini.team.reviewMergeRequest', 'gemini.team.openReview',
+		'gemini.team.actions', 'gemini.team.startNewReview', 'gemini.team.discardReview', 'gemini.team.fixMergeRequest', 'gemini.team.reopenFlow', 'gemini.team.discardFlow',
+		'gemini.team.settleIntent', 'gemini.team.mergeMergeRequest', 'gemini.team.reassignTicket', 'gemini.team.runChecks', 'gemini.team.runChecksOnBranch',
+	], () => new (onDemand().TeamFlows)(context.extensionUri, teamTools, agentsView, reviews, { state: context.globalState, inRepository, setupCommandFor, pages }));
+	const reviews = new Reviews({
+		extensionUri: context.extensionUri, tools: teamTools, agents: agentsView,
+		gitlab: () => {
+			const gitlab = teamTools.connectors.gitlab;
+			if (!gitlab) {
+				throw new Error(vscode.l10n.t("Connect GitLab first, in Connections."));
+			}
+			return gitlab;
+		},
+		cloneOf: (project, gitlab, askFor) => teamFlows.get().cloneOf(project, gitlab, askFor === undefined ? undefined : { iid: askFor, purpose: 'review' }),
+		side: (mr, ticket, folder) => teamFlows.get().reviewSide(mr, ticket, folder),
+	});
+	// A reviewer only reads, after a restart too: its writes would go out before the user chose what to post.
+	teamTools.readOnlyBy(agent => !!reviews.forAgent(agent));
 	// A reviewer agent's chat has a chip that opens its review.
 	agentsView.reviewChip = agentId => {
-		const review = teamFlows.reviews.forAgent(agentId);
+		const review = reviews.forAgent(agentId);
 		return review && { label: vscode.l10n.t("Review !{0}", review.iid), tip: vscode.l10n.t("Open the review of !{0}: {1}", review.iid, review.title) };
 	};
 	agentsView.openReview = agentId => void vscode.commands.executeCommand('gemini.team.openReview', agentId);
-	context.subscriptions.push(teamFlows.reviews.onDidChange(() => agentsView.refreshChats()));
+	context.subscriptions.push(reviews.onDidChange(() => agentsView.refreshChats()));
 	const traceFolder = vscode.Uri.joinPath(context.globalStorageUri, 'traces').fsPath;
 	setTraceFolder(traceFolder);
-	const mrPanel = new MrPanel(teamTools, agentsView, agent => teamFlows.checksSummary(agent));
+	const mrPanel = new MrPanel(teamTools, agentsView, agent => agentsView.checkResult(agent));
 	changesPanel.team = mrPanel;
 	// caffeinate watches this process, so it ends with GeminiCode even if GeminiCode crashes.
 	const keepAwake = new KeepAwake({ platform: process.platform, pid: process.pid, log: message => log.info(message) });
@@ -266,7 +288,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		changesPanel,
 		agentsView.onDidFocus(source => changesPanel.show(source)),
 		agentsView.onDidChangeTurn(agent => changesPanel.turnChanged(agent)),
-		new AgentHome(context.extensionUri, agentsView, () => warmup.startSoon(), { state: context.globalState, version: productInfo.version ?? String(context.extension.packageJSON.version ?? ''), cli: () => service.status.agentVersion, startup: () => ({ activatedAt, agent: agentPhase(service.status.phase), ...readyAt ? { readyAt } : {} }), reviews: { inProgress: () => teamFlows.reviews.inProgress, onDidChange: teamFlows.reviews.onDidChange } }),
+		new AgentHome(context.extensionUri, agentsView, () => warmup.startSoon(), { state: context.globalState, version: productInfo.version ?? String(context.extension.packageJSON.version ?? ''), cli: () => service.status.agentVersion, startup: () => ({ activatedAt, agent: agentPhase(service.status.phase), ...readyAt ? { readyAt } : {} }), reviews: { inProgress: () => reviews.inProgress, onDidChange: reviews.onDidChange } }),
 		new LazyFeature(['gemini.projectSettings', 'gemini.newSkill'], () => new (pages().SettingsPage)(context.extensionUri, service, {
 			getAgentCommand,
 			forgetSkills,
@@ -288,6 +310,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		browserTools,
 		teamTools,
 		teamFlows,
+		reviews,
 		new LazyFeature(['gemini.recordTrace'], () => new (onDemand().TraceRecorder)(service, log, { setTraceFile, setAgentEnvOverride, dir: traceFolder })),
 		new LazyFeature(['gemini.runBenchmark'], () => new (onDemand().BenchmarkCommand)(service, log, {
 			getAgentCommand,

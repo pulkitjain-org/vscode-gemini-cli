@@ -10,7 +10,7 @@
 
 export type HypothesisStatus = 'open' | 'confirmed' | 'refuted' | 'unclear';
 
-export const hypothesisStatuses: readonly HypothesisStatus[] = ['open', 'confirmed', 'refuted', 'unclear'];
+const hypothesisStatuses: readonly HypothesisStatus[] = ['open', 'confirmed', 'refuted', 'unclear'];
 
 export interface Hypothesis {
 	/** `h1`, `h2`, ... */
@@ -26,8 +26,8 @@ export interface Hypothesis {
 }
 
 /** The list is two to five; one is accepted for a bug with one obvious cause, more than five is refused. */
-export const maxHypotheses = 5;
-export const maxClaimChars = 400;
+const maxHypotheses = 5;
+const maxClaimChars = 400;
 
 export interface EvidenceRef {
 	readonly point: string;

@@ -52,7 +52,7 @@ export interface PageTab {
 }
 
 /** The HTML document for `shell`, with one policy: nothing but the page's own script, the stylesheets from `media/`, and data: fonts and images. */
-export function pageHtml(webview: vscode.Webview, media: vscode.Uri, shell: PageShell): string {
+function pageHtml(webview: vscode.Webview, media: vscode.Uri, shell: PageShell): string {
 	const nonce = createNonce();
 	const uri = (file: string) => webview.asWebviewUri(vscode.Uri.joinPath(media, file));
 	const styles = [...sharedStyles, ...shell.styles ?? [], glassStyle].map(file => `<link href="${uri(file)}" rel="stylesheet">`).join('\n\t');

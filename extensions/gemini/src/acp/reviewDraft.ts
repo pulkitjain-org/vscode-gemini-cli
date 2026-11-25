@@ -58,8 +58,6 @@ export interface ReviewDraft {
 	readonly replies: readonly DraftReply[];
 }
 
-export const emptyDraft: ReviewDraft = { comments: [], replies: [] };
-
 // --- The merge request's diff
 
 export interface DiffLine {

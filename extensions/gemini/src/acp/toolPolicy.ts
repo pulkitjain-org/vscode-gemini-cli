@@ -34,9 +34,9 @@ export interface ApprovalPolicy {
  * `export`, `declare` or `typeset` alone (with arguments they change the shell, as in `set -e`, and
  * print nothing). `ps` with an environment flag (`ps eww`, `ps -E`) prints other processes' environments.
  */
-export const environmentCommandPrefixes = ['env', 'printenv', 'declare -x', 'declare -p', 'typeset -x', 'typeset -p', 'export -p', 'compgen -e', 'compgen -v'] as const;
-export const environmentCommandRegex = '(?:set|export|declare|typeset)\\s*"';
-export const processEnvironmentRegex = 'ps\\s(?:[a-zA-Z]*e[a-zA-Z]*[\\s"]|-[a-zA-Z]*E|[^"]*\\s-[a-zA-Z]*E)';
+const environmentCommandPrefixes = ['env', 'printenv', 'declare -x', 'declare -p', 'typeset -x', 'typeset -p', 'export -p', 'compgen -e', 'compgen -v'] as const;
+const environmentCommandRegex = '(?:set|export|declare|typeset)\\s*"';
+const processEnvironmentRegex = 'ps\\s(?:[a-zA-Z]*e[a-zA-Z]*[\\s"]|-[a-zA-Z]*E|[^"]*\\s-[a-zA-Z]*E)';
 /**
  * The CLI matches `commandRegex` from the start of each command, as `"command":"<regex>` against the
  * call's arguments as JSON (`buildArgsPatterns`), so a rule for something anywhere in the command starts

@@ -15,7 +15,6 @@ import { errorMessage } from '../acp/errors';
 import { GitLabClient, GitLabMr } from '../acp/gitlab';
 import { formatDuration, type JiraMyTickets, jiraKeyIn, parseDuration } from '../acp/jira';
 import { keyOf, type JiraSites } from '../acp/jiraSites';
-import { extensionChunk } from './lazyFeature';
 import { branchSummary, branchWorktree, fetchBranches, pushBranch, UnpushedCommitsError } from '../acp/releaseMerge';
 import { describeSnyk } from '../acp/snyk';
 import { sonarIssuesUrl, sonarProjectKeyIn } from '../acp/sonar';
@@ -26,15 +25,16 @@ import {
 } from '../acp/teamFlowLogic';
 import { gitlabProjectOf } from '../acp/teamTools';
 import type { FoundClone } from '../acp/cloneSearch';
-import type { CloneAsk } from './reviewClone';
-import { AgentWorktree, commitAll, currentBranch, git, GitError, inRepository, repositoryRoot, runWorktreeSetup } from '../acp/worktrees';
-import { setupCommandFor } from './agents/agentWorktrees';
+import { pickAssignee } from './assigneePicker';
+import { cloneFor, type CloneAsk } from './reviewClone';
+import { AgentWorktree, commitAll, currentBranch, git, GitError, type inRepository, repositoryRoot, runWorktreeSetup } from '../acp/worktrees';
+import type { setupCommandFor } from './agents/agentWorktrees';
 import type { AgentsView } from './agentsView';
 import type { TeamConnections } from './teamConnections';
 import type { FlowRecord } from '../acp/flowRecords';
 import type { FlowRecording, TeamFlowPanel } from './teamFlowPanel';
-import { ChecksView, FlowAttachment, MoveTicketView, OpenMrView, ReviewView, Tone, TransitionView } from './teamFlowProtocol';
-import { Reviews } from './reviews';
+import { ChecksView, FlowAttachment, type MergeOptions, MoveTicketView, OpenMrView, pipelineTone, ReviewView, Tone, TransitionView } from './teamFlowProtocol';
+import type { Reviews } from './reviews';
 import { openTeamLink } from './teamLinks';
 import { ticketPickItems } from './toolChips';
 import { showError } from './errorNotice';
@@ -64,6 +64,23 @@ interface GitPlace {
 }
 
 /**
+ * What the team flows take from the extension's own bundle. They load from
+ * dist/onDemand.js with their first command, and a bundle has its own copy of
+ * every module it imports: the git lock and the setup scripts asked about
+ * must be the window's one.
+ */
+export interface TeamFlowsHost {
+	/** Remembers recent merge request targets, clones and allowed setup scripts. */
+	readonly state?: vscode.Memento;
+	/** The repository's git lock (worktrees.ts). */
+	readonly inRepository: typeof inRepository;
+	/** The setup command for a new checkout, asked about once (agentWorktrees.ts). */
+	readonly setupCommandFor: typeof setupCommandFor;
+	/** Loads the bundle the flows' page comes from (src/pages.ts), with the first flow opened. */
+	pages(): typeof import('../pages');
+}
+
+/**
  * The team flows: start an agent on a Jira ticket, open a merge request,
  * move a ticket (with a comment) and log time, review someone else's merge
  * request, and run the checks. Each opens
@@ -73,29 +90,20 @@ interface GitPlace {
 export class TeamFlows implements vscode.Disposable {
 
 	private readonly disposables: vscode.Disposable[] = [];
-	/** Merge request reviews in progress. */
-	readonly reviews: Reviews;
 	/** A reopened flow's typed fields, for the flow its command opens next. */
 	private pendingRestore: { readonly command: string; readonly fields: NonNullable<FlowRecord['fields']> } | undefined;
 
 	/** The target each Open Merge Request's description was written for. */
 	private readonly describedFor = new WeakMap<TeamFlowPanel<OpenMrView>, string>();
-	/** The bundle the flows' page comes from (src/pages.ts), loaded with the first flow opened. */
-	private readonly pages = extensionChunk<typeof import('../pages')>('pages');
+	private readonly state: vscode.Memento | undefined;
+	private readonly pages: () => typeof import('../pages');
 
-	/** `onDemand` loads dist/onDemand.js, where finding or cloning a merge request's repository lives (reviewClone.ts). */
-	constructor(private readonly extensionUri: vscode.Uri, private readonly tools: TeamConnections, private readonly agents: AgentsView, private readonly state?: vscode.Memento, private readonly onDemand?: () => typeof import('../onDemand')) {
+	/** `reviews` holds the merge request reviews in progress; it is the window's, made when the extension starts (extension.ts). */
+	constructor(private readonly extensionUri: vscode.Uri, private readonly tools: TeamConnections, private readonly agents: AgentsView, private readonly reviews: Reviews, private readonly host: TeamFlowsHost) {
+		this.state = host.state;
+		this.pages = () => host.pages();
 		const run = <A extends unknown[]>(id: string, handler: (...args: A) => Promise<unknown>) => vscode.commands.registerCommand(id, (...args: A) => handler(...args).catch(err => void showError(errorMessage(err))));
-		this.reviews = new Reviews({
-			extensionUri, tools, agents,
-			gitlab: () => this.gitlab(),
-			cloneOf: (project, gitlab, askFor) => this.cloneOf(project, gitlab, askFor === undefined ? undefined : { iid: askFor, purpose: 'review' }),
-			side: (mr, ticket, folder) => this.reviewSide(mr, ticket, folder),
-		});
-		// A reviewer only reads, after a restart too: its writes would go out before the user chose what to post.
-		tools.readOnlyBy(agent => !!this.reviews.forAgent(agent));
 		this.disposables.push(
-			this.reviews,
 			run('gemini.team.startOnTicket', (key?: unknown) => this.startOnTicket(str(key))),
 			run('gemini.team.openMergeRequest', (agent?: unknown) => this.openMergeRequest(str(agent))),
 			run('gemini.team.moveTicket', (key?: unknown, agent?: unknown, suggest?: unknown) => this.moveTicket(str(key), str(agent), str(suggest))),
@@ -126,11 +134,6 @@ export class TeamFlows implements vscode.Disposable {
 
 	dispose(): void {
 		vscode.Disposable.from(...this.disposables).dispose();
-	}
-
-	/** The last checks' result for an agent, in a line. */
-	checksSummary(agentId: string): string | undefined {
-		return this.agents.checkResult(agentId);
 	}
 
 	// --- Unfinished after a quit
@@ -176,7 +179,7 @@ export class TeamFlows implements vscode.Disposable {
 		return jira;
 	}
 
-	private gitlab(): GitLabClient {
+	gitlab(): GitLabClient {
 		const gitlab = this.tools.connectors.gitlab;
 		if (!gitlab) {
 			throw new Error(vscode.l10n.t("Connect GitLab first, in Connections."));
@@ -266,12 +269,9 @@ export class TeamFlows implements vscode.Disposable {
 	 * request `askFor`, asks the user when none is found; undefined when they cancel.
 	 */
 	/** A clone of `project` among the user's folders; with `ask`, the one they choose or clone when none is found. */
-	private async cloneOf(project: string, gitlab: GitLabClient, ask?: CloneAsk): Promise<FoundClone | undefined> {
-		if (!this.onDemand) {
-			return undefined;
-		}
+	async cloneOf(project: string, gitlab: GitLabClient, ask?: CloneAsk): Promise<FoundClone | undefined> {
 		const agentFolders = async () => [...this.agents.summaries().map(a => a.folder), ...(await this.agents.workspaces()).map(w => w.folder)];
-		return this.onDemand().cloneFor(project, gitlab, this.state, agentFolders, folder => gitlabProjectOf(folder, gitlab.url), ask);
+		return cloneFor(project, gitlab, this.state, agentFolders, folder => gitlabProjectOf(folder, gitlab.url), ask);
 	}
 
 	private async draft(request: { readonly system: string; readonly prompt: string }): Promise<string | undefined> {
@@ -661,7 +661,7 @@ export class TeamFlows implements vscode.Disposable {
 					}
 					const target = current.target;
 					this.rememberTarget(gp.project, target);
-					await inRepository(gp.cwd, async () => {
+					await this.host.inRepository(gp.cwd, async () => {
 						const dirty = (await git(gp.cwd, ['status', '--porcelain'])).trim();
 						if (dirty) {
 							// Checked again: a turn may have started while the page was open.
@@ -803,7 +803,7 @@ export class TeamFlows implements vscode.Disposable {
 	}
 
 	/** The Pipeline, Quality gate, ticket and Approvals rows beside a review. */
-	private async reviewSide(mr: GitLabMr, ticket: string | undefined, folder: string): Promise<ReviewView['side']> {
+	async reviewSide(mr: GitLabMr, ticket: string | undefined, folder: string): Promise<ReviewView['side']> {
 		const side: ReviewView['side'][number][] = [];
 		if (mr.pipeline) {
 			side.push({ tool: 'gitlab', label: vscode.l10n.t("Pipeline"), pill: { text: mr.pipeline.status, tone: pipelineTone(mr.pipeline.status) } });
@@ -910,7 +910,7 @@ export class TeamFlows implements vscode.Disposable {
 			return;
 		}
 		const ticket = keyOf(key);
-		const picked = await extensionChunk<typeof import('../onDemand')>('onDemand')().pickAssignee(jira, key, ticket);
+		const picked = await pickAssignee(jira, key, ticket);
 		if (!picked) {
 			return;
 		}
@@ -952,7 +952,7 @@ export class TeamFlows implements vscode.Disposable {
 		}
 		let worktree: AgentWorktree & { readonly existing?: boolean };
 		try {
-			worktree = await inRepository(clone.folder, () => branchWorktree(clone.folder, clone.remote, mr.sourceBranch));
+			worktree = await this.host.inRepository(clone.folder, () => branchWorktree(clone.folder, clone.remote, mr.sourceBranch));
 		} catch (err) {
 			if (err instanceof UnpushedCommitsError) {
 				throw new Error(err.count === 1
@@ -1000,7 +1000,7 @@ export class TeamFlows implements vscode.Disposable {
 		if ((await git(cwd, ['status', '--porcelain'])).trim()) {
 			throw new Error(vscode.l10n.t("The agent left changes in {0} that aren't committed, so its commits weren't pushed. Ask it to commit them, then press Fix again.", branch));
 		}
-		await inRepository(cwd, () => pushBranch(cwd, remote, branch)).catch(err => { throw plainGitError(err); });
+		await this.host.inRepository(cwd, () => pushBranch(cwd, remote, branch)).catch(err => { throw plainGitError(err); });
 		if (threads.length) {
 			const head = (await git(cwd, ['rev-parse', 'HEAD'])).trim();
 			void controller.send(mrFixRepliesPrompt({ branch, head, commits: ahead }, threads));
@@ -1057,11 +1057,11 @@ export class TeamFlows implements vscode.Disposable {
 			branch = picked.choice.branch;
 		}
 		const chosen = branch;
-		const checkout = await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: vscode.l10n.t("Checking out {0}...", chosen) }, () => inRepository(repository, () => checkoutForChecks(repository, remote, chosen)).catch(err => { throw plainGitError(err); }));
+		const checkout = await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: vscode.l10n.t("Checking out {0}...", chosen) }, () => this.host.inRepository(repository, () => checkoutForChecks(repository, remote, chosen)).catch(err => { throw plainGitError(err); }));
 		let setup: string | undefined;
 		if (checkout.created && checkout.worktree) {
 			const worktree = checkout.worktree;
-			const command = await setupCommandFor(repository, this.state, 'checks');
+			const command = await this.host.setupCommandFor(repository, this.state, 'checks');
 			if (command) {
 				const started = Date.now();
 				const code = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: vscode.l10n.t("Setting up {0} for the checks...", chosen) }, () => runWorktreeSetup(command, worktree, repository, () => undefined));
@@ -1261,20 +1261,8 @@ function categoryTone(category: string): Tone {
 	return category === 'done' ? 'ok' : category === 'indeterminate' ? 'info' : 'muted';
 }
 
-/** What the merge request panel asks the merge to do besides GitLab's defaults. */
-export interface MergeOptions {
-	readonly squash?: boolean;
-	readonly removeSourceBranch?: boolean;
-	/** The ticket to move to Done once merged. */
-	readonly moveTicket?: string;
-}
-
 function isMergeOptions(value: unknown): value is MergeOptions {
 	return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-export function pipelineTone(status: string): Tone {
-	return status === 'success' ? 'ok' : status === 'failed' ? 'error' : status === 'running' || status === 'pending' ? 'info' : 'muted';
 }
 
 

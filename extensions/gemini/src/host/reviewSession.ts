@@ -57,7 +57,7 @@ export function reviewKey(project: string, iid: number): string {
 }
 
 /** The local branch a review of merge request `iid` checks out: GeminiCode's own, so it may be reset to a new head. */
-export function reviewBranch(iid: number, sourceBranch: string): string {
+function reviewBranch(iid: number, sourceBranch: string): string {
 	return `review/${iid}-${sourceBranch.replace(/[^\w.-]+/g, '-')}`.slice(0, 60);
 }
 
@@ -872,6 +872,6 @@ export function newReview(mr: GitLabMr, clone: { readonly folder: string; readon
 }
 
 /** The Jira ticket the merge request names, among the team's Jira projects. */
-export function reviewTicket(mr: GitLabMr, projects?: readonly string[]): string | undefined {
+function reviewTicket(mr: GitLabMr, projects?: readonly string[]): string | undefined {
 	return jiraKeyIn(`${mr.sourceBranch} ${mr.title} ${mr.description}`, projects);
 }

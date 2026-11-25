@@ -140,7 +140,7 @@ export function confluenceErrorText(err: unknown): string {
 	return err instanceof Error ? err.message : String(err);
 }
 
-/** The Review Page's strings, in the user's language. */
+/** The Review Page's strings, in the user's language. @public: the page tests read it by name (`hostExport`). */
 export function reviewStrings(): ReviewStrings {
 	return {
 		newPage: vscode.l10n.t("New page, not published"),

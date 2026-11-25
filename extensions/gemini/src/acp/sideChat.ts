@@ -19,7 +19,7 @@ export interface SideExchange {
 }
 
 /** About four characters to a token: the conversation's share of a side question, about 120,000 tokens. */
-export const sideChatBudget = 480_000;
+const sideChatBudget = 480_000;
 /** A tool's output is cut to this many characters; the newest ones keep it longest. */
 const toolOutputLimit = 2_000;
 /** How many earlier side exchanges a question sees. */

@@ -28,7 +28,7 @@ export type CloneStage = () => readonly string[] | Promise<readonly string[]>;
 const batchSize = 8;
 
 /** How many of VS Code's recent folders are checked. */
-export const recentFoldersLimit = 30;
+const recentFoldersLimit = 30;
 
 /** The state the remembered clones live in (the extension's globalState). */
 export interface CloneMemento {

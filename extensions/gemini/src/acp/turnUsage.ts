@@ -39,7 +39,7 @@ function tokenCount(value: unknown): number {
 }
 
 /** One entry per model, most tokens first. */
-export function sumByModel(entries: Iterable<ModelTokens>): ModelTokens[] {
+function sumByModel(entries: Iterable<ModelTokens>): ModelTokens[] {
 	const byModel = new Map<string, ModelTokens>();
 	for (const { model, input, output } of entries) {
 		const sum = byModel.get(model);

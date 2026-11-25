@@ -13,7 +13,7 @@
 import type { SessionChoice } from './sessionSettings';
 
 /** The Gemma models the terminal lists unless `experimental.gemma` is off. */
-export const gemmaModels: readonly SessionChoice[] = [
+const gemmaModels: readonly SessionChoice[] = [
 	{ id: 'gemma-4-31b-it', name: 'gemma-4-31b-it' },
 	{ id: 'gemma-4-26b-a4b-it', name: 'gemma-4-26b-a4b-it' },
 ];
