@@ -25,7 +25,7 @@ const moved: Readonly<Record<string, readonly string[]>> = {
 	'src/confluence.ts': ['src/host/confluenceFeature.ts', 'src/host/confluenceReviewPage.ts', 'src/acp/confluence.ts', 'src/acp/confluenceDrafts.ts', 'src/acp/blockMerge.ts', 'src/acp/draftReview.ts'],
 	'src/connection.ts': ['src/acp/agentConnection.ts'],
 	'src/debug.ts': ['src/host/debug/debugFeature.ts', 'src/host/debug/debugMode.ts', 'src/host/debug/debugBridge.ts', 'src/host/debug/debugEditor.ts', 'src/host/debug/evidencePage.ts', 'src/host/debug/debugStrings.ts', 'src/acp/debug/debugBridgeLogic.ts', 'src/acp/debug/debugMcp.ts', 'src/acp/debug/debugState.ts', 'src/acp/debug/evidenceStore.ts', 'src/acp/debug/ingest.ts', 'src/acp/debug/logTail.ts', 'src/acp/debug/debugRecord.ts', 'src/acp/debug/templates.ts', 'src/acp/debug/regions.ts'],
-	'src/onDemand.ts': ['src/host/auditPage.ts', 'src/host/benchmarkCommand.ts', 'src/host/designSystemSync.ts', 'src/host/editorToolsHost.ts', 'src/host/traceRecorder.ts', 'src/host/reviewClone.ts', 'src/acp/cloneSearch.ts', 'src/host/agents/agentMerge.ts', 'src/host/agents/agentTries.ts', 'src/acp/worktreeApply.ts', 'src/acp/tryState.ts', 'src/host/chat/projectStrings.ts', 'src/host/assigneePicker.ts', 'src/host/checkAgent.ts', 'src/acp/cli/contract.ts', 'src/acp/sessionReplay.ts'],
+	'src/onDemand.ts': ['src/host/teamFlows.ts', 'src/acp/checksBranch.ts', 'src/host/auditPage.ts', 'src/host/benchmarkCommand.ts', 'src/host/designSystemSync.ts', 'src/host/editorToolsHost.ts', 'src/host/traceRecorder.ts', 'src/host/reviewClone.ts', 'src/acp/cloneSearch.ts', 'src/host/agents/agentMerge.ts', 'src/host/agents/agentTries.ts', 'src/acp/worktreeApply.ts', 'src/acp/tryState.ts', 'src/host/chat/projectStrings.ts', 'src/host/assigneePicker.ts', 'src/host/checkAgent.ts', 'src/acp/cli/contract.ts', 'src/acp/sessionReplay.ts'],
 };
 
 interface Built {
@@ -121,7 +121,7 @@ describe('bundles loaded on first use', () => {
 
 	it('register stand-ins for exactly the commands their features register', () => {
 		const ids = (text: string, pattern: RegExp) => [...text.matchAll(pattern)].map(match => match.groups!.id).sort();
-		const registered = Object.values(moved).flat().flatMap(file => ids(readFileSync(path.join(root, file), 'utf8'), /registerCommand\('(?<id>[\w.]+)'/g));
+		const registered = Object.values(moved).flat().flatMap(file => ids(readFileSync(path.join(root, file), 'utf8'), /(?:registerCommand|\brun)\('(?<id>[\w.]+)'/g));
 		const lists = [...readFileSync(path.join(root, 'src/extension.ts'), 'utf8').matchAll(/new LazyFeature\(\[(?<ids>[^\]]*)\]/g)].map(match => match.groups!.ids).join(',');
 		expect(ids(lists, /'(?<id>[\w.]+)'/g)).toEqual(registered.sort());
 	});
