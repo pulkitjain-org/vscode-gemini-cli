@@ -1,5 +1,5 @@
 diff --git a/AGENTS.md b/AGENTS.md
-index d6abb76ab8384fb7b391b551b159002657c218c1..eebbf65cd1eb4390ba6db93cdb62aaef688beb9d 100644
+index d6abb76ab8384fb7b391b551b159002657c218c1..57ee446bf9104cb420181bf7625ffe1e3daab795 100644
 --- a/AGENTS.md
 +++ b/AGENTS.md
 @@ -1,3 +1,59 @@
@@ -42,7 +42,7 @@ index d6abb76ab8384fb7b391b551b159002657c218c1..eebbf65cd1eb4390ba6db93cdb62aaef
 +
 +## Lessons from past work
 +
-+The design facts learnt the hard way are in [gemini/docs/ARCHITECTURE.md](gemini/docs/ARCHITECTURE.md#lessons-from-past-work), one subsection each: the Gemini CLI in ACP mode (the output cap, a context overflow, one process per window with a folder's own when its settings differ, never asking an agent for a whole diff), where pages open, the agents' browser, the webviews (tooltips, menus, size budgets and bundles), Jira and GitLab from GeminiCode's pages, the workspace index, removing worktrees, packages and lint (pnpm, oxlint), and Verify. Read the subsection before changing any of those areas; add to it, not here, when you learn something new.
++The design facts learnt the hard way are in [gemini/docs/ARCHITECTURE.md](gemini/docs/ARCHITECTURE.md#lessons-from-past-work), one subsection each: the Gemini CLI in ACP mode (the output cap, a context overflow, one process per window with a folder's own when its settings differ, never asking an agent for a whole diff), where pages open, the agents' browser, the webviews (tooltips, menus, size budgets and bundles), Jira and GitLab from GeminiCode's pages, the workspace index, removing worktrees, packages and lint (pnpm, oxlint), Verify, and the prompts and tools the model reads. Read the subsection before changing any of those areas; add to it, not here, when you learn something new.
 +
 +### Validating
 +

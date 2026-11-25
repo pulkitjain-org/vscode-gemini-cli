@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ChatTranscript, TranscriptItem } from '../../src/acp/chatTranscript';
-import { TranscriptStore } from '../../src/acp/transcriptStore';
+import { TranscriptStore, serializeChanges } from '../../src/acp/transcriptStore';
 
 describe('TranscriptStore', () => {
 	const dirs: string[] = [];
@@ -124,6 +124,15 @@ describe('TranscriptStore', () => {
 		expect((await s.load('a1')).changes).toHaveLength(1);
 		await s.delete('a1');
 		expect(await s.load('a1')).toEqual({ items: [], changes: [] });
+	});
+
+	it('writes the changes file a file at a time, as the same JSON', () => {
+		const files = [
+			{ path: '/w/a.ts', created: false, original: 'one\n"two"', agentText: 'three', added: 1, removed: 1, editedAt: 5 },
+			{ path: '/w/b.ts', created: true, added: 2, removed: 0 },
+		];
+		const pieces = [...serializeChanges({ version: 1, files })];
+		expect([pieces.join(''), pieces.length, [...serializeChanges({ version: 1, files: [] })].join('')]).toEqual([JSON.stringify({ version: 1, files }), 4, '{"version":1,"files":[]}']);
 	});
 
 	it('keeps the changed files\' texts in a file of their own, written only when they change, so the chat file stays small', async () => {

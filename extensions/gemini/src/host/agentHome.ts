@@ -3,6 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+import { DailyTokenReader, type DailyTokens } from '../acp/dailyTokens';
 import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -77,6 +78,9 @@ type Mode = 'agents' | 'editor';
 /** Commands the page's own controls run, with no arguments, beside those the host sends in a view: Connect, and the gear menu's Settings. */
 const pageCommands: ReadonlySet<string> = new Set(['gemini.connections', 'gemini.projectSettings']);
 
+/** How old Home's reading of the day's tokens may be before it is taken again. */
+const tokensMaxAgeMs = 60_000;
+
 export class AgentHome implements vscode.Disposable {
 
 	private panel: vscode.WebviewPanel | undefined;
@@ -87,6 +91,11 @@ export class AgentHome implements vscode.Disposable {
 	private readonly disposables: vscode.Disposable[] = [];
 	private readonly teamData: TeamData | undefined;
 	private refreshTimer: ReturnType<typeof setInterval> | undefined;
+	/** The day's tokens from the CLI's chat files, as last read, and when. */
+	private readonly tokenReader = new DailyTokenReader();
+	private tokens: DailyTokens | undefined;
+	private tokensAt = 0;
+	private readingTokens = false;
 	private signIn: { readonly at: number; readonly quiet: Promise<boolean> } | undefined;
 	/** The card whose whole list the page has open in its popup. */
 	private listCard: HomeCardId | undefined;
@@ -310,6 +319,26 @@ export class AgentHome implements vscode.Disposable {
 		return { flows, intents };
 	}
 
+	/**
+	 * The day's tokens as last read. Home never waits for the files: a reading
+	 * older than a minute is taken again in the background, and Home is drawn
+	 * again when it differs.
+	 */
+	private dayTokens(): DailyTokens | undefined {
+		if (!this.readingTokens && Date.now() - this.tokensAt > tokensMaxAgeMs) {
+			this.readingTokens = true;
+			void this.tokenReader.read().then(tokens => {
+				const changed = JSON.stringify(tokens) !== JSON.stringify(this.tokens);
+				this.tokens = tokens;
+				this.tokensAt = Date.now();
+				if (changed) {
+					this.schedule();
+				}
+			}, () => undefined).finally(() => this.readingTokens = false);
+		}
+		return this.tokens;
+	}
+
 	private dashboard(agents: readonly AgentSummary[], unfinished: DashboardInput['unfinished'], signedIn: boolean, commentVisibility: string | undefined): HomeView['dashboard'] {
 		const team = this.agents.teamTools;
 		const firstConnected = this.options?.state.get<number>(firstConnectedKey);
@@ -326,6 +355,7 @@ export class AgentHome implements vscode.Disposable {
 			agents,
 			layout: this.layout(),
 			usage: reading?.kind === 'ok' ? reading.quota : undefined,
+			tokens: this.dayTokens(),
 			versions: { app: this.options?.version ?? '', ...cli ? { cli } : {} },
 			...projectId ? { projectId } : {},
 			signedIn,

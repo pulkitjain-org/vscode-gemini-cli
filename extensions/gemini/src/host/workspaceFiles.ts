@@ -141,7 +141,25 @@ export class WorkspaceFileIndex implements vscode.Disposable {
 	private load(): Promise<IndexedFile[]> {
 		if (this.indexedAt && this.files && Date.now() - this.indexedAt >= indexedListMs) {
 			// The index's list is read again now and then; its watcher, not one of this list's own, saw the changes.
-			this.files = undefined;
+			// The list in hand answers meanwhile: a keystroke never waits for 50,000 paths to come back from the indexer.
+			if (!this.rebuilding) {
+				const generation = this.generation;
+				const held = this.files;
+				this.indexedAt = Date.now();
+				this.rebuilding = this.fromIndex().then(result => {
+					if (generation !== this.generation) {
+						return;
+					}
+					if (result.length) {
+						this.files = Promise.resolve(result);
+					} else {
+						// A read that failed leaves the list as it was, to be tried again after the same wait.
+						this.files = held;
+						this.indexedAt = Date.now();
+					}
+				}, () => undefined).finally(() => this.rebuilding = undefined);
+			}
+			return this.files;
 		}
 		if (!this.files && this.indexed) {
 			const files = this.files = this.fromIndex();

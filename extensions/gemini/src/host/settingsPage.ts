@@ -7,7 +7,7 @@ import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { CliExtension, isExtensionSource, parseExtensionList, parseMemoryList, runCliCommands } from '../acp/cliCommands';
-import { CliPreference, defaultApprovalModes, defaultKeepChats, isKeepChats, keepChatsChoices, keepChatsForever, readCliPreferences, setCliPreference } from '../acp/cliPreferences';
+import { CliPreference, cliTunings, CliTuningKey, defaultApprovalModes, defaultKeepChats, isCliTuning, isCliTuningKey, isKeepChats, keepChatsChoices, keepChatsForever, readCliPreferences, setCliPreference } from '../acp/cliPreferences';
 import { geminiDir } from '../acp/directRequest';
 import { appendMemory } from '../acp/memory';
 import { errorMessage } from '../acp/errors';
@@ -487,6 +487,7 @@ export class SettingsPage implements vscode.Disposable {
 			keepChatsChoices: values.map(value => ({ value, label: value === defaultKeepChats ? vscode.l10n.t("{0} (default)", labels[value]) : labels[value] ?? value })),
 			defaultApprovalModeChoices: defaultApprovalModes.map(value => ({ value, label: value === 'default' ? vscode.l10n.t("{0} (the CLI's default)", modeNames.get(value) ?? value) : modeNames.get(value) ?? value })),
 			...own !== undefined ? { ownDefaultMode: modeNames.get(own) ?? own } : {},
+			tuning: tuningRows(preferences),
 			display: tildify(this.personalSettings()),
 		};
 	}
@@ -804,11 +805,13 @@ export class SettingsPage implements vscode.Disposable {
 			written = await setCliPreference(file, key, value);
 		} else if (key === 'defaultApprovalMode' && typeof value === 'string' && defaultApprovalModes.includes(value)) {
 			written = await setCliPreference(file, key, value);
+		} else if (isCliTuningKey(key) && isCliTuning(key, value)) {
+			written = await setCliPreference(file, key, value);
 		} else {
 			return;
 		}
 		if (!written) {
-			await this.cannotRewrite(file, key === 'keepChats' || key === 'defaultApprovalMode' ? '"general"' : key === 'permanentApproval' ? '"security"' : key === 'planRouting' ? '"general"' : '"privacy"');
+			await this.cannotRewrite(file, isCliTuningKey(key) ? `"${cliTunings()[key].path[0]}"` : key === 'keepChats' || key === 'defaultApprovalMode' ? '"general"' : key === 'permanentApproval' ? '"security"' : key === 'planRouting' ? '"general"' : '"privacy"');
 			return;
 		}
 		this.offerRestart(vscode.l10n.t("Saved to {0}. New agents use it.", tildify(file)));
@@ -1103,4 +1106,39 @@ async function openAt(file: string, needle?: string): Promise<void> {
 /** A rules file name from settings, which may come from the repository: never a path that leaves its folder. */
 function plainFileName(name: string): string {
 	return name && path.basename(name) === name && name !== '..' && name !== '.' ? name : 'GEMINI.md';
+}
+
+/** The CLI's tuning numbers as rows of the page: each with its words, the choices, and the value in the user's settings (shown too when set by hand). */
+function tuningRows(preferences: Record<CliTuningKey, number>): PreferencesView['tuning'] {
+	const words: Record<CliTuningKey, { label: string; hint: string; show: (value: number) => string }> = {
+		requestTimeoutMs: {
+			label: vscode.l10n.t("Wait for the model to start answering"),
+			hint: vscode.l10n.t("How long the Gemini CLI waits before it gives up on a request and tries again. Raise it when long-thinking requests time out."),
+			show: value => vscode.l10n.t("{0} s", Math.round(value / 1000)),
+		},
+		compressionThreshold: {
+			label: vscode.l10n.t("Compress the chat at"),
+			hint: vscode.l10n.t("The share of the model's context window at which the Gemini CLI summarises the chat so far. Lower compresses sooner and sends less with each request."),
+			show: value => vscode.l10n.t("{0}% of the context", Math.round(value * 100)),
+		},
+		maxAttempts: {
+			label: vscode.l10n.t("Tries for each request"),
+			hint: vscode.l10n.t("How many times the Gemini CLI tries a request to the model before the turn fails."),
+			show: value => String(value),
+		},
+		toolOutputChars: {
+			label: vscode.l10n.t("Most of one tool result the model reads"),
+			hint: vscode.l10n.t("A longer result is saved to a file, and the model gets its start and end with the file's path."),
+			show: value => vscode.l10n.t("{0} characters", value.toLocaleString('en-US')),
+		},
+	};
+	return (Object.keys(words) as CliTuningKey[]).map(key => {
+		const tuning = cliTunings()[key];
+		const current = preferences[key];
+		const values = tuning.choices.includes(current) ? tuning.choices : [...tuning.choices, current].sort((a, b) => a - b);
+		return {
+			key, label: words[key].label, hint: words[key].hint, current: String(current),
+			choices: values.map(value => ({ value: String(value), label: value === tuning.fallback ? vscode.l10n.t("{0} (the CLI's default)", words[key].show(value)) : words[key].show(value) })),
+		};
+	});
 }

@@ -45,12 +45,25 @@ interface StoredTranscript extends StoredAgent {
  * file keeps the files' paths and counts, so a chat from before loads, and
  * a changes file that fails to write loses only the diffs, never the list.
  */
-interface StoredChanges {
+export interface StoredChanges {
 	readonly version: number;
 	readonly files: readonly EditedFile[];
 }
 
 const empty: StoredAgent = { items: [], changes: [] };
+
+/**
+ * The changes file's JSON in pieces, a file at a time: the same text as
+ * `JSON.stringify(changes)`, without one string of up to 8 MB built on the
+ * extension host after each burst of edits (as the checkpoints are written).
+ */
+export function* serializeChanges(changes: StoredChanges): Generator<string> {
+	yield `{"version":${changes.version},"files":[`;
+	for (const [i, file] of changes.files.entries()) {
+		yield `${i ? ',' : ''}${JSON.stringify(file)}`;
+	}
+	yield ']}';
+}
 
 export class TranscriptStore {
 
@@ -101,8 +114,7 @@ export class TranscriptStore {
 			await writeFileAtomic(this.file(agentId), JSON.stringify(stored), privateWrite);
 			// Nothing to write for an agent that changed nothing, unless its changes file holds texts from before.
 			if (this.changesWritten.get(agentId) !== signature && (agent.changes.length || this.changesWritten.has(agentId))) {
-				const changes: StoredChanges = { version: formatVersion, files: agent.changes };
-				await writeFileAtomic(this.changesFile(agentId), JSON.stringify(changes), privateWrite);
+				await writeFileAtomic(this.changesFile(agentId), serializeChanges({ version: formatVersion, files: agent.changes }), privateWrite);
 				this.changesWritten.set(agentId, signature);
 			}
 		});

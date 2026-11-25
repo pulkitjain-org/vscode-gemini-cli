@@ -42,7 +42,7 @@ Cards follow the composer:
 - **Pending on you**: GitLab merge requests waiting for your review or assigned to you, and your own with their pipeline, approvals and whether they can merge.
 - **Your tickets**: your open Jira tickets, this sprint's first, with **Start** on each one not yet begun or reopened.
 - **Agents**: the agents at work, each with its state and **Review** on one whose changes are ready, then your projects. **All agents** shows the Agents pane, and **Show all** lists earlier agents too.
-- **Gemini**: how much of today's quota you have used, the GeminiCode and Gemini CLI versions and the project, and a link to the audit log.
+- **Gemini**: how much of today's quota you have used, the requests and tokens the Gemini CLI used today, the GeminiCode and Gemini CLI versions and the project, and a link to the audit log. The token line, such as **Today on this Mac: 1,240 requests, 3.1M tokens in (2.4M from cache), 45.6K out**, adds up what the CLI recorded in its own chat files for every chat on this Mac today, the terminal's too. It is read again about once a minute.
 
 Until you connect GitLab and Jira, their cards offer to connect. See [Team tools](team-tools.md#home). A card's title shows, as its tooltip, the query that fills it, so you can check its numbers against the tool.
 

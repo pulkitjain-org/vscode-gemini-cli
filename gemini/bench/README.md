@@ -79,6 +79,12 @@ base          11/30      37%   1             212       184000            5200   
 verify-2      15/30      50%   2             301       241000            6900               17.8
 ```
 
+`variants.example.json` beside this file holds a baseline and one variant for each number the Settings page lets you tune (the request timeout, the compression threshold, the tries and the tool-output cap), ready to run:
+
+```sh
+node --experimental-transform-types extensions/gemini/scripts/bench-run.mts --cli <gemini.js> --model <id> --variants gemini/bench/variants.example.json
+```
+
 The numbers above only show the table's shape. Run the variants on the sign-in and Google Cloud project your team uses, so they describe the models you have.
 
 For each task, the run:

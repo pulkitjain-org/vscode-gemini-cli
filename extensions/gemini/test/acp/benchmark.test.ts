@@ -116,6 +116,11 @@ describe('benchmark', () => {
 		]);
 	});
 
+	it('ships a variants file that reads, with a baseline and the numbers Settings lets a person tune', async () => {
+		const variants = readBenchVariants(await fs.readFile(path.join(__dirname, '..', '..', '..', '..', 'gemini', 'bench', 'variants.example.json'), 'utf8'));
+		expect([variants[0], variants.map(variant => Object.keys(variant.settings ?? {}).join()).filter(Boolean).sort(), variants.some(variant => variant.checkRounds)]).toEqual([{ name: 'base' }, ['general', 'model', 'model', 'model', 'tools'], true]);
+	});
+
 	it('sets runs of the same tasks side by side', () => {
 		const summary = (change: Partial<BenchSummary>): BenchSummary => ({
 			ranAt: '', model: 'm', tasks: 10, completed: 4, completionRate: 0.4, requestsPerCompletedTask: 12.5, medianTurns: 1, tokensInPerTask: 90000, tokensOutPerTask: 2100,

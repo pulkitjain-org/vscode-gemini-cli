@@ -10,9 +10,9 @@
 
 export const promptVersions = {
 	/** The turn's content around the user's message (turnContent.ts) and the notes it carries. */
-	turn: 2,
+	turn: 3,
 	/** Review Changes and the merge request review (reviewPrompt.ts, teamFlowLogic.ts). */
-	review: 2,
+	review: 3,
 	/** A project's coordinator wake and its threads' briefs (projectHub.ts). */
 	project: 1,
 	/** Research's planner and workers (research.ts). */

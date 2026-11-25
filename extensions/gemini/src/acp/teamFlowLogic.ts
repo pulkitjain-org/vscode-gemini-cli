@@ -157,15 +157,18 @@ export interface MrThreadForFix {
  * for the thread replies (`mrFixRepliesPrompt`).
  */
 export function mrFixPrompt(mr: { readonly iid: number; readonly url: string }, jobs: readonly { readonly name: string; readonly id: number; readonly log: string }[], threads: readonly MrThreadForFix[]): string {
-	const parts: string[] = [];
+	// What there is to read first, the ask after it: the model acts on the last thing it read.
+	const parts: string[] = [`From merge request !${mr.iid} (${mr.url}):`];
 	const asks = [jobs.length ? 'the failing pipeline job' + (jobs.length > 1 ? 's' : '') : '', threads.length ? `${threads.length === 1 ? 'this review comment' : 'these review comments'}` : ''].filter(Boolean).join(' and ');
-	parts.push(`Fix ${asks} on merge request !${mr.iid} (${mr.url}). Commit your changes and run the tests. Don't push: your shell can't sign in to GitLab, so GeminiCode pushes your commits when your turn ends.`);
 	for (const job of jobs) {
 		parts.push('', `Job ${job.name} (job ${job.id}), end of its log:`, external('gitlab', `job ${job.id}`, job.log.trim()));
 	}
 	if (threads.length) {
 		parts.push('', 'Review threads:', external('gitlab', `!${mr.iid} threads`, threads.map(threadLine).join('\n')));
-		parts.push('', 'Once your commits are pushed, I\'ll ask you to reply to each thread.');
+	}
+	parts.push('', `Fix ${asks} on merge request !${mr.iid}. Commit your changes and run the tests. Don't push: your shell can't sign in to GitLab, so GeminiCode pushes your commits when your turn ends.`);
+	if (threads.length) {
+		parts.push('Once your commits are pushed, I\'ll ask you to reply to each thread.');
 	}
 	return parts.join('\n');
 }

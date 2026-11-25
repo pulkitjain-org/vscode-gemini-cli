@@ -1,0 +1,49 @@
+[
+	{
+		"name": "base"
+	},
+	{
+		"name": "timeout-180s",
+		"settings": {
+			"model": {
+				"requestTimeoutMs": 180000
+			}
+		}
+	},
+	{
+		"name": "compress-30",
+		"settings": {
+			"model": {
+				"compressionThreshold": 0.3
+			}
+		}
+	},
+	{
+		"name": "compress-70",
+		"settings": {
+			"model": {
+				"compressionThreshold": 0.7
+			}
+		}
+	},
+	{
+		"name": "tries-5",
+		"settings": {
+			"general": {
+				"maxAttempts": 5
+			}
+		}
+	},
+	{
+		"name": "tool-output-20k",
+		"settings": {
+			"tools": {
+				"truncateToolOutputThreshold": 20000
+			}
+		}
+	},
+	{
+		"name": "verify-2",
+		"checkRounds": 2
+	}
+]

@@ -131,6 +131,20 @@ export class SessionUpdateAdapter {
 		});
 	}
 
+	/**
+	 * The turn is over: a tool call it left unfinished (a cancelled edit, one
+	 * the user stopped) will get no more updates, so it keeps no content
+	 * either. Without this each one held its file's text before and after for
+	 * as long as the session lived.
+	 */
+	turnEnded(): void {
+		for (const [id, call] of this.toolCalls) {
+			if (call.content.length) {
+				this.toolCalls.set(id, { ...call, content: [] });
+			}
+		}
+	}
+
 	private remember(call: ToolCallModel): void {
 		if (isFinished(call.status)) {
 			this.toolCalls.set(call.id, call.content.length ? { ...call, content: [] } : call);
