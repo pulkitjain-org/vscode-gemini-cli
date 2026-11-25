@@ -22,7 +22,7 @@ export function setRepoOrder(keys: readonly string[]): void {
 }
 
 /** The colour (0 to 5) for repository `key`. */
-export function repoTone(key: string): number {
+function repoTone(key: string): number {
 	const index = order.indexOf(key);
 	if (index >= 0) {
 		return index % toneCount;

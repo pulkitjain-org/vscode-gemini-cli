@@ -20,8 +20,8 @@ import { configSection, getCliResolution, getManagedCliDir } from './configurati
 import { showError } from './errorNotice';
 import { background } from './background';
 
-export const installCliCommand = 'gemini.installCli';
-export const installCliVersionCommand = 'gemini.installCliVersion';
+const installCliCommand = 'gemini.installCli';
+const installCliVersionCommand = 'gemini.installCliVersion';
 
 const lastUpdateCheckKey = 'gemini.cli.lastUpdateCheck';
 const skippedVersionKey = 'gemini.cli.skippedVersion';

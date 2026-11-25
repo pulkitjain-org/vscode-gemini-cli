@@ -28,7 +28,7 @@ export interface BlockHost {
 }
 
 /** The class of a slot, for the transcript to tell one from an item's element. */
-export const slotClass = 'turn-slot';
+const slotClass = 'turn-slot';
 
 /** How far beyond the view, in CSS pixels, a slot is drawn, and a drawn block kept. */
 const nearMargin = 1200;

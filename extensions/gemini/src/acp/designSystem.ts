@@ -32,7 +32,7 @@ export interface DesignSystemConfig {
 	readonly codeConnect?: boolean;
 }
 
-export const defaultSkillFolder = path.join('.gemini', 'skills', 'design-system');
+const defaultSkillFolder = path.join('.gemini', 'skills', 'design-system');
 
 function str(value: unknown): string | undefined {
 	return typeof value === 'string' && value.trim() ? value.trim() : undefined;
@@ -81,7 +81,7 @@ export async function designSystemNoteFor(defaults: TeamDefaults): Promise<strin
 }
 
 /** The skill's name as its SKILL.md gives it, when the skill exists in `folder`. */
-export async function designSystemSkill(folder: string, config: DesignSystemConfig): Promise<string | undefined> {
+async function designSystemSkill(folder: string, config: DesignSystemConfig): Promise<string | undefined> {
 	try {
 		const text = await fs.readFile(path.join(folder, config.skill, 'SKILL.md'), 'utf8');
 		// Only the name is needed, so skills.ts, with the settings editor it carries, stays out of the extension bundle.
@@ -92,7 +92,7 @@ export async function designSystemSkill(folder: string, config: DesignSystemConf
 }
 
 /** The note a prompt with a Figma design carries, so the agent builds it with the team's tokens and components. */
-export function designSystemNote(skill: string, name: string | undefined): string {
+function designSystemNote(skill: string, name: string | undefined): string {
 	return `This project has a design-system skill, "${skill}"${name ? ` (${name})` : ''}. Load it before building this design, and build with its tokens and components: never hard-code a colour, size or font the design system defines, and use the team's component before writing new markup.`;
 }
 
@@ -166,7 +166,7 @@ export interface OutlineNode {
 }
 
 /** The nodes of a `get_metadata` outline, in order, each with its depth from its indentation. */
-export function parseOutline(text: string): OutlineNode[] {
+function parseOutline(text: string): OutlineNode[] {
 	const nodes: OutlineNode[] = [];
 	for (const match of text.matchAll(/^(?<indent> *)<(?<type>[\w-]+) id="(?<id>[^"]+)" name="(?<name>[^"]*)"(?<rest>[^>]*)>/gm)) {
 		const { indent, type, id, name, rest } = match.groups!;

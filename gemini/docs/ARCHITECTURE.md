@@ -37,7 +37,7 @@ extensions/gemini/
   scripts/          bundle-cli.mts (fetches the pinned CLI into cli/ for release builds), build-file-icons.py,
                     build-emoji-data.mts (the emoji picker's data), bench-run.mts (the benchmark outside
                     the app), and the measurements FINDINGS.md quotes: perf-real.mts (a real account),
-                    perf-first-reply.mts and perf-threads.mts, probe-enhance.mts and coordinator-spike.mts,
+                    perf-first-reply.mts and perf-threads.mts and probe-enhance.mts,
                     and startup-log.mts, which reads the app's own startup lines across launches.
   test/             Vitest unit tests, a scripted fake ACP agent and MCP server, real-CLI tests,
                     performance budgets, and theme and webview tests.
@@ -1127,8 +1127,7 @@ What upstream's AI needs only to run is left out of the app. Release builds dele
   - `perf-real.mts`: an agent's start, sessions and first reply on a real account;
   - `startup-log.mts`: the app's own "Startup:" and "Turn:" lines across launches, from the installed app's logs;
   - `perf-first-reply.mts`: the same against a stand-in API;
-  - `probe-enhance.mts`: Enhance prompt's routes;
-  - `coordinator-spike.mts`: a project's coordinator.
+  - `probe-enhance.mts`: Enhance prompt's routes.
 - **Time limits in tests** go through `test/timing.ts`: `medianMs` takes the middle of a few runs and `limitMs` widens a limit four times under CI, where a hosted runner is slower and shares its cores. A limit is there to catch work that became many times slower, never to measure a machine. A test that waits for work to finish waits for that work (a promise the test resolves, `waitFor`), never for a fixed time.
 - **Site checks** (`gemini/site/check-a11y.mts`, `check-lighthouse.mts`) run axe-core on every built page and Lighthouse on the landing and docs pages, in Gemini CI on the sample build and in the Pages workflow before a deploy.
 - **Theme tests** (`test/themes`) check that every text colour pair in GeminiCode Dark and Light reads at 4.5:1, and that nothing blurs.

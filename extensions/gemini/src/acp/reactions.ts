@@ -49,13 +49,13 @@ const builtInMeanings: ReadonlyMap<string, string | undefined> = new Map([
 ]);
 
 /** The longest meaning `gemini.chat.reactions.meanings` may give an emoji. */
-export const maxMeaningLength = 500;
+const maxMeaningLength = 500;
 
 /** How much of an older reply the note quotes. */
 const excerptLength = 300;
 
 /** An emoji without its variation selectors, so a heart with or without one is the same heart. */
-export function emojiKey(emoji: string): string {
+function emojiKey(emoji: string): string {
 	return emoji.replace(/\u{FE0F}/gu, '');
 }
 
@@ -203,7 +203,7 @@ export function replyExcerpt(reply: string): string {
 const tagOpen = '<react>';
 const tagClose = '</react>';
 /** Past this many characters a tag is no longer looked for: the reply is plain text. */
-export const reactionHoldLength = 32;
+const reactionHoldLength = 32;
 
 /**
  * Whether the start of a reply carries the agent's reaction: `pending` while
@@ -240,7 +240,7 @@ export function reactionReport(reactions: readonly ReactionRef[]): string | unde
 }
 
 /** How many emoji the picker's Recent row keeps. */
-export const maxRecents = 16;
+const maxRecents = 16;
 
 /** `recents` with `emoji` first, once, at most {@link maxRecents} long. */
 export function withRecent(recents: readonly string[], emoji: string): string[] {

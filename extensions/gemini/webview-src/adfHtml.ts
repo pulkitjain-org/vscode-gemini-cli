@@ -119,7 +119,7 @@ function opaque(document: Document, node: AdfNode, tag: 'div' | 'span', view: Ad
 }
 
 /** What a read-only node shows: its own text where it has one, else what kind of thing it is. */
-export function opaqueText(node: AdfNode, labels?: OpaqueLabels): string {
+function opaqueText(node: AdfNode, labels?: OpaqueLabels): string {
 	const attrs = node.attrs ?? {};
 	const label = (key: keyof OpaqueLabels) => labels?.[key] ?? node.type;
 	switch (node.type) {

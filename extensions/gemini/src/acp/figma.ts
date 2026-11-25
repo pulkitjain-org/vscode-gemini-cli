@@ -20,14 +20,14 @@
 import { parseVariableDefs } from './designSystem';
 import { Fetch } from './teamHttp';
 
-export const figmaDesktopUrl = 'http://127.0.0.1:3845/mcp';
+const figmaDesktopUrl = 'http://127.0.0.1:3845/mcp';
 
 /** How long one design context read may take before GeminiCode stops waiting; Figma takes about 6 s for a phone-sized frame. */
-export const figmaReadTimeoutMs = 120_000;
+const figmaReadTimeoutMs = 120_000;
 /** How long one figma_design call may take in all, its sections included: Figma reads one thing at a time, and screenshots and other reads wait behind it. */
-export const figmaDesignDeadlineMs = 180_000;
+const figmaDesignDeadlineMs = 180_000;
 /** How long any other call may wait for its turn behind other Figma reads, more than its own time. */
-export const figmaQueueWaitMs = 30_000;
+const figmaQueueWaitMs = 30_000;
 /**
  * The most design code one answer carries, about 16,000 tokens; a larger
  * frame is read a section at a time, and the rest named for later calls.
@@ -36,7 +36,7 @@ export const figmaQueueWaitMs = 30_000;
  */
 export const figmaDesignLimit = 64_000;
 /** Each part of an answer stays under the Gemini CLI's cap on one part of a tool's output (40,000 characters), which would cut it. */
-export const figmaPartLimit = 38_000;
+const figmaPartLimit = 38_000;
 /** How long a frame's design is reused. */
 const cacheMs = 10 * 60_000;
 
@@ -95,14 +95,14 @@ export class FigmaTimeoutError extends Error {
 }
 
 /** A read stopped by its caller, such as a cancelled tool call. */
-export class FigmaCancelledError extends Error {
+class FigmaCancelledError extends Error {
 	constructor() {
 		super('The Figma read was cancelled.');
 	}
 }
 
 /** An answer Figma gave as an error: its own words. */
-export class FigmaError extends Error {
+class FigmaError extends Error {
 	constructor(readonly figmaMessage: string, readonly status?: number) {
 		super(`Figma reported: ${figmaMessage}`);
 	}
@@ -427,7 +427,7 @@ function withoutAdvice(content: readonly FigmaContent[]): FigmaContent[] {
 }
 
 /** A text part split at line ends into parts under `figmaPartLimit`, so none is cut on its way to the model. */
-export function splitText(content: FigmaContent): FigmaContent[] {
+function splitText(content: FigmaContent): FigmaContent[] {
 	if (content.type !== 'text' || content.text.length <= figmaPartLimit) {
 		return [content];
 	}

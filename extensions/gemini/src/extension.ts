@@ -234,7 +234,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	}));
 	// Debug mode: its route is in every session while it is turned on, and its code loads with its first command.
 	const debug = chunkLoader<typeof import('./debug')>(__dirname, 'debug');
-	const debugEntry = agentsView.debug = new DebugEntry(String(context.extension.packageJSON.version ?? ''), context.globalStorageUri, entry => new LazyFeature(['gemini.debug.start', 'gemini.debug.askWhy', 'gemini.debug.stop', 'gemini.debug.showEvidence', 'gemini.debug.action'], () => new (debug().DebugFeature)({
+	const debugEntry = agentsView.debug = new DebugEntry(String(context.extension.packageJSON.version ?? ''), context.globalStorageUri, entry => new LazyFeature(['gemini.debug.start', 'gemini.debug.askWhy', 'gemini.debug.stop', 'gemini.debug.showEvidence', '_gemini.debug.action'], () => new (debug().DebugFeature)({
 		context, log, agents: agentsView, entry, service,
 		fileAccess: (folder, file) => checkFileAccess(file, 'write', agentFileAccessPolicy(folder)),
 	})));

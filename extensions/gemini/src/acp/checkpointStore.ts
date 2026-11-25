@@ -17,7 +17,7 @@ import { KeyedQueue, privateWrite, quarantine, writeFileAtomic } from './fsUtil'
 
 const formatVersion = 1;
 /** How long a save waits for the next one, so a burst of turns writes once. */
-export const checkpointSaveDelayMs = 2_000;
+const checkpointSaveDelayMs = 2_000;
 
 export class CheckpointStore {
 

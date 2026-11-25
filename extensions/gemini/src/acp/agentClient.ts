@@ -22,7 +22,6 @@ import type { SlashCommand } from './slashCommands';
 import { ChatEvent, SessionUpdateAdapter } from './sessionUpdates';
 import { ModelTokens, readTurnUsage } from './turnUsage';
 
-export { AUTH_METHOD_ID } from './agentRuntime';
 
 /** JSON-RPC "method not found". */
 const METHOD_NOT_FOUND = -32601;

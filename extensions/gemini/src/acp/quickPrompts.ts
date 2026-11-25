@@ -239,7 +239,7 @@ export function cleanEnhancedPrompt(reply: string, original: string): string {
 
 /** `gemini.inlineEdit.model` values that are not model names. */
 export const latestFlashModel = 'latestFlash';
-export const sameAsChatModel = 'sameAsChat';
+const sameAsChatModel = 'sameAsChat';
 
 /** Used when the installed CLI does not name its Flash models. */
 export const knownFlash = { latest: 'gemini-3.8-flash', base: 'gemini-3.5-flash', codeAssist: 'gemini-3-flash' } as const;

@@ -75,7 +75,7 @@ export class AgentTries implements vscode.Disposable {
 	constructor(private readonly host: TriesHost) {
 		this.status = vscode.window.createStatusBarItem('gemini.tries', vscode.StatusBarAlignment.Left, 50);
 		this.status.name = vscode.l10n.t("Trying an Agent's Changes");
-		this.status.command = 'gemini.tries.menu';
+		this.status.command = '_gemini.tries.menu';
 		this.disposables.push(
 			this.status,
 			this.decorations,

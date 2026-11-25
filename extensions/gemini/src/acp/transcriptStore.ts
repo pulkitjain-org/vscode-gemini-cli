@@ -214,7 +214,7 @@ function settle(item: TranscriptItem): TranscriptItem {
  * reply made only of markers, such as `[Function Response: replace]`, goes,
  * and markers at the start or end of other text are taken off.
  */
-export function withoutLeakedReplay(items: readonly TranscriptItem[]): TranscriptItem[] {
+function withoutLeakedReplay(items: readonly TranscriptItem[]): TranscriptItem[] {
 	return items.flatMap(item => {
 		if ((item.kind !== 'user' && item.kind !== 'agent' && item.kind !== 'thought') || !hasReplayMarkers(item.text)) {
 			return [item];

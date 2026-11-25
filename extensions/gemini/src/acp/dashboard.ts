@@ -13,7 +13,7 @@ import type { JiraIssueSummary, JiraMyTicket, JiraSprint } from './jira';
 export type DashboardCardId = 'unfinished' | 'startup' | 'agents' | 'tickets' | 'mergeRequests' | 'quality' | 'gemini';
 
 /** What needs the user first (Pending on you), then their tickets, then the agents. */
-export const dashboardCards: readonly DashboardCardId[] = ['unfinished', 'startup', 'mergeRequests', 'tickets', 'agents', 'quality', 'gemini'];
+const dashboardCards: readonly DashboardCardId[] = ['unfinished', 'startup', 'mergeRequests', 'tickets', 'agents', 'quality', 'gemini'];
 
 /** Cards off until the user turns them on in the gear menu. */
 const defaultHidden: readonly DashboardCardId[] = ['quality'];
@@ -98,12 +98,12 @@ export function isReadyToMerge(mr: GitLabMr): boolean {
 	return mr.state === 'opened' && !mr.draft && mr.mergeStatus === 'mergeable' && (!mr.approvals || mr.approvals.given >= mr.approvals.required) && mr.pipeline?.status !== 'failed';
 }
 
-export function isReopened(issue: JiraIssueSummary): boolean {
+function isReopened(issue: JiraIssueSummary): boolean {
 	return /reopen/i.test(issue.status);
 }
 
 /** A ticket in a done status named Closed, as against Done or Resolved, which the sprint's list still shows. */
-export function isClosed(issue: JiraIssueSummary): boolean {
+function isClosed(issue: JiraIssueSummary): boolean {
 	return issue.statusCategory === 'done' && /^closed?$/i.test(issue.status.trim());
 }
 

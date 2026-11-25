@@ -26,7 +26,7 @@ export function figmaLinksIn(text: string): string[] {
 }
 
 /** The file a Figma link is in, or undefined when it isn't a Figma link. */
-export function figmaFileOf(url: string): string | undefined {
+function figmaFileOf(url: string): string | undefined {
 	const ref = parseToolLink(url);
 	return ref?.tool === 'figma' ? ref.fileKey : undefined;
 }

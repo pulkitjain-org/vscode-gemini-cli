@@ -73,7 +73,7 @@ const menus: Menu[] = [];
 let unnamed = 0;
 
 /** Closes every open menu, as another pop-up opens. */
-export function closeMenus(): void {
+function closeMenus(): void {
 	menus.forEach(menu => menu.close(false));
 }
 

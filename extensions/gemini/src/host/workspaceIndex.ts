@@ -448,13 +448,13 @@ function languageServersOn(): boolean {
 	return true;
 }
 
-export function indexEnabled(): boolean {
+function indexEnabled(): boolean {
 	return vscode.workspace.getConfiguration(configSection).get<boolean>('index.enabled', true);
 }
 
 
 /** The index settings for `folder`: `exclude` and `include` can differ per workspace folder. */
-export function indexSettings(folder: string): IndexSettings {
+function indexSettings(folder: string): IndexSettings {
 	const config = vscode.workspace.getConfiguration(configSection, vscode.Uri.file(folder));
 	const patterns = (key: string) => {
 		const value = config.get<unknown>(key, []);

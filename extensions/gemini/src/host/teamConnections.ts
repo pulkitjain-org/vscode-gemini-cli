@@ -842,7 +842,7 @@ export interface StoredJiraSite {
 
 export const jiraSitesKey = 'gemini.teamTools.jira.sites';
 
-export function isStoredSite(value: unknown): value is StoredJiraSite {
+function isStoredSite(value: unknown): value is StoredJiraSite {
 	const site = value as Partial<StoredJiraSite> | null;
 	return !!site && typeof site.id === 'string' && typeof site.name === 'string' && typeof site.url === 'string' && typeof site.email === 'string';
 }
@@ -873,12 +873,12 @@ export interface ConnectionState {
 	readonly stale?: boolean;
 }
 
-export const secretPrefix = 'geminicode-tools.';
+const secretPrefix = 'geminicode-tools.';
 
 /** The longest a Connect check may take: the Snyk CLI can be slow to start. */
-export const connectTimeoutMs = 45_000;
+const connectTimeoutMs = 45_000;
 
-export function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	return Promise.race([promise, new Promise<T>(resolve => timer = setTimeout(() => resolve(fallback), ms))]).finally(() => clearTimeout(timer));
 }
@@ -899,7 +899,7 @@ export function accountKey(tool: TeamToolId): string {
 	return `gemini.teamTools.${tool}.account`;
 }
 
-export function stateKey(tool: TeamToolId): string {
+function stateKey(tool: TeamToolId): string {
 	return `gemini.teamTools.${tool}.state`;
 }
 
@@ -907,7 +907,7 @@ export function siteSecretKey(id: string): string {
 	return `${secretPrefix}jira.${id}`;
 }
 
-export function siteStateKey(id: string): string {
+function siteStateKey(id: string): string {
 	return `gemini.teamTools.jira.sites.${id}.state`;
 }
 
@@ -961,7 +961,7 @@ function aggregate(states: readonly ConnectionState[]): ConnectionState {
 }
 
 /** Checks Confluence on one site with its Jira site's account, never throwing; through the main bundle's request, so its reachability is shared. */
-export async function probeConfluence(account: ConfluenceAccount): Promise<ConnectionState> {
+async function probeConfluence(account: ConfluenceAccount): Promise<ConnectionState> {
 	try {
 		const basic = Buffer.from(`${account.email}:${account.token}`).toString('base64');
 		const me = await teamRequest<{ displayName?: string; publicName?: string }>('confluence', `${account.site.replace(/\/+$/, '')}/wiki/rest/api/user/current`, { headers: { Authorization: `Basic ${basic}`, Accept: 'application/json' } });
@@ -972,7 +972,7 @@ export async function probeConfluence(account: ConfluenceAccount): Promise<Conne
 }
 
 /** A failed check as a connection state. */
-export function stateOfError(err: unknown): ConnectionState {
+function stateOfError(err: unknown): ConnectionState {
 	if (err instanceof TeamToolError) {
 		return { kind: err.kind === 'unreachable' ? 'unreachable' : err.kind === 'auth' ? 'auth' : 'failed', detail: err.message };
 	}
@@ -980,7 +980,7 @@ export function stateOfError(err: unknown): ConnectionState {
 }
 
 /** Checks one tool, never throwing. */
-export async function probe(tool: TeamToolId, clients: TeamConnectors): Promise<ConnectionState> {
+async function probe(tool: TeamToolId, clients: TeamConnectors): Promise<ConnectionState> {
 	try {
 		switch (tool) {
 			case 'jira':
@@ -1026,7 +1026,7 @@ export async function probe(tool: TeamToolId, clients: TeamConnectors): Promise<
 }
 
 /** Checks one Jira site, never throwing. */
-export async function probeSite(jira: JiraClient): Promise<ConnectionState> {
+async function probeSite(jira: JiraClient): Promise<ConnectionState> {
 	try {
 		const me = await jira.myself();
 		return { kind: 'connected', account: me.displayName, server: hostOf(jira.site) };

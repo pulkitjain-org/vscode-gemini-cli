@@ -94,7 +94,7 @@ export interface BrowserGate {
  * image is gone: only the text arrives. Other models get the image next to
  * the response and see it.
  */
-export function losesToolImages(model: string): boolean {
+function losesToolImages(model: string): boolean {
 	return /^gemini-3-/.test(model);
 }
 
@@ -339,7 +339,7 @@ function where(url: URL): string {
 }
 
 /** Whether a full snapshot still has an element with this ref. */
-export function hasRef(summary: string, ref: string): boolean {
+function hasRef(summary: string, ref: string): boolean {
 	return summary.includes(`[ref=${ref}]`);
 }
 
@@ -348,7 +348,7 @@ export function hasRef(summary: string, ref: string): boolean {
  * Playwright's call log, with what to try instead, so the agent doesn't repeat
  * the same call (a hover on a hidden element times out every time).
  */
-export function refActionFailure(ref: string, action: BrowserAction, error: string): string {
+function refActionFailure(ref: string, action: BrowserAction, error: string): string {
 	const covered = /(<[^\n]{1,160}?>)(?: from <[^\n]*?> subtree)? intercepts pointer events/.exec(error)?.[1];
 	const [reason, hint] = covered
 		? [`another element covers it: ${covered}`, 'Close what covers it (a cookie banner, dialog or open menu: try browser_press_key Escape, or click its close button), then try again.']

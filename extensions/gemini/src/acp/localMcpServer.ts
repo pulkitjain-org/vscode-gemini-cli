@@ -49,7 +49,7 @@ const maxBodyBytes = 1024 * 1024;
  * ("fetch failed", a tool call answered only when done) or within its body ("SSE stream
  * disconnected: TypeError: terminated"). So a stream gets a comment well before.
  */
-export const streamKeepAliveMs = 60_000;
+const streamKeepAliveMs = 60_000;
 /** A route: one to three parts of letters, digits, `-` and `_`, such as `agent-1` or `project/thread/t1`. */
 const routePattern = /^[\w-]{1,80}(?:\/[\w-]{1,80}){0,2}$/;
 

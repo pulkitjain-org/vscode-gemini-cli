@@ -25,14 +25,14 @@ export const partialNote = 'The index covers only part of this folder (it has mo
 export const cappedNote = 'Only the best-ranked matches in the whole folder were checked against path, so matches under it that rank lower may be missing: use more specific words, or a folder rather than a glob.';
 
 /** The most a tool result says, in characters. */
-export const maxResultChars = 8_000;
+const maxResultChars = 8_000;
 /**
  * Lines a search hit shows at most: the chunk's whole text when it is
  * shorter, so the model reads what it found instead of opening the file
  * again (FINDINGS.md: it re-read what the index had shown it). A full
  * result shares its characters among the hits, down to `minSnippetLines`.
  */
-export const snippetLines = 30;
+const snippetLines = 30;
 const minSnippetLines = 6;
 /** Lines find_symbol shows under its first definition. */
 export const bodyLines = 25;
@@ -44,7 +44,7 @@ export interface Progress {
 }
 
 /** The note on a result from plain text search, while the folder's index is built. */
-export function fallbackNote(progress: Progress | undefined): string {
+function fallbackNote(progress: Progress | undefined): string {
 	if (!progress) {
 		return '';
 	}

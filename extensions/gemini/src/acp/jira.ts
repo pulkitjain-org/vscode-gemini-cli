@@ -402,7 +402,7 @@ function categoryOf(key: string | undefined): JiraStatusCategory {
 }
 
 /** A Jira key such as ACME-412. */
-export const jiraKeyPattern = /\b([A-Z][A-Z0-9_]{1,15}-\d{1,7})\b/;
+const jiraKeyPattern = /\b([A-Z][A-Z0-9_]{1,15}-\d{1,7})\b/;
 
 /**
  * The Jira key in a branch name, title or link, such as `ACME-412-gift-message`.
@@ -484,7 +484,7 @@ export function textToAdf(text: string): unknown {
 }
 
 /** The http(s) links in `text`, once each. */
-export function linksIn(text: string): string[] {
+function linksIn(text: string): string[] {
 	return [...new Set(text.match(/https?:\/\/[^\s)<>"'\]]+/g) ?? [])];
 }
 

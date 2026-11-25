@@ -239,7 +239,7 @@ export function queueReason(running: number, maxRunning: number | undefined, quo
 }
 
 /** Above this share of today's quota, new threads wait for the reset or Start Anyway. */
-export const quotaHoldShare = 0.9;
+const quotaHoldShare = 0.9;
 
 /**
  * What holds new threads: the most used model's quota, as the status bar

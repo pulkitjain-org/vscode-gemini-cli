@@ -140,7 +140,7 @@ export const isIgnoredByGitCached = (filePath: string): Promise<boolean> => igno
 let ignoreCache = memoizeAsync(isIgnoredByGit, { ttlMs: 30_000, maxEntries: 2_000 });
 
 /** Forgets every cached ignore answer and the git processes that gave them. */
-export function resetIgnoreCache(): void {
+function resetIgnoreCache(): void {
 	ignoreCache = memoizeAsync(isIgnoredByGit, { ttlMs: 30_000, maxEntries: 2_000 });
 	gitIgnore.reset();
 }

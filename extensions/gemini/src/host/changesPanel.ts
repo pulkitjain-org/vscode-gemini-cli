@@ -20,7 +20,7 @@ import type { MrPanel } from './mrPanel';
 import type { FromChangesTeam } from './teamFlowProtocol';
 import { showError } from './errorNotice';
 
-export const changesPanelId = 'gemini.changesPanel';
+const changesPanelId = 'gemini.changesPanel';
 
 /** How long after an edit the diffs are worked out again. */
 const refreshDelayMs = 150;

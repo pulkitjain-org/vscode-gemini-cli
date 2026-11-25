@@ -121,7 +121,7 @@ export function updateOutline(): void {
 }
 
 /** ⌥⌘↑ / ⌥⌘↓ (Ctrl+Alt elsewhere): the previous or next prompt. True if handled. */
-export function onPromptNavKey(event: KeyboardEvent): boolean {
+function onPromptNavKey(event: KeyboardEvent): boolean {
 	if ((event.key !== 'ArrowUp' && event.key !== 'ArrowDown') || !event.altKey || event.shiftKey || (mac ? !event.metaKey || event.ctrlKey : !event.ctrlKey || event.metaKey)) {
 		return false;
 	}

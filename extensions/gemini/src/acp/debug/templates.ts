@@ -18,7 +18,7 @@ export const markerStart = 'GEMINI-DEBUG-START';
 export const markerEnd = 'GEMINI-DEBUG-END';
 
 /** Values are cut in the program, so a huge string never fills a line or a request. */
-export const maxValueCharsInProgram = 4000;
+const maxValueCharsInProgram = 4000;
 
 /** The template language of a file; `scriptLang` is the `lang` of a Vue or Svelte file's script block. */
 export function templateLanguageOf(file: string, scriptLang?: string): TemplateLanguage | undefined {

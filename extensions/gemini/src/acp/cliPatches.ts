@@ -131,7 +131,7 @@ export function patchAcpToolOutput(source: string): string | undefined {
 }
 
 /** Whether `file`, a path inside a CLI package such as `bundle/gemini-Q2GRYIAK.js`, is one the patch may change. */
-export function isPatchedCliFile(file: string): boolean {
+function isPatchedCliFile(file: string): boolean {
 	return path.basename(path.dirname(file)) === 'bundle' && patchedFile.test(path.basename(file));
 }
 

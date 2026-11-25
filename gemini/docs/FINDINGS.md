@@ -119,7 +119,7 @@ So Enhance prompt is a direct request on the inline-edit model. It goes through 
 
 ## A project's coordinator and threads
 
-All of a project's sessions share one `gemini --acp` process, which runs on one thread. The question is whether a busy thread's stream holds up the others. `npm run spike-coordinator` (in `extensions/gemini`), stand-in, with each chunk carrying the time it was sent:
+All of a project's sessions share one `gemini --acp` process, which runs on one thread. The question is whether a busy thread's stream holds up the others. A spike script measured it before Projects was built (`scripts/coordinator-spike.mts`, removed after 1.8 and in the repository's history), against a stand-in, with each chunk carrying the time it was sent:
 
 | Load, 40 chunks 25 ms apart, three rounds | Delay from send to arrival, median | p95 |
 | --- | --- | --- |
@@ -128,7 +128,7 @@ All of a project's sessions share one `gemini --acp` process, which runs on one 
 
 That is 5 ms extra per chunk at p95, against a budget of 50 ms, so one CLI process holds a project.
 
-How well a Flash model keeps to the coordinator's role needs a real account. `npm run spike-coordinator -- --real --model gemini-3.8-flash` sends a coordinator five scripted asks in a small git repository in a temporary folder, lets the threads it starts work in their own worktrees, and prints a go or no-go. On the real account:
+How well a Flash model keeps to the coordinator's role needs a real account. The same script, with `--real --model gemini-3.8-flash`, sent a coordinator five scripted asks in a small git repository in a temporary folder, let the threads it started work in their own worktrees, and printed a go or no-go. On the real account:
 
 | Measure | Result |
 | --- | --- |

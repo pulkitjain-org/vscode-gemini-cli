@@ -2035,7 +2035,6 @@
     "check": "node esbuild.mts && node esbuild.webview.mts && vitest run && tsc -p tsconfig.json --noEmit && tsc -p webview-src/tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit",
     "bundle-cli": "node scripts/bundle-cli.mts",
     "emoji-data": "node scripts/build-emoji-data.mts",
-    "spike-coordinator": "node --experimental-transform-types --no-warnings scripts/coordinator-spike.mts",
     "test": "vitest run"
   },
   "bundledCli": {

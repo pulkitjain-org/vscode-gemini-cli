@@ -749,7 +749,7 @@ function pipelineState(status: string): PipelineState {
  * diff (a 400 about the note's position or line code), the one failure a
  * general comment may stand in for.
  */
-export function isLineNotInDiff(err: unknown): boolean {
+function isLineNotInDiff(err: unknown): boolean {
 	return err instanceof TeamToolError && err.status === 400 && /line[ _]?code|position/i.test(err.message);
 }
 

@@ -49,7 +49,7 @@ interface ErrorPattern {
 	readonly since: string;
 }
 
-export const AGENT_ERROR_PATTERNS: readonly ErrorPattern[] = [
+const AGENT_ERROR_PATTERNS: readonly ErrorPattern[] = [
 	{ kind: 'auth-required', pattern: /^Authentication required\.?$/i, since: '0.61.0' },
 	{ kind: 'auth-required', pattern: /^Gemini API key is missing or not configured\.?$/i, since: '0.61.0' },
 	{ kind: 'project-id-required', pattern: /requires setting the GOOGLE_CLOUD_PROJECT or GOOGLE_CLOUD_PROJECT_ID env var/i, since: '0.61.0' },
@@ -109,7 +109,7 @@ export function classifyAgentError(error: unknown): AgentErrorInfo {
 const networkError = /\b(ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENETUNREACH|EHOSTUNREACH|UND_ERR_CONNECT_TIMEOUT|UND_ERR_SOCKET)\b|fetch failed|socket hang up|network is unreachable|getaddrinfo|tunneling socket|proxy (authentication|error|connection|connect)|\b407 Proxy|self[- ]signed certificate|unable to (get|verify) (local issuer|the first) certificate|UNABLE_TO_VERIFY_LEAF_SIGNATURE|CERT_HAS_EXPIRED|DEPTH_ZERO_SELF_SIGNED_CERT|SELF_SIGNED_CERT_IN_CHAIN|ERR_TLS_CERT/i;
 
 /** Whether `message` says the CLI could not reach Google (see `networkError`). */
-export function isNetworkError(message: string): boolean {
+function isNetworkError(message: string): boolean {
 	return networkError.test(message);
 }
 

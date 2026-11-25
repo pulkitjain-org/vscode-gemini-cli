@@ -59,7 +59,7 @@ export function openPlusMenu(): void {
 	menu.open();
 }
 
-export function closePlusMenu(focusInput = true): void {
+function closePlusMenu(focusInput = true): void {
 	menu.close(focusInput);
 }
 

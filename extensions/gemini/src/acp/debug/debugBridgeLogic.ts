@@ -19,7 +19,7 @@ import { logpointMessage, markerPrefix, type Point } from './points';
 /** One request to a debug session (`DebugSession.customRequest`). */
 export type DapRequest = (command: string, args?: Record<string, unknown>) => PromiseLike<unknown>;
 
-export const bridgeLimits = {
+const bridgeLimits = {
 	/** Plain output kept per debug session, for exceptions and context. */
 	tailBytes: 256 * 1024,
 	/** A line still arriving in pieces is cut here. */
@@ -30,7 +30,7 @@ export const bridgeLimits = {
 	snapshotsPerRun: 50,
 } as const;
 
-export const snapshotLimits = {
+const snapshotLimits = {
 	frames: 3,
 	entries: 30,
 	depth: 2,
@@ -44,7 +44,7 @@ export const snapshotLimits = {
 export const sessionMarker = '__geminiDebug';
 
 /** The environment variable a launched program gets, so the agent's points act only there. */
-export const guardVariable = 'GEMINI_DEBUG';
+const guardVariable = 'GEMINI_DEBUG';
 
 /** Plain output of one debug session, capped by size; the oldest goes first. */
 export class OutputTail {
@@ -231,7 +231,7 @@ export class SessionTracker {
 }
 
 /** `promise`, or `undefined` once `ms` pass; a slow or missing answer never holds the program. */
-export function withTimeout<T>(promise: PromiseLike<T>, ms: number, timers: Timers = defaultTimers): Promise<T | undefined> {
+function withTimeout<T>(promise: PromiseLike<T>, ms: number, timers: Timers = defaultTimers): Promise<T | undefined> {
 	return new Promise<T | undefined>(resolve => {
 		const timer = timers.set(() => resolve(undefined), ms);
 		Promise.resolve(promise).then(value => {

@@ -89,11 +89,6 @@ export function writeJsonAtomic(file: string, value: unknown, options: AtomicWri
 	return writeFileAtomic(file, `${JSON.stringify(value, undefined, options.indent)}${options.newline === false ? '' : '\n'}`, options);
 }
 
-/** Whether a temporary file is one `writeFileAtomic` left behind for `file`. */
-export function isTempFileOf(name: string, file: string): boolean {
-	return name.startsWith(`${path.basename(file)}.`) && name.endsWith('.tmp');
-}
-
 /** A temporary file as `writeFileAtomic` names it: `<file>.<pid>.<8 hex>.tmp`. */
 const tempFile = /\.\d+\.[0-9a-f]{8}\.tmp$/;
 
@@ -156,7 +151,7 @@ export function isQuarantined(name: string): boolean {
 	return /\.broken(-\d+)?$/.test(name);
 }
 
-export async function exists(file: string): Promise<boolean> {
+async function exists(file: string): Promise<boolean> {
 	return fs.access(file).then(() => true, () => false);
 }
 

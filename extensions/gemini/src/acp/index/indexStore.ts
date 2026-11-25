@@ -100,7 +100,7 @@ function loadSqlite(): Sqlite {
 }
 
 /** The index was written with another schema, so it is rebuilt. */
-export class SchemaMismatch extends Error {
+class SchemaMismatch extends Error {
 	constructor() {
 		super('The index is from another version.');
 	}

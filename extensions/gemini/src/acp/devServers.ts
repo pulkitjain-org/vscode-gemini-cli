@@ -11,7 +11,7 @@
 import * as http from 'node:http';
 
 /** The ports dev servers usually take: Next, CRA and Express, Angular, Astro, Flask, Vite, Live Server, Storybook, Django, the generic ones. */
-export const devServerPorts: readonly number[] = [3000, 3001, 3002, 4000, 4200, 4321, 5000, 5173, 5174, 5175, 5500, 6006, 8000, 8001, 8080, 8081, 8888, 9000];
+const devServerPorts: readonly number[] = [3000, 3001, 3002, 4000, 4200, 4321, 5000, 5173, 5174, 5175, 5500, 6006, 8000, 8001, 8080, 8081, 8888, 9000];
 
 /** How long one port gets to answer. */
 const timeoutMs = 600;

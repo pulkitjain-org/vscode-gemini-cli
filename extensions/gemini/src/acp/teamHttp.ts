@@ -49,9 +49,9 @@ export class TeamToolError extends Error {
 }
 
 /** The default time a read may take; VPN-only hosts that don't answer fail after this. */
-export const defaultTimeoutMs = 8000;
+const defaultTimeoutMs = 8000;
 /** The default time a write may take: long enough that a slow server's answer isn't lost, after which the write's outcome is unknown. */
-export const writeTimeoutMs = 20_000;
+const writeTimeoutMs = 20_000;
 /** The longest a read waits for a busy server before its one retry; a server that asks for longer is reported. */
 const maxRetryWaitMs = 5000;
 /** The wait before a read's retry when the server doesn't say. */
@@ -272,11 +272,11 @@ function authMessage(name: string, host: string): string {
 }
 
 /** What a write that got no answer in time says: it may have gone through. */
-export function writeTimeoutMessage(name: string, timeoutMs: number): string {
+function writeTimeoutMessage(name: string, timeoutMs: number): string {
 	return `${name} didn't answer within ${Math.max(1, Math.round(timeoutMs / 1000))} s. It may have gone through; check before trying again.`;
 }
 
-export function rateLimitMessage(name: string, seconds: number): string {
+function rateLimitMessage(name: string, seconds: number): string {
 	return `${name} is rate-limiting requests; try again in ${seconds} s.`;
 }
 
@@ -302,7 +302,7 @@ export interface ServerHealthChange {
 }
 
 /** How long calls to an unreachable server fail at once, after its first, second, third... failure in a row. */
-export const unreachableBackoffMs: readonly number[] = [30_000, 60_000, 120_000, 240_000, 300_000];
+const unreachableBackoffMs: readonly number[] = [30_000, 60_000, 120_000, 240_000, 300_000];
 
 interface ServerEntry {
 	readonly tool: TeamToolId;

@@ -896,7 +896,7 @@ export class SettingsPage implements vscode.Disposable {
 	}
 }
 
-/** The page's words, which the page reads from its script tag; exported so the page's tests run with the strings the app ships. */
+/** The page's words, which the page reads from its script tag; exported so the page's tests run with the strings the app ships. @public: the page tests read it by name (`hostExport`). */
 export function settingsPageStrings(): SettingsPageStrings {
 	const tabs = agentSetupTabs('loads');
 	return {

@@ -155,7 +155,7 @@ export function toggleEnhance(): void {
 }
 
 /** Stops the rewrite; the draft stays as it was. */
-export function cancelEnhance(): void {
+function cancelEnhance(): void {
 	if (phase.kind !== 'working') {
 		return;
 	}

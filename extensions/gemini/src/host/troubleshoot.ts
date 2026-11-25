@@ -11,7 +11,7 @@
 import * as vscode from 'vscode';
 import { reportProblemCommand } from './reportProblem';
 
-export const troubleshootCommand = 'gemini.troubleshoot';
+const troubleshootCommand = 'gemini.troubleshoot';
 
 export interface TroubleshootContext {
 	/** The agent's phase word, for the pick's title. */

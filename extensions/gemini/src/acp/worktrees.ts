@@ -39,9 +39,9 @@ export class GitError extends Error {
 /** The git commands that talk to a server, which get a time limit and an ssh that never prompts. */
 const networkCommands: readonly string[] = ['fetch', 'push', 'pull', 'ls-remote', 'clone'];
 /** How long a git command that talks to a server may take. */
-export const networkGitTimeoutMs = 60_000;
+const networkGitTimeoutMs = 60_000;
 /** The ssh git uses for those, unless the user set their own: no prompt to hang on, and a quick give-up on a host that doesn't answer. */
-export const batchSsh = 'ssh -o BatchMode=yes -o ConnectTimeout=10';
+const batchSsh = 'ssh -o BatchMode=yes -o ConnectTimeout=10';
 
 /** What a network git command's stderr means, when it is a usual failure: no route (the VPN), or no sign-in. */
 export function gitNetworkProblem(stderr: string): GitNetworkProblem | undefined {
@@ -55,7 +55,7 @@ export function gitNetworkProblem(stderr: string): GitNetworkProblem | undefined
 }
 
 /** The plain words for a network problem. */
-export function gitNetworkMessage(problem: GitNetworkProblem): string {
+function gitNetworkMessage(problem: GitNetworkProblem): string {
 	switch (problem) {
 		case 'vpn': return 'Git couldn\'t reach the server. Check your VPN.';
 		case 'signIn': return 'Git couldn\'t sign in to the server. Sign in with git once in a terminal (run git fetch there), then try again.';
@@ -635,7 +635,7 @@ export class TurnQueue {
  * The key a repository's git writes queue under: its main checkout's real
  * path, so a worktree of it, a symlink to it and the folder itself share one.
  */
-export async function repositoryKey(folder: string): Promise<string> {
+async function repositoryKey(folder: string): Promise<string> {
 	const main = await mainRepository(folder).catch(() => folder);
 	return fs.realpath(main).catch(() => main);
 }

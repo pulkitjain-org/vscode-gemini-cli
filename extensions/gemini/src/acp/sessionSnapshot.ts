@@ -26,10 +26,10 @@ import { isPrompt, MessageRecord, projectHash, registeredChatsFolder, squashSpac
 export const compactMinPrompts = 1;
 
 /** How many of the latest prompts a compacted session keeps as they were, at most. */
-export const compactKeepPrompts = 4;
+const compactKeepPrompts = 4;
 
 /** The share of a session's size the kept prompts may take, as the CLI's own compression keeps its newest 30%. */
-export const compactKeepShare = 0.3;
+const compactKeepShare = 0.3;
 
 /** The first line of the prompt that asks for the summary, which also finds that prompt again to rewind it. */
 export const summaryMarker = 'GeminiCode is compacting this session.';
@@ -121,7 +121,7 @@ export function compactSplit(messages: readonly MessageRecord[], keepPrompts = c
 }
 
 /** The note a compacted session starts with, which holds the summary. */
-export function compactedNote(summary: string): string {
+function compactedNote(summary: string): string {
 	return `This session was compacted to save context. The earlier work is summarized below; the messages after this one are the latest ones, as they were. Carry on from both.\n\n<summary_of_earlier_work>\n${summary.trim()}\n</summary_of_earlier_work>`;
 }
 

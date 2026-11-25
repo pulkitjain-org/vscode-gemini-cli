@@ -511,7 +511,7 @@ function partsText(response: unknown): string {
 }
 
 /** The text of a generateContent response's first candidate. */
-export function textOf(response: unknown): string {
+function textOf(response: unknown): string {
 	const candidate = (response as { candidates?: { finishReason?: string }[] })?.candidates?.[0];
 	const text = partsText(response);
 	if (!text && candidate?.finishReason && candidate.finishReason !== 'STOP') {

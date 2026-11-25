@@ -23,9 +23,6 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { GitError } from './worktrees';
 
-/** Git's empty tree, the base when nothing was applied yet. */
-export const emptyTree = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
-
 const linkMode = '120000';
 
 /** What applying a difference did. */

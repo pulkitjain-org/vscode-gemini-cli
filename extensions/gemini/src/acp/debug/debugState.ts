@@ -27,7 +27,7 @@ export const debugToolNames: readonly DebugTool[] = [
 ];
 
 /** Rounds of Instrument, Reproduce and Analyse with nothing confirmed before the user is asked whether to go on. */
-export const maxRounds = 4;
+const maxRounds = 4;
 
 export interface DebugState {
 	readonly phase: DebugPhase;

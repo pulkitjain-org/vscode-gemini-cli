@@ -85,7 +85,7 @@ interface Found {
 	exported: boolean;
 }
 
-export function findSymbols(lines: readonly string[], language: Language): ParsedSymbol[] {
+function findSymbols(lines: readonly string[], language: Language): ParsedSymbol[] {
 	const found: Found[] = [];
 	const open: Open[] = [];
 	let fence = false;
@@ -175,11 +175,11 @@ function withEnds(found: readonly Found[], lines: readonly string[], language: L
 }
 
 /** The symbol's name as search and results show it. */
-export function qualifiedName(symbol: Pick<ParsedSymbol, 'name' | 'container'>): string {
+function qualifiedName(symbol: Pick<ParsedSymbol, 'name' | 'container'>): string {
 	return symbol.container ? `${symbol.container}.${symbol.name}` : symbol.name;
 }
 
-export function makeChunks(lines: readonly string[], symbols: readonly ParsedSymbol[], language: Language | undefined): Chunk[] {
+function makeChunks(lines: readonly string[], symbols: readonly ParsedSymbol[], language: Language | undefined): Chunk[] {
 	// Each top-level definition starts a chunk; so does each member of a container too long for one.
 	const big = new Set(symbols.filter(s => s.endLine - s.line + 1 > maxChunkLines).map(s => s.name));
 	const starts = new Set<number>();

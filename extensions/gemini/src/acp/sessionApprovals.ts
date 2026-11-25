@@ -327,7 +327,7 @@ function runsCode(program: string, args: readonly string[]): boolean {
  * an agent runs over and over. Each still asks again once the agent writes a
  * file that changes what it runs.
  */
-export const builtinPrefixes: readonly (readonly string[])[] = [
+const builtinPrefixes: readonly (readonly string[])[] = [
 	['git', 'status'], ['git', 'diff'], ['git', 'log'], ['git', 'show'],
 	['ls'], ['cat'],
 	['npm', 'test'], ['npx', 'vitest'], ['npx', 'tsc', '--noEmit'], ['npx', 'eslint'],
@@ -443,7 +443,7 @@ export type ParsedCommand =
 export type AskReason = 'unreadable' | 'network' | 'dynamic';
 
 /** A prefix as one string: its words, a word with spaces in quotes. */
-export function formatPrefix(words: readonly string[]): string {
+function formatPrefix(words: readonly string[]): string {
 	return words.map(word => /[\s"']/.test(word) || !word ? JSON.stringify(word) : word).join(' ');
 }
 

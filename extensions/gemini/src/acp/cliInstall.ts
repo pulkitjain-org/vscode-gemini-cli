@@ -21,8 +21,8 @@ import { createGunzip } from 'node:zlib';
 import { patchCliFile } from './cliPatches';
 import { compareVersions, isVersion, listManagedVersions } from './cliResolution';
 
-export const cliPackageName = '@google/gemini-cli';
-export const defaultRegistry = 'https://registry.npmjs.org';
+const cliPackageName = '@google/gemini-cli';
+const defaultRegistry = 'https://registry.npmjs.org';
 
 /**
  * The registry to install from: `configured` (`gemini.cli.registry`, an

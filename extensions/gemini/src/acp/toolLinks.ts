@@ -219,7 +219,7 @@ export interface IndexToolVerbs {
 	readonly callsIn: string;
 }
 
-export const englishIndexToolVerbs: IndexToolVerbs = {
+const englishIndexToolVerbs: IndexToolVerbs = {
 	searchCode: 'Search code for {0}',
 	findSymbol: 'Look up {0}',
 	related: 'Find files related to {0}',
@@ -296,7 +296,7 @@ export interface TeamToolVerbs {
 	readonly effectProjectDefault: string;
 }
 
-export const englishTeamToolVerbs: TeamToolVerbs = {
+const englishTeamToolVerbs: TeamToolVerbs = {
 	read: 'Read {0}',
 	search: 'Search Jira for {0}',
 	comment: 'Comment on {0}',

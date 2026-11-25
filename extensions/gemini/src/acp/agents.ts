@@ -221,7 +221,7 @@ export interface AgentsChange {
 const maxTitleLength = 48;
 
 /** How many of a project's open threads start with it: the most recently used. The rest start when needed. */
-export const warmThreadCount = 6;
+const warmThreadCount = 6;
 /** How long a merged thread stays in the project's list before it moves under Archived. */
 export const archiveAfterMs = 7 * 24 * 60 * 60 * 1000;
 

@@ -57,13 +57,13 @@ const lockFiles = new Set(['package-lock.json', 'npm-shrinkwrap.json', 'yarn.loc
 const statConcurrency = 64;
 
 /** Even a file the user includes is left out above this size. */
-export const hardMaxFileBytes = 16 * 1024 * 1024;
+const hardMaxFileBytes = 16 * 1024 * 1024;
 /** The reason for binary content: never indexed, whatever the user includes. */
-export const binaryContentReason = 'binary content';
+const binaryContentReason = 'binary content';
 /** The reason for a link leading out of the folder: never indexed, whatever the user includes. */
-export const linkOutsideReason = 'a link to a file outside the folder';
+const linkOutsideReason = 'a link to a file outside the folder';
 /** The reason for a link to a secret file: never indexed, whatever the user includes. */
-export const linkSecretReason = 'a link to a file that may contain secrets';
+const linkSecretReason = 'a link to a file that may contain secrets';
 
 /**
  * What is left out of a folder's index, and why: the folder's ignore rules
@@ -231,7 +231,7 @@ export function contentSkipReason(text: string): string | undefined {
 	return undefined;
 }
 
-export async function readIgnoreFile(root: string): Promise<string[]> {
+async function readIgnoreFile(root: string): Promise<string[]> {
 	try {
 		return (await fs.readFile(path.join(root, '.geminiignore'), 'utf8')).split(/\r?\n/);
 	} catch {

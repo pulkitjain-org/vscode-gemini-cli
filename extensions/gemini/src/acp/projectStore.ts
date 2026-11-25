@@ -53,7 +53,7 @@ export interface ProjectConfig {
 }
 
 export const configFile = 'project.json';
-export const instructionsFile = 'instructions.md';
+const instructionsFile = 'instructions.md';
 export const memoryFolder = 'memory';
 /** The Memory text's limit, as the popup counts it. */
 export const maxInstructionsChars = 16_000;

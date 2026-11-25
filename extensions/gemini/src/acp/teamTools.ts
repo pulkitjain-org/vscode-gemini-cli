@@ -117,7 +117,7 @@ interface TeamTool extends McpTool {
 
 // Each list below is marked pure: a bundle that imports this module for one name or helper (the pages, the on-demand
 // tools) then leaves the table out, which a call or a spread at the top of a module would otherwise keep in it.
-export const teamTools: readonly TeamTool[] = /* @__PURE__ */ (() => [
+const teamTools: readonly TeamTool[] = /* @__PURE__ */ (() => [
 	{
 		tool: 'jira', name: 'jira_get_issue',
 		description: 'Reads a Jira ticket: summary, status, description with acceptance criteria, fix versions, the last comments and links in it (Figma frames, merge requests).',
@@ -283,7 +283,7 @@ export const teamConfirmTools: readonly McpTool[] = /* @__PURE__ */ teamTools.fi
  * (mcp-atlassian and gitlab-mcp, as in a repository's `.gemini/settings.json`),
  * so they ask the same way.
  */
-export const confirmToolNames: readonly string[] = /* @__PURE__ */ (() => [
+const confirmToolNames: readonly string[] = /* @__PURE__ */ (() => [
 	...teamConfirmTools.map(tool => tool.name),
 	'jira_transition_issue', 'jira_add_worklog', 'create_merge_request', 'merge_merge_request',
 ])();
@@ -392,7 +392,7 @@ const pageTools: readonly TeamTool[] = [
 /** Files a page may attach, at most: well past Jira Cloud's own default limit, so Jira's message is the one people see. */
 const maxAttachmentBytes = 256 * 1024 * 1024;
 /** Files Open Merge Request may upload to GitLab, at most: GitLab's own default limit for an attachment. */
-export const maxUploadBytes = 100 * 1024 * 1024;
+const maxUploadBytes = 100 * 1024 * 1024;
 
 /**
  * Home's comment box: `document`, the comment as Jira rich text the box made
@@ -554,7 +554,7 @@ function refOf(args: Record<string, unknown>): string | undefined {
 }
 
 /** One line a person reads in the audit log, from the tool and its arguments. */
-export function effectOf(name: string, args: Record<string, unknown>): string {
+function effectOf(name: string, args: Record<string, unknown>): string {
 	const key = refOf(args);
 	switch (name) {
 		case 'jira_comment': return `Comment on ${key}`;

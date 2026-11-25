@@ -39,9 +39,9 @@ export function rememberModel(modelId: string): void {
 	void storage?.update(lastModelKey, modelId);
 }
 
-/** Follow the agent, as the last chat left it (the + menu's switch); before 1.7 the setting `gemini.chat.followAgent`, still read where it is set. */
+/** Follow the agent, as the last chat left it (the + menu's switch). */
 export function followAgentOn(): boolean {
-	return storage?.get<boolean>(followAgentKey) ?? vscode.workspace.getConfiguration('gemini').get<boolean>('chat.followAgent', false);
+	return storage?.get<boolean>(followAgentKey) ?? false;
 }
 
 export function rememberFollowAgent(on: boolean): void {
