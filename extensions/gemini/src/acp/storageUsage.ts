@@ -72,12 +72,14 @@ export type CleanupReason =
 	/** The checkout of a reviewer whose review is over, with nothing uncommitted. */
 	| 'reviewWorktree'
 	/** A worktree in ~/.geminicode/worktrees no agent has any more, all of its work committed and on another branch. */
-	| 'removedWorktree';
+	| 'removedWorktree'
+	/** What is left of a removed agent's folder when its removal could not finish: files, no checkout. */
+	| 'leftoverFolder';
 
-/** Whose worktree Clean Up offers: a merged thread's, an ended review's, or one no agent has any more. */
-export type WorktreeKind = 'merged' | 'review' | 'removed';
+/** Whose worktree Clean Up offers: a merged thread's, an ended review's, one no agent has any more, or a folder a removal left behind. */
+export type WorktreeKind = 'merged' | 'review' | 'removed' | 'leftover';
 
-const worktreeReasons: Readonly<Record<WorktreeKind, CleanupReason>> = { merged: 'mergedWorktree', review: 'reviewWorktree', removed: 'removedWorktree' };
+const worktreeReasons: Readonly<Record<WorktreeKind, CleanupReason>> = { merged: 'mergedWorktree', review: 'reviewWorktree', removed: 'removedWorktree', leftover: 'leftoverFolder' };
 
 export interface CleanupItem {
 	readonly area: StorageAreaId;
@@ -173,7 +175,8 @@ export async function cleanupPlan(input: CleanupInput): Promise<CleanupItem[]> {
 	for (const candidate of input.worktrees ?? []) {
 		// Never a worktree with uncommitted changes, or work its repository doesn't have.
 		if (candidate.status && !candidate.status.uncommitted && candidate.status.commits === 0) {
-			await add({ area: 'worktrees', path: candidate.worktree.folder, reason: worktreeReasons[candidate.kind ?? 'merged'], agent: candidate.agent, worktree: { repository: candidate.repository, worktree: candidate.worktree } });
+			// A left-over folder is no worktree: it goes as plain files.
+			await add({ area: 'worktrees', path: candidate.worktree.folder, reason: worktreeReasons[candidate.kind ?? 'merged'], agent: candidate.agent, ...candidate.kind === 'leftover' ? {} : { worktree: { repository: candidate.repository, worktree: candidate.worktree } } });
 		}
 	}
 	return items;
@@ -191,7 +194,7 @@ export async function runCleanup(items: readonly CleanupItem[], removeWorktree: 
 			if (item.worktree) {
 				await removeWorktree(item.worktree.repository, item.worktree.worktree, item);
 			} else {
-				await fs.rm(item.path, { recursive: true, force: true });
+				await fs.rm(item.path, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
 			}
 		} catch (err) {
 			failed.push({ item, error: err instanceof Error ? err.message : String(err) });

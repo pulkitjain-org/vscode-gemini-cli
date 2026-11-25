@@ -35,3 +35,5 @@ export { projectStrings } from './host/chat/projectStrings';
 export { rebuildSessionFile } from './acp/sessionReplay';
 // The CLI installer: the streamed download and its tar reader, used only when a copy is installed.
 export { installCli } from './acp/cliInstall';
+// What Clean Up may offer of the agents' folders, and the folders a removal left behind: read by Settings' Storage section and after a removal that failed.
+export { cleanupWorktrees, rememberLeftover, retryLeftovers } from './acp/worktreeCleanup';

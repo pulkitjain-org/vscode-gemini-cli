@@ -8,9 +8,9 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { AgentRecord } from '../../src/acp/agents';
-import { cleanupPlan } from '../../src/acp/storageUsage';
-import { cleanupWorktrees } from '../../src/acp/worktreeCleanup';
-import { allReviewsHome, type AgentWorktree, commitAll, createWorktree, git, mergeBranch } from '../../src/acp/worktrees';
+import { cleanupPlan, runCleanup } from '../../src/acp/storageUsage';
+import { cleanupWorktrees, rememberLeftover, retryLeftovers } from '../../src/acp/worktreeCleanup';
+import { allReviewsHome, allThreadsHome, type AgentWorktree, commitAll, createWorktree, createWorktreeAt, git, mergeBranch, pathExists, removeWorktree } from '../../src/acp/worktrees';
 
 let root: string;
 let repo: string;
@@ -109,5 +109,65 @@ describe('the worktrees Clean Up may offer', () => {
 				['reviewWorktree', '484-new'],
 			],
 		});
+	});
+});
+
+describe('folders a removal left behind', () => {
+	/** A folder as git leaves it when something still wrote there: files, and no checkout. */
+	async function halfRemoved(folder: string): Promise<string> {
+		await fs.mkdir(path.join(folder, 'node_modules'), { recursive: true });
+		await fs.writeFile(path.join(folder, 'node_modules', 'index.js'), 'x'.repeat(100));
+		return folder;
+	}
+
+	it('are offered by Clean Up, with the worktrees of threads no agent has any more, and never a checkout its repository forgot', async () => {
+		const single = await halfRemoved(path.join(home, '.geminicode', 'worktrees', 'shop', 'half'));
+		const thread = await halfRemoved(path.join(allThreadsHome(home), 'project', 'half-thread'));
+		// A thread in two repositories whose agent is gone: its worktree is whole, with nothing of its own.
+		const whole = await createWorktreeAt(repo, 'gemini/whole', path.join(allThreadsHome(home), 'project', 'whole', 'shop'));
+		// Its repository forgot it, but its files and its .git are there: it may hold work.
+		const forgotten = await createWorktree(repo, 'gemini/forgotten', '', home);
+		await fs.writeFile(path.join(forgotten.folder, 'work.ts'), 'work\n');
+		await fs.rm(path.join(repo, '.git', 'worktrees', path.basename(forgotten.folder)), { recursive: true });
+		// An agent's own folders are never offered, whatever they hold.
+		const owned = await halfRemoved(path.join(allThreadsHome(home), 'project', 'owned'));
+		const records = [record('owner', { worktree: { folder: owned, cwd: owned, branch: 'gemini/owned', base: 'main' } })];
+		const candidates = await cleanupWorktrees({ records, repositoryOf: async () => repo, running: () => false, reviewing: () => false }, home);
+		const plan = await cleanupPlan({ globalStorage: path.join(root, 'global'), agents: new Set(['owner']), merged: new Set(), keepLogsDays: 90, now: new Date(), running: () => true, worktrees: candidates });
+		const offered = plan.filter(item => item.area === 'worktrees');
+		const failed = await runCleanup(offered, (repository, worktree) => removeWorktree(repository, worktree, false, home));
+		expect({
+			offered: offered.map(item => [item.reason, path.relative(home, item.path), !!item.worktree]).sort(),
+			failed,
+			left: await Promise.all([single, thread, whole.folder, forgotten.folder, owned].map(pathExists)),
+		}).toEqual({
+			offered: [
+				['leftoverFolder', path.join('.geminicode', 'threads', 'project', 'half-thread'), false],
+				['leftoverFolder', path.join('.geminicode', 'worktrees', 'shop', 'half'), false],
+				['removedWorktree', path.join('.geminicode', 'threads', 'project', 'whole', 'shop'), true],
+			],
+			failed: [],
+			left: [false, false, false, true, true],
+		});
+	});
+
+	it('are remembered and deleted at the next start, unless an agent has the folder again or it holds a checkout', async () => {
+		const file = path.join(root, 'global', 'leftover-folders.json');
+		const gone = await halfRemoved(path.join(home, '.geminicode', 'worktrees', 'shop', 'gone'));
+		const taken = await halfRemoved(path.join(home, '.geminicode', 'worktrees', 'shop', 'taken'));
+		const checkout = await createWorktree(repo, 'gemini/again', '', home);
+		const outside = await halfRemoved(path.join(root, 'elsewhere'));
+		for (const folder of [gone, gone, taken, checkout.folder, outside, path.join(home, '.geminicode', 'worktrees', 'shop', 'never-there')]) {
+			await rememberLeftover(file, folder);
+		}
+		const listed = JSON.parse(await fs.readFile(file, 'utf8'));
+		const still = await retryLeftovers(file, [taken], home);
+		expect({
+			listed: listed.length,
+			still,
+			left: await Promise.all([gone, taken, checkout.folder, outside].map(pathExists)),
+			file: await pathExists(file),
+			again: await retryLeftovers(file, [], home),
+		}).toEqual({ listed: 5, still: [], left: [false, true, true, true], file: false, again: [] });
 	});
 });

@@ -142,6 +142,8 @@ Right-click the project's row in the Agents pane and choose **Remove Project**. 
 
 A thread whose work you're trying in your workspace asks first whether to keep the changes or take them back.
 
+Removing a thread stops its setup script and the command it is running first, so its folder can be deleted whole. If a folder still can't be deleted, GeminiCode says so, tries again the next time it starts, and lists it under Settings' **Clean Up** as a left-over folder.
+
 ## Turn Projects off
 
 Projects are on by default. To hide them, turn off `gemini.projects.enabled` in Settings. **Gemini: New Project** in the Command Palette then offers to turn them back on.

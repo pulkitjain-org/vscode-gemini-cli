@@ -158,7 +158,8 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// (research.ts), about 9 KB, loaded with the first side question that reads the code. The docs crawler (docs/crawler.ts), about 9 KB,
 	// moved here from dist/extension.js and loaded with the first docs fetch.
 	// The CLI installer with its streamed download and tar reader (cliInstall.ts), about 9 KB, moved here from
-	// dist/extension.js: it runs only when a copy is installed.
+	// dist/extension.js: it runs only when a copy is installed. What Clean Up may offer of the agents' folders, with the
+	// folders a removal left behind (worktreeCleanup.ts), about 4.5 KB, moved here from dist/extension.js.
 	'dist/onDemand.js': 185_000,
 	// The indexer process, about 66 KB: parsing, SQLite queries and docs conversion, forked on first use, never
 	// loaded in the extension host.

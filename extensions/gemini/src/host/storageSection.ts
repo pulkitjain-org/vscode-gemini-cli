@@ -198,6 +198,7 @@ function cleanupLines(plan: readonly CleanupItem[]): string[] {
 		['trace', n => vscode.l10n.t("{0} performance trace files", n)],
 		['broken', n => vscode.l10n.t("{0} damaged files moved aside", n)],
 		['oldDebugLog', n => vscode.l10n.t("{0} debug logs of closed windows", n)],
+		['leftoverFolder', n => vscode.l10n.t("{0} folders left over from removed agents", n)],
 	];
 	return [
 		...worktrees.length ? [vscode.l10n.t("Worktrees: {0}", worktrees.join(', '))] : [],

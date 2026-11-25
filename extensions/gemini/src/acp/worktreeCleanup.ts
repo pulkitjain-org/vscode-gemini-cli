@@ -6,15 +6,20 @@
 // The worktrees Settings' Clean Up may offer, with what git says of each
 // (storageUsage.ts offers only those with nothing uncommitted and nothing
 // unmerged): merged threads', reviewers' whose review is over, and folders
-// in ~/.geminicode/worktrees or ~/.geminicode/reviews that no agent has any more. Agents running in
-// this window are never offered.
+// in ~/.geminicode/worktrees, ~/.geminicode/reviews or ~/.geminicode/threads
+// that no agent has any more. Agents running in this window are never
+// offered. A removal that could not finish leaves a folder that is no
+// worktree any more, only files: those are offered as left-over folders, and
+// the ones a removal remembered (`rememberLeftover`) are tried again at the
+// next start (`retryLeftovers`).
 
+import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import type { AgentRecord } from './agents';
-import { samePath } from './fsUtil';
+import { samePath, writeFileAtomic } from './fsUtil';
 import { foldersTwoDown, type WorktreeCandidate } from './storageUsage';
-import { allReviewsHome, type AgentWorktree, currentBranch, git, inBatches, mainRepository, pathExists, worktreeStatus, type WorktreeStatus } from './worktrees';
+import { allReviewsHome, allThreadsHome, type AgentWorktree, currentBranch, git, inBatches, isAgentFolder, mainRepository, pathExists, worktreeStatus, type WorktreeStatus } from './worktrees';
 
 /** How many agents' worktrees are asked of git at once. */
 const batchSize = 8;
@@ -58,14 +63,90 @@ export async function cleanupWorktrees(agents: CleanupAgents, home: string = os.
 	const found = (await inBatches(agents.records.filter(record => !agents.running(record.id)), batchSize, ofRecord)).flat();
 	const known = agents.records.flatMap(record => [record.worktree?.folder, ...(record.repos ?? []).map(repo => repo.folder)].filter((folder): folder is string => !!folder));
 	// Review checkouts are in ~/.geminicode/reviews, and were in ~/.geminicode/worktrees before.
+	const owned = (folder: string) => known.some(each => samePath(each, folder));
 	const leftOver = (await Promise.all([path.join(home, '.geminicode', 'worktrees'), allReviewsHome(home)].map(root => foldersTwoDown(root)))).flat();
-	const unknown = leftOver.filter(folder => !known.some(each => samePath(each, folder)));
-	for (const [i, removed] of (await inBatches(unknown, batchSize, removedWorktree)).entries()) {
-		if (removed) {
-			found.push({ agent: unknown[i], kind: 'removed', ...removed });
+	// A thread in several repositories has a folder of its own, with a worktree of each inside.
+	const threadFolders = (await foldersTwoDown(allThreadsHome(home))).filter(folder => !owned(folder));
+	const inThreads = (await Promise.all(threadFolders.map(subfolders))).flat();
+	const unknown = [...leftOver, ...inThreads].filter(folder => !owned(folder));
+	const removed = await inBatches(unknown, batchSize, removedWorktree);
+	for (const [i, each] of removed.entries()) {
+		if (each) {
+			found.push({ agent: unknown[i], kind: 'removed', ...each });
+		}
+	}
+	// What a removal that could not finish left: files, with nothing of git's to say whose they were.
+	const plain = [...leftOver.filter(folder => !owned(folder)), ...threadFolders];
+	for (const [i, isPlain] of (await inBatches(plain, batchSize, plainFolder)).entries()) {
+		if (isPlain) {
+			found.push(leftoverCandidate(plain[i]));
 		}
 	}
 	return found;
+}
+
+/** A left-over folder as Clean Up lists it: no repository, and nothing git could count. */
+function leftoverCandidate(folder: string): WorktreeCandidate {
+	return { agent: folder, kind: 'leftover', repository: '', worktree: { folder, cwd: folder, branch: '', base: '' }, status: { uncommitted: 0, commits: 0 } };
+}
+
+async function subfolders(folder: string): Promise<string[]> {
+	return (await fs.readdir(folder, { withFileTypes: true }).catch(() => [])).filter(entry => entry.isDirectory()).map(entry => path.join(folder, entry.name));
+}
+
+/**
+ * Whether `folder` holds no checkout: no `.git` of its own, and none in the
+ * folders right inside it (a thread's worktrees). A checkout whose repository
+ * forgot it still has its `.git` file, and may hold work: never offered.
+ */
+async function plainFolder(folder: string): Promise<boolean> {
+	const tops = [folder, ...await subfolders(folder)];
+	return !(await Promise.all(tops.map(top => pathExists(path.join(top, '.git'))))).some(Boolean);
+}
+
+/** The folders removals left behind, as `file` lists them; none when it is missing or unreadable. */
+async function leftovers(file: string): Promise<string[]> {
+	try {
+		const listed: unknown = JSON.parse(await fs.readFile(file, 'utf8'));
+		return Array.isArray(listed) ? listed.filter((each): each is string => typeof each === 'string') : [];
+	} catch {
+		return [];
+	}
+}
+
+/** Adds `folder` to the folders a removal could not delete, kept in `file`. */
+export async function rememberLeftover(file: string, folder: string): Promise<void> {
+	const listed = await leftovers(file);
+	if (!listed.includes(folder)) {
+		await fs.mkdir(path.dirname(file), { recursive: true });
+		await writeFileAtomic(file, JSON.stringify([...listed, folder]));
+	}
+}
+
+/**
+ * Deletes the folders `file` lists, which removals could not: each only when
+ * it is one GeminiCode made (`isAgentFolder`), no agent in `owned` has it now
+ * (a new thread may have taken the name) and it holds no checkout. Resolves
+ * with those still there, which stay listed; the file goes once none is.
+ */
+export async function retryLeftovers(file: string, owned: readonly string[], home: string = os.homedir()): Promise<string[]> {
+	const listed = await leftovers(file);
+	const still: string[] = [];
+	for (const folder of listed) {
+		if (!isAgentFolder(folder, home) || owned.some(each => samePath(each, folder)) || !await pathExists(folder) || !await plainFolder(folder)) {
+			continue;
+		}
+		await fs.rm(folder, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 }).catch(() => undefined);
+		if (await pathExists(folder)) {
+			still.push(folder);
+		}
+	}
+	if (still.length) {
+		await writeFileAtomic(file, JSON.stringify(still));
+	} else if (listed.length) {
+		await fs.rm(file, { force: true });
+	}
+	return still;
 }
 
 /**

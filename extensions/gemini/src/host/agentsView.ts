@@ -3,7 +3,9 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+import { promises as fsPromises } from 'node:fs';
 import * as path from 'node:path';
+import { extensionChunk } from './lazyFeature';
 import * as vscode from 'vscode';
 import type { DebugEntry } from './debug/debugEntry';
 import type { ChangeTotals } from '../acp/agentChanges';
@@ -348,11 +350,17 @@ export class AgentsView implements vscode.Disposable {
 			// Its conversation is saved and its record keeps its session id: opening it again restores it.
 			release: id => this.removal.stop(id, true),
 		});
+		const leftoverFile = vscode.Uri.joinPath(context.globalStorageUri, 'leftover-folders.json').fsPath;
 		this.removal = new AgentRemoval({
 			model: this.model, live: this.live, tree: this.tree, projects: this.projects, notifier: this.notifier,
 			transcripts: this.persistence.transcripts, checkpointFiles: this.persistence.checkpointFiles, terminals: this.terminals,
 			review: this.review, settler: this.settler, view: this, features: this.features, tabs: this.tabs,
+			worktrees: this.worktrees, leftoverFile,
 		});
+		// Folders a removal could not delete last time are tried again, well after the window's own start; most windows have none.
+		const retry = setTimeout(() => void fsPromises.access(leftoverFile).then(() => extensionChunk<typeof import('../onDemand')>('onDemand')().retryLeftovers(leftoverFile,
+			this.model.agents.flatMap(record => [record.worktree?.folder, ...(record.repos ?? []).map(repo => repo.folder)].filter((folder): folder is string => !!folder))), () => undefined).catch(() => undefined), 30_000);
+		this.disposables.push(new vscode.Disposable(() => clearTimeout(retry)));
 		// A try left open last time: its status bar item and file badges come back, after the window's own start.
 		if (this.model.agents.some(record => record.tried?.state === 'trying')) {
 			const timer = setTimeout(() => void this.features.tries, 2000);
