@@ -2,6 +2,8 @@
 	"extends": "../tsconfig.base.json",
 	"compilerOptions": {
 		"noEmit": true,
+		// happy-dom 21's own declarations name a stream type that @types/node 24 does not export; the tests' code is still checked in full.
+		"skipLibCheck": true,
 		"module": "preserve",
 		"moduleResolution": "bundler",
 		"typeRoots": [
