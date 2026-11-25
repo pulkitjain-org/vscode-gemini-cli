@@ -48,7 +48,8 @@ A checked-in `.gemini/geminicode-tools.json` saves everyone typing addresses. It
   "jira": { "site": "https://acme.atlassian.net", "projects": ["ACME"] },
   "gitlab": { "url": "https://gitlab.acme.internal", "releaseBranches": "release/*", "defaultTarget": "develop" },
   "sonar": { "url": "https://sonar.acme.internal", "projectKey": "acme-checkout" },
-  "figma": { "viewports": ["Mobile", "Tablet", "Desktop"] }
+  "figma": { "viewports": ["Mobile", "Tablet", "Desktop"] },
+  "checks": { "commands": ["npm test"], "afterTurn": "ask" }
 }
 ```
 
@@ -59,6 +60,7 @@ A checked-in `.gemini/geminicode-tools.json` saves everyone typing addresses. It
 - `sonar.projectKey` can also come from the repository's `sonar-project.properties`.
 - `figma.viewports` names the screen sizes **Add Figma Design** asks a frame for, such as `["Mobile", "Tablet", "Desktop"]`. Without it, your own `gemini.figma.viewports` setting names them, and without that the sizes are XS, S, M and L.
 - `figma.designSystem` names your team's design system in Figma, for [Sync Design System](#your-design-system).
+- `checks` names the commands that say whether a change works, for [Verify](agents.md#verify-an-agents-work). `commands` run in order in the repository's top folder (at most eight; the first that fails ends the run). `afterTurn` is `ask` (run from the Changes panel, the default), `always` (run after each turn that changed files) or `never`. `protected` lists globs of the files whose original version counts; without it, tests, lockfiles, `package.json` and test configuration are protected.
 
 > [!IMPORTANT]
 > GeminiCode's own servers, such as `geminicode-tools`, `geminicode-project` and `geminicode-browser`, are always allowed, even when your Gemini settings have an `mcp.allowed` list without them; only `mcp.excluded` keeps them out. Once you've connected, remove any `jira` and `gitlab` entries of your own from `mcp.allowed` and `mcpServers`; while they are there, agents see two sets of Jira and GitLab tools. The terminal's `gemini` doesn't get these tools.

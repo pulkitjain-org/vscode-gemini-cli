@@ -6,7 +6,7 @@
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { AgentChanges, EditedFile, formatCounts } from '../acp/agentChanges';
-import type { TryChoice } from './panelProtocol';
+import type { TryChoice, VerifyAction, VerifyView } from './panelProtocol';
 
 const changesViewId = 'gemini.agentChanges';
 /** Read-only documents holding a file's text from before an agent's first edit. */
@@ -26,6 +26,9 @@ export interface ChangesSource {
 	focusEditors(): Promise<void>;
 	/** A turn is running. */
 	busy(): boolean;
+	/** The repository's checks on the agent's work (Verify), when it names any. */
+	verify?(): VerifyView | undefined;
+	verifyAct?(action: VerifyAction): Promise<void>;
 	/** The agent's own branch, when it works in a worktree. */
 	readonly branch?: string;
 	/** Commits the changed files on a new branch (agents in the workspace folder). */

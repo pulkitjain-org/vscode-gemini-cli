@@ -17,6 +17,6 @@ import type { TeamToolId } from './teamHttp';
  * it means. An `<external>` or `</external>` tag inside the text is escaped,
  * so the text cannot close its frame early and go on as if it were outside it.
  */
-export function external(source: TeamToolId | 'page', ref: string, text: string): string {
+export function external(source: TeamToolId | 'page' | 'checks', ref: string, text: string): string {
 	return `<external source="${source}" ref="${ref.replace(/["<>\r\n]/g, '')}">\n${text.replace(/<(\/?external)\b/gi, '&lt;$1')}\n</external>`;
 }

@@ -37,7 +37,7 @@ These rules have no exceptions. They override any tool's default attribution, tr
 
 ## Lessons from past work
 
-The design facts learnt the hard way are in [gemini/docs/ARCHITECTURE.md](gemini/docs/ARCHITECTURE.md#lessons-from-past-work), one subsection each: the Gemini CLI in ACP mode (the output cap, a context overflow, one process per window with a folder's own when its settings differ, never asking an agent for a whole diff), where pages open, the agents' browser, the webviews (tooltips, menus, size budgets and bundles), Jira and GitLab from GeminiCode's pages, the workspace index, removing worktrees, and packages and lint (pnpm, oxlint). Read the subsection before changing any of those areas; add to it, not here, when you learn something new.
+The design facts learnt the hard way are in [gemini/docs/ARCHITECTURE.md](gemini/docs/ARCHITECTURE.md#lessons-from-past-work), one subsection each: the Gemini CLI in ACP mode (the output cap, a context overflow, one process per window with a folder's own when its settings differ, never asking an agent for a whole diff), where pages open, the agents' browser, the webviews (tooltips, menus, size budgets and bundles), Jira and GitLab from GeminiCode's pages, the workspace index, removing worktrees, packages and lint (pnpm, oxlint), and Verify. Read the subsection before changing any of those areas; add to it, not here, when you learn something new.
 
 ### Validating
 

@@ -165,6 +165,62 @@ button .codicon {
 	padding-bottom: 16px;
 }
 
+/* Verify: the repository's checks on the agent's work, above its files. */
+.verify-card {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	margin: 8px 12px;
+	padding: 10px 12px;
+	border: 1px solid var(--gemini-border);
+	border-radius: var(--gemini-radius);
+	background: var(--gemini-card);
+}
+
+.verify-head {
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+	min-width: 0;
+}
+
+.verify-head .codicon {
+	flex: none;
+	margin-top: 1px;
+	color: var(--gemini-muted);
+}
+
+.verify-card.passed .verify-head .codicon { color: var(--gemini-ok); }
+.verify-card.failed .verify-head .codicon { color: var(--gemini-error); }
+.verify-card.weakened .verify-head .codicon { color: var(--gemini-warn); }
+
+.verify-text {
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+.verify-detail {
+	margin: 0;
+	color: var(--gemini-muted);
+	line-height: var(--gc-leading-body);
+	overflow-wrap: anywhere;
+}
+
+.verify-actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px 8px;
+}
+
+.verify-goal {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	margin-left: auto;
+	color: var(--gemini-muted);
+}
+
 .changes-panel .empty {
 	margin: 24px 16px;
 	color: var(--gemini-muted);

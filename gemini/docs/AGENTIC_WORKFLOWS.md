@@ -1,6 +1,13 @@
 # Agentic development workflows: proposal
 
-Status: proposal, not built. Nothing here is on `main`. GeminiCode has been in a feature freeze since 31 October 2026. On 25 November 2026 the freeze was lifted for phase 1 (Verify) alone, planned for 1.9; phases 2 to 6 wait until Verify has been used.
+Status: phase 1 (Verify) is built, in 1.9; phases 2 to 6 are a proposal and wait until Verify has been used. GeminiCode has been in a feature freeze since 31 October 2026, lifted on 25 November 2026 for Verify and the model-results work alone.
+
+How phase 1 was built differs from its section below in four places. The guide ([Verify an agent's work](guide/agents.md#verify-an-agents-work)) and [ARCHITECTURE.md](ARCHITECTURE.md#verify) describe what shipped:
+
+- The second run uses a clone of the agent's whole folder, ignored files included, since checks need what git does not carry (`node_modules`, a build folder).
+- A result is kept for the window, not across a restart, and "changed since" follows the agent's edits; Try, Merge Back and Open Merge Request show it through the card above them.
+- `ask` means the card offers **Run Checks**; nothing asks after each turn.
+- **Keep going until checks pass** is also offered from the chat's **+** menu with a command of your own, and the benchmark has its loop (`checkRounds`), though not yet the protected-file overlay on its grader.
 
 GeminiCode so far gathers context: Jira, Confluence, GitLab, SonarQube, Snyk, Figma, the browser and the workspace index all reach the agent. The next step is to close the loop around the agent's work, so that what it produces is checked, reviewed and verified before a person spends time on it. This page proposes that work, and assesses what the APAC Agentic Toolkit (`apac-agentic-toolkit` and its acceptance repository `apac-agentic-toolkit-test`) offers towards it.
 

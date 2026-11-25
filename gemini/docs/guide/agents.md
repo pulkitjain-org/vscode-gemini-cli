@@ -138,6 +138,25 @@ A new copy has no `node_modules` or build output. To get it ready before the age
 
 To start every new agent on its own branch, turn on `gemini.agents.ownBranch`: Home's chooser then starts on **On a branch**.
 
+## Verify an agent's work
+
+When a repository's [team defaults](team-tools.md#team-defaults) name its checks, the Changes panel shows a **Verify** card above the agent's files:
+
+```json
+{ "checks": { "commands": ["npm test"], "afterTurn": "ask" } }
+```
+
+- **Run Checks** runs the commands in the agent's folder, in your shell, with your permissions. The first time, GeminiCode shows a repository's commands and asks: **Don't Run**, **Run Once** or **Run and Remember**. It asks again when the commands change. They run only in a trusted workspace. With `"afterTurn": "always"`, they run by themselves after each turn that changed files.
+- **The result** is **Checks passed**, **Checks failed** with the command and its exit code, or **Passes with the agent's test changes, fails with the original tests**. That last one means the agent changed a test, a lockfile or test configuration, and the checks pass only with that change: GeminiCode ran them a second time in a scratch copy of the folder with those files as they were before the agent, and they failed. The card names the files. The agent's own folder is never changed by a run.
+- **An earlier version.** A result belongs to the files as they were when the checks ran. Once the agent changes files, the card says **Checks passed on an earlier version**. Try in Workspace, Merge Back and Open Merge Request are never held back by a result: the card is there for you to read first.
+- **Send Failures to Agent** sends the failing command, its exit code and the last 200 lines of its output to the agent, with the editor's errors in the files it changed when there are any. The output is marked as text to read, not as instructions.
+- **Keep going until checks pass** does that by itself: after each turn it runs the checks and sends the failures back, until they pass, a round changes no file, or the rounds in `gemini.verify.maxRounds` are spent (2 by default). Each round is an ordinary turn, with its tokens shown as any turn's. Your own next message starts the count over.
+- **Show Output** opens the whole output in the **Gemini Checks** output channel. **Stop** ends a run; so does the agent's next turn.
+
+In a repository that names no checks, or to hold an agent to one command, choose **Keep Going Until Checks Pass...** in the chat's **+** menu and type the command, such as `npm test -- cart`. Choose it again to turn it off or change the command.
+
+A result lasts until the window reloads. In a [project](projects.md), a thread's checks run when its repository says `always`, and the coordinator is told the result in place of the thread's own word for it. A thread in several repositories is checked in none yet.
+
 ## Fork an agent
 
 When an agent's work splits in two, fork it. The fork is a new agent that starts from the same conversation, so it already knows what the agent read, decided and planned. It works on its part while the original carries on.

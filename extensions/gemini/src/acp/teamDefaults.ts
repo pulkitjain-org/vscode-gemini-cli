@@ -11,11 +11,13 @@
 //     "jira": { "site": "https://acme.atlassian.net", "projects": ["ACME"] },
 //     "gitlab": { "url": "https://gitlab.acme.internal", "releaseBranches": "release/*", "defaultTarget": "develop" },
 //     "sonar": { "url": "https://sonar.acme.internal", "projectKey": "acme-checkout" },
-//     "figma": { "viewports": ["XS", "S", "M", "L"] }
+//     "figma": { "viewports": ["XS", "S", "M", "L"] },
+//     "checks": { "commands": ["npm test"], "afterTurn": "ask" }
 //   }
 
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
+import { checksConfig, type ChecksConfig } from './checksConfig';
 import { stripJsonComments } from './projectSettings';
 
 export const teamDefaultsFile = path.join('.gemini', 'geminicode-tools.json');
@@ -37,6 +39,8 @@ export interface TeamDefaults {
 		/** The team's design system in Figma, as the file has it: `designSystemConfig` (designSystem.ts) reads it, in the bundle that uses it. */
 		readonly designSystem?: Readonly<Record<string, unknown>>;
 	};
+	/** The repository's checks, which Verify runs on an agent's work (checksConfig.ts). */
+	readonly checks?: ChecksConfig;
 	/** The file it came from, for the Connections page. */
 	readonly file?: string;
 }
@@ -109,6 +113,7 @@ function sanitize(raw: unknown): TeamDefaults {
 		sonar: { url: str(sonar.url), projectKey: str(sonar.projectKey) },
 		snyk: { endpoint: str(snyk.endpoint) },
 		...viewports.length || designSystem ? { figma: { ...viewports.length ? { viewports } : {}, ...designSystem ? { designSystem } : {} } } : {},
+		...checksConfig(o.checks) ? { checks: checksConfig(o.checks) } : {},
 	};
 }
 

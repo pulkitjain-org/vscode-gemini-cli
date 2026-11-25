@@ -24,9 +24,9 @@ import type { DebugAction, DebugBarView } from './debug/debugProtocol';
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 56;
+export const chatProtocolVersion = 57;
 /** The hash of the messages below (sourceHash.ts); test/acp/chatProtocolHash.test.ts fails when they change without a bump, and names the new value. */
-export const chatProtocolHash = 'b33406811d90';
+export const chatProtocolHash = 'bda15275fd72';
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.signIn', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog', 'gemini.agents.openTerminal', 'gemini.designSystem.sync'] as const;
@@ -372,6 +372,8 @@ export type FromWebview =
 	| { readonly type: 'openReview' }
 	/** The + menu: open the Open Merge Request page for this agent's branch. */
 	| { readonly type: 'openMergeRequest' }
+	/** Keep going until a command the user names passes (Verify's goal), from the + menu. */
+	| { readonly type: 'verifyGoal' }
 	/** Reopen saved session `id` in this chat. */
 	| { readonly type: 'restoreSession'; readonly id: string }
 	/** Pick from every saved session for the folder. */

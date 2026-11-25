@@ -196,11 +196,13 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 		}
 		const busy = source.busy();
 		const team = this.mrPanel?.view(source);
+		const verify = source.verify?.();
 		return {
 			agent: { title: source.title, busy, ...(source.branch ? { branch: source.branch } : {}), ...(source.trying ? { trying: true } : {}), ...(source.tryChoice?.() && source.tryChoice() !== 'try' ? { tryChoice: source.tryChoice() as 'merge' | 'mr' } : {}), ...(source.mergeRequests?.() ? { mergeRequests: true } : {}), canCommit: !!source.commit && !busy && files.length > 0 },
 			totals: source.changes.totals,
 			files,
 			...team ? { team } : {},
+			...verify ? { verify } : {},
 		};
 	}
 
@@ -214,6 +216,8 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 				return;
 			case 'team':
 				return source && this.mrPanel?.act(source, message as FromChangesTeam);
+			case 'verify':
+				return source?.verifyAct?.(message.action);
 		}
 		const filePath = message.type === 'keep' || message.type === 'undo' || message.type === 'keepFile' || message.type === 'undoFile' || message.type === 'openFile' ? message.path : undefined;
 		// Only files the agent changed.

@@ -6,7 +6,7 @@
 // Agents mode's Changes panel (src/host/changesPanel.ts): the agent's changed
 // files, each with its changes as a unified diff and Keep and Undo on each.
 
-import type { ChangedFileView, ChangesPanelView, FromChangesPanel, ToChangesPanel } from '../src/host/panelProtocol';
+import type { ChangedFileView, ChangesPanelView, FromChangesPanel, ToChangesPanel, VerifyView } from '../src/host/panelProtocol';
 import type { ChangesPanelStrings } from '../src/host/panelStrings';
 import { button, el, format, icon, pageStrings } from './panelDom';
 import { renderTeam } from './mrPanel';
@@ -50,6 +50,9 @@ function render(view: ChangesPanelView): void {
 	}
 	if (view.team) {
 		list.append(renderTeam(view.team, post));
+	}
+	if (view.verify) {
+		list.append(renderVerify(view.verify));
 	}
 	if (!view.files.length) {
 		// Once a merge request is open, its panel takes the empty list's place.
@@ -98,6 +101,31 @@ function render(view: ChangesPanelView): void {
 	for (const file of view.files) {
 		list.append(renderFile(file));
 	}
+}
+
+/** The repository's checks on the agent's work: the last result, and what to do about it. Every word is the host's. */
+function renderVerify(view: VerifyView): HTMLElement {
+	const card = el('section', `verify-card ${view.state}`);
+	const head = el('div', 'verify-head');
+	head.append(icon(view.state === 'passed' ? 'pass' : view.state === 'running' ? 'loading' : view.state === 'none' ? 'beaker' : 'error', view.state === 'running' ? 'codicon-modifier-spin' : ''), el('span', 'verify-text', view.text));
+	card.append(head);
+	if (view.detail) {
+		card.append(el('p', 'verify-detail', view.detail));
+	}
+	const actions = el('div', 'verify-actions');
+	for (const action of view.actions) {
+		const act = button(action.id === 'send' ? 'primary' : 'secondary', action.label, () => post({ type: 'verify', action: action.id }));
+		actions.append(action.tip ? tip(act, action.tip) : act);
+	}
+	const goal = el('label', 'verify-goal');
+	const box = el('input');
+	box.type = 'checkbox';
+	box.checked = view.goal.on;
+	box.addEventListener('change', () => post({ type: 'verify', action: 'goal' }));
+	goal.append(box, view.goal.label);
+	actions.append(tip(goal, view.goal.tip));
+	card.append(actions);
+	return card;
 }
 
 function renderFile(file: ChangedFileView): HTMLElement {

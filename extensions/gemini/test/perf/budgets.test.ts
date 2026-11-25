@@ -46,8 +46,9 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// Home's startup script, about 26 KB: Preview's renderer, the menus and the popups are files of their own.
 	// The dashboard (cards, banners), the composer and the themed tooltips take most of it.
 	'media/home.js': 30_000,
-	// The Changes panel, about 12 KB.
-	'media/changes.js': 16_000,
+	// The Changes panel, about 12 KB; about 16.7 KB with Verify's card (the repository's checks on the agent's work), whose
+	// words all come from the host.
+	'media/changes.js': 17_500,
 	// The team flows, about 32 KB: Open Merge Request, Move Ticket and Log Time, Review and Checks, with the
 	// review's comments, threads and suggested changes. Loaded only with a flow's page.
 	// The select menu's headings and the options' tips added about 1 KB.
@@ -166,8 +167,9 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// dist/extension.js: it runs only when a copy is installed. What Clean Up may offer of the agents' folders, with the
 	// folders a removal left behind (worktreeCleanup.ts), about 4.5 KB, moved here from dist/extension.js.
 	// The team flows, about 53 KB with their own copies of the GitLab and Jira helpers they call, moved here from
-	// dist/extension.js: about 237 KB.
-	'dist/onDemand.js': 245_000,
+	// dist/extension.js: about 237 KB. Verify (agentVerify.ts, verifyRun.ts, verify.ts and the output tail they share with
+	// Run), about 11 KB, loads with the first run of a repository's checks: about 248 KB.
+	'dist/onDemand.js': 256_000,
 	// The indexer process, about 66 KB: parsing, SQLite queries and docs conversion, forked on first use, never
 	// loaded in the extension host.
 	'dist/indexer.js': 120_000,

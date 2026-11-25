@@ -367,6 +367,13 @@ export class Projects implements vscode.Disposable {
 		return repos && repos.length > 1 ? repos.map(repo => ({ name: repo.key, folder: repo.folder })) : undefined;
 	}
 
+	/** The repository's checks ran on a thread's work (Verify): the coordinator's next wake carries the result, in place of the thread's own word for it. */
+	threadChecked(id: string, text: string): void {
+		const record = this.agents.record(id);
+		const project = record?.project?.role === 'thread' ? this.projects.get(record.project.coordinator) : undefined;
+		project?.hub.notify({ kind: 'report', thread: id, report: 'result', text });
+	}
+
 	/** A thread's files changed: its card shows the new counts. */
 	threadChanged(record: AgentRecord): void {
 		const project = record.project?.role === 'thread' ? this.projects.get(record.project.coordinator) : undefined;
