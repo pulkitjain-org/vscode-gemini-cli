@@ -1,0 +1,14 @@
+diff --git a/resources/linux/debian/postinst.template b/resources/linux/debian/postinst.template
+index 1ff9d55930201f0cb9d88476df63c8c7e362298b..d834019213ea88db8087588b6acfbdb8336aab73 100755
+--- a/resources/linux/debian/postinst.template
++++ b/resources/linux/debian/postinst.template
+@@ -39,7 +39,8 @@ if hash update-mime-database 2>/dev/null; then
+ 	update-mime-database /usr/share/mime
+ fi
+ 
+-if [ "@@NAME@@" != "code-oss" ]; then
++# GEMINI-FORK: Microsoft's apt repository serves VS Code, not GeminiCode, so it is never added.
++if [ "@@NAME@@" != "code-oss" ] && [ "@@NAME@@" != "geminicode" ]; then
+ 	# Remove the legacy bin command if this is the stable build
+ 	if [ "@@NAME@@" = "code" ]; then
+ 		rm -f /usr/local/bin/code

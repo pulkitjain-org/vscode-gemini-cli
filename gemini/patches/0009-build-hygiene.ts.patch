@@ -1,0 +1,14 @@
+diff --git a/build/hygiene.ts b/build/hygiene.ts
+index 246ec7c9dfc76a5462c2137130e4c64ea83bd890..07a777b542e880bc8dd296bf36bf6550fd851d27 100644
+--- a/build/hygiene.ts
++++ b/build/hygiene.ts
+@@ -92,7 +92,8 @@ export function hygiene(some: NodeJS.ReadWriteStream | string[] | undefined, run
+ 	const productJson = es.through(function (file: VinylFile) {
+ 		const product = JSON.parse(file.contents!.toString('utf8'));
+ 
+-		if (product.extensionsGallery) {
++		// GEMINI-FORK: the fork ships the Open VSX gallery; any other gallery is still rejected.
++		if (product.extensionsGallery && !String(product.extensionsGallery.serviceUrl).startsWith('https://open-vsx.org/')) {
+ 			console.error(`product.json: Contains 'extensionsGallery'`);
+ 			errorCount++;
+ 		}

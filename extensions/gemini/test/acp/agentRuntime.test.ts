@@ -1,0 +1,529 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Pulkit Jain. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+import { tmpdir } from 'node:os';
+import * as path from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
+import { AgentClient, AgentClientOptions, AgentClientState } from '../../src/acp/agentClient';
+import { AgentRuntime } from '../../src/acp/agentRuntime';
+import { createFileHandlers } from '../../src/acp/fileAccess';
+import { AgentSidecar, SidecarState } from '../../src/acp/sidecar';
+import type { FakeAgentScript } from '../fake-agent/fakeAgent';
+import { fakeAgentCommand, waitFor } from '../helpers';
+
+const cancelled = async () => ({ outcome: { outcome: 'cancelled' as const } });
+const permissionStep = {
+	step: 'permission' as const,
+	request: { toolCall: { toolCallId: 't1', title: 'Write file' }, options: [{ optionId: 'allow', name: 'Allow', kind: 'allow_once' as const }] },
+};
+
+describe('AgentRuntime', () => {
+	let sidecar: AgentSidecar | undefined;
+	let runtime: AgentRuntime | undefined;
+	const clients: AgentClient[] = [];
+
+	afterEach(() => {
+		clients.splice(0).forEach(c => c.dispose());
+		runtime?.dispose();
+		sidecar?.dispose();
+	});
+
+	function start(script: FakeAgentScript, options?: ConstructorParameters<typeof AgentRuntime>[1], restartDelaysMs: number[] = []) {
+		sidecar = new AgentSidecar({ command: () => fakeAgentCommand(script), cwd: undefined, restartDelaysMs });
+		runtime = new AgentRuntime(sidecar, options);
+		const spawned: SidecarState[] = [];
+		sidecar.onDidChangeState(s => s.kind === 'running' && spawned.push(s));
+		sidecar.start();
+		return { sidecar, runtime, spawned };
+	}
+
+	async function session(cwd: string, options: Partial<AgentClientOptions> = {}) {
+		const client = new AgentClient(runtime!, { cwd, requestPermission: cancelled, ...options });
+		clients.push(client);
+		const texts: string[] = [];
+		client.onDidReceiveEvent(e => e.kind === 'text' && texts.push(e.text));
+		const state = client.state.kind === 'ready' ? client.state : await waitFor<AgentClientState>(client.onDidChangeState, s => s.kind === 'ready' || s.kind === 'error');
+		return { client, texts, state };
+	}
+
+	it('serves sessions in different folders from one process', async () => {
+		const { spawned } = start({ turns: [[{ step: 'session' }], [{ step: 'session' }]] });
+		const a = await session('/work/a');
+		const b = await session('/work/b');
+		expect([a.state, b.state]).toMatchObject([{ kind: 'ready', sessionId: 'fake-session-1' }, { kind: 'ready', sessionId: 'fake-session-2' }]);
+
+		await a.client.prompt('who');
+		await b.client.prompt('who');
+		expect(a.texts).toEqual(['session:fake-session-1:/work/a']);
+		expect(b.texts).toEqual(['session:fake-session-2:/work/b']);
+		expect(spawned).toHaveLength(1);
+		expect(runtime!.sessionCount).toBe(2);
+	});
+
+	it('keeps concurrent turns apart', async () => {
+		start({
+			turns: [
+				[{ step: 'delay', ms: 100 }, { step: 'update', update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'slow' } } }],
+				[{ step: 'update', update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'fast' } } }],
+			],
+		});
+		const a = await session('/work/a');
+		const b = await session('/work/b');
+		// Busy and idle fire once each, for the first turn to start and the last to end.
+		const events: string[] = [];
+		runtime!.onDidBecomeBusy(() => events.push('busy'));
+		runtime!.onDidBecomeIdle(() => events.push('idle'));
+		const slow = a.client.prompt('slow');
+		await b.client.prompt('fast');
+		expect(b.texts).toEqual(['fast']);
+		expect(a.texts).toEqual([]);
+		expect(events).toEqual(['busy']);
+		await slow;
+		expect(a.texts).toEqual(['slow']);
+		expect(events).toEqual(['busy', 'idle']);
+	});
+
+	it('calls a wait for idle once no prompt runs and nothing holds the process, whichever ends last', async () => {
+		start({ turns: [[{ step: 'delay', ms: 150 }]] });
+		const a = await session('/work/a');
+		const calls: string[] = [];
+		runtime!.onceIdle(() => calls.push('at once'));
+		const hold = runtime!.hold();
+		const turn = a.client.prompt('slow');
+		await new Promise(resolve => setTimeout(resolve, 20));
+		runtime!.onceIdle(() => calls.push('after both'));
+		const cancelled = runtime!.onceIdle(() => calls.push('cancelled'));
+		cancelled.dispose();
+		expect({ idle: runtime!.idle, held: runtime!.held, busy: runtime!.busy, calls }).toEqual({ idle: false, held: true, busy: true, calls: ['at once'] });
+		hold.dispose();
+		hold.dispose();
+		// Released while the prompt still runs: the wait goes on until the prompt ends.
+		expect({ idle: runtime!.idle, held: runtime!.held, calls }).toEqual({ idle: false, held: false, calls: ['at once'] });
+		await turn;
+		expect({ idle: runtime!.idle, calls }).toEqual({ idle: true, calls: ['at once', 'after both'] });
+	});
+
+	it('asks the session that owns the request for permission', async () => {
+		start({ turns: [[permissionStep]] });
+		const asked: string[] = [];
+		await session('/work/a', { requestPermission: async () => (asked.push('a'), { outcome: { outcome: 'cancelled' } }) });
+		const b = await session('/work/b', { requestPermission: async () => (asked.push('b'), { outcome: { outcome: 'selected', optionId: 'allow' } }) });
+		await b.client.prompt('write');
+		expect(asked).toEqual(['b']);
+		expect(b.texts).toEqual(['permission:allow']);
+	});
+
+	it('answers cancelled for a session that was closed', async () => {
+		start({ turns: [[permissionStep]] });
+		const asked: string[] = [];
+		const a = await session('/work/a', { requestPermission: async () => (asked.push('a'), { outcome: { outcome: 'selected', optionId: 'allow' } }) });
+		const closedId = a.state.kind === 'ready' ? a.state.sessionId : '';
+		a.client.dispose();
+		expect(runtime!.sessionCount).toBe(0);
+
+		// Prompt the closed session over the shared connection: nobody is asked.
+		const { connection } = await runtime!.newSession('/work/b');
+		expect(await connection.prompt(closedId, [{ type: 'text', text: 'write' }])).toMatchObject({ stopReason: 'end_turn' });
+		expect(asked).toEqual([]);
+		expect(a.texts).toEqual([]);
+	});
+
+	it('authenticates once for sessions that open together', async () => {
+		start({ requireAuth: true, turns: [[{ step: 'auth' }]] });
+		const [a, b] = await Promise.all([session('/work/a'), session('/work/b')]);
+		expect([a.state.kind, b.state.kind]).toEqual(['ready', 'ready']);
+		await a.client.prompt('auth');
+		expect(a.texts).toEqual(['auth:1']);
+	});
+
+	it('opens new sessions for every client after a restart', async () => {
+		const { sidecar } = start({});
+		const a = await session('/work/a');
+		const b = await session('/work/b');
+		expect([a.state, b.state]).toMatchObject([{ sessionId: 'fake-session-1' }, { sessionId: 'fake-session-2' }]);
+
+		const readyAgain = Promise.all([a.client, b.client].map(c => waitFor<AgentClientState>(c.onDidChangeState, s => s.kind === 'ready')));
+		sidecar.stop();
+		sidecar.start();
+		const states = await readyAgain;
+		expect(states.map(s => s.kind === 'ready' && s.sessionId).sort()).toEqual(['fake-session-1', 'fake-session-2']);
+		expect(runtime!.sessionCount).toBe(2);
+	});
+
+	it('reopens the same session after a restart when the agent can load sessions', async () => {
+		const { sidecar } = start({ storedSessions: ['fake-session-1'], turns: [[{ step: 'session' }]] });
+		const a = await session('/work/a');
+		expect(a.state).toMatchObject({ sessionId: 'fake-session-1' });
+
+		const replayed: string[] = [];
+		a.client.onDidReplayEvent(e => e.kind === 'text' && replayed.push(e.text));
+		const readyAgain = waitFor<AgentClientState>(a.client.onDidChangeState, s => s.kind === 'ready');
+		sidecar.stop();
+		sidecar.start();
+		expect(await readyAgain).toMatchObject({ sessionId: 'fake-session-1' });
+		await a.client.prompt('who');
+		// The replayed history comes apart from the turn.
+		expect(replayed).toEqual(['history:fake-session-1']);
+		expect(a.texts).toEqual(['session:fake-session-1:/work/a']);
+	});
+
+	it('holds a prompt sent while the history replays until the replay is over, and keeps the replay out of the turn', async () => {
+		const { sidecar } = start({ storedSessions: ['fake-session-1'], replay: { updates: 6, delayMs: 30 }, turns: [[{ step: 'session' }]] });
+		const a = await session('/work/a', { findSavedSession: async () => ({ replayUpdates: 7 }) });
+		const replayed: string[] = [];
+		a.client.onDidReplayEvent(e => e.kind === 'text' && replayed.push(e.text));
+		const readyAgain = waitFor<AgentClientState>(a.client.onDidChangeState, s => s.kind === 'ready');
+		sidecar.stop();
+		sidecar.start();
+		await readyAgain;
+		// Sent at once, while most of the replay is still to come.
+		await a.client.prompt('who');
+		expect(replayed).toEqual(['history:fake-session-1', 'Part 1', 'Part 2', 'Part 3', 'Part 4', 'Part 5', 'Part 6']);
+		expect(a.texts).toEqual(['session:fake-session-1:/work/a']);
+	});
+
+	it('waits for the whole replay when its length is known, though the agent pauses between updates', async () => {
+		const { sidecar } = start({ storedSessions: ['fake-session-1'], replay: { updates: 3, delayMs: 400 }, turns: [[{ step: 'session' }]] });
+		const a = await session('/work/a', { findSavedSession: async () => ({ replayUpdates: 4 }) });
+		const replayed: string[] = [];
+		a.client.onDidReplayEvent(e => e.kind === 'text' && replayed.push(e.text));
+		const readyAgain = waitFor<AgentClientState>(a.client.onDidChangeState, s => s.kind === 'ready');
+		sidecar.stop();
+		sidecar.start();
+		await readyAgain;
+		await a.client.prompt('who');
+		expect(replayed).toEqual(['history:fake-session-1', 'Part 1', 'Part 2', 'Part 3']);
+		expect(a.texts).toEqual(['session:fake-session-1:/work/a']);
+	});
+
+	it('keeps the newest updates for a session that registers late, dropping the oldest', async () => {
+		start({ earlyUpdates: 5_600 });
+		const client = new AgentClient(runtime!, { cwd: '/work/a', requestPermission: cancelled });
+		clients.push(client);
+		const texts: string[] = [];
+		client.onDidReceiveEvent(e => e.kind === 'text' && texts.push(e.text));
+		await waitFor<AgentClientState>(client.onDidChangeState, s => s.kind === 'ready');
+		expect(texts.length).toBeGreaterThanOrEqual(5_000);
+		expect(texts.length).toBeLessThanOrEqual(5_500);
+		expect(texts.at(-1)).toBe('early 5600');
+		expect(texts[0]).not.toBe('early 1');
+	});
+
+	it('restarts the agent when its stream closes while the process keeps running', async () => {
+		const { spawned } = start({}, undefined, [50]);
+		const a = await session('/work/a');
+		expect(a.state.kind).toBe('ready');
+		const first = spawned[0];
+		const readyAgain = waitFor<AgentClientState>(a.client.onDidChangeState, s => s.kind === 'ready');
+		if (first.kind === 'running') {
+			// As the SDK does on a message over its limit: the stream ends, the process lives on.
+			first.process.stdout.destroy();
+		}
+		await readyAgain;
+		expect(spawned).toHaveLength(2);
+		expect(first.kind === 'running' && first.process.exitCode === null && first.process.signalCode === null).toBe(false);
+	});
+
+	it('records how opening sessions went for the agent\'s status, afresh for each process', async () => {
+		const { sidecar } = start({ newSessionErrors: [{ error: { code: -32000, message: 'This account requires setting the GOOGLE_CLOUD_PROJECT or GOOGLE_CLOUD_PROJECT_ID env var. See https://geminicli.com/docs/get-started/authentication/#set-gcp' } }] });
+		await ready(runtime!);
+		expect(runtime!.sessionHealth).toEqual({ opened: false });
+		const failed = await session('/work/a');
+		expect(failed.state).toMatchObject({ kind: 'error', error: { kind: 'project-id-required' } });
+		expect(runtime!.sessionHealth).toMatchObject({ opened: false, error: { kind: 'project-id-required' } });
+		await session('/work/b');
+		expect(runtime!.sessionHealth).toEqual({ opened: true });
+		sidecar.stop();
+		sidecar.start();
+		await ready(runtime!);
+		expect(runtime!.sessionHealth).toEqual({ opened: false });
+	});
+
+	it('reopens a session from an earlier run on first open', async () => {
+		start({ storedSessions: ['earlier'], turns: [[{ step: 'session' }]] });
+		const a = await session('/work/a', { resumeSessionId: 'earlier' });
+		expect(a.state).toMatchObject({ kind: 'ready', sessionId: 'earlier' });
+		await a.client.prompt('who');
+		expect(a.texts.at(-1)).toBe('session:earlier:/work/a');
+	});
+
+	it('switches a ready chat to a saved session, and says when it could not', async () => {
+		start({ storedSessions: ['earlier'] });
+		const a = await session('/work/a', { findSavedSession: async () => undefined });
+		expect(await a.client.loadSession('earlier')).toBe(true);
+		expect(a.client.state).toMatchObject({ kind: 'ready', sessionId: 'earlier', savedSessionId: 'earlier' });
+		expect(await a.client.loadSession('missing')).toBe(false);
+		expect(a.client.state).toMatchObject({ kind: 'ready', savedSessionId: 'fake-session-2' });
+	});
+
+	it('opens a new session when the agent no longer has the old one', async () => {
+		start({ storedSessions: [] });
+		const a = await session('/work/a', { resumeSessionId: 'gone' });
+		expect(a.state).toMatchObject({ kind: 'ready', sessionId: 'fake-session-1' });
+	});
+
+	it('reopens a session whose folder needs it on a process of the folder\'s own, shared by its sessions and ended once they are gone', async () => {
+		const says = (text: string) => [{ step: 'update' as const, update: { sessionUpdate: 'agent_message_chunk' as const, content: { type: 'text' as const, text } } }];
+		const folders: AgentSidecar[] = [];
+		start({ storedSessions: ['a1', 'b1', 'b2'], turns: [says('shared'), says('shared')] }, {
+			folderProcess: {
+				needed: async cwd => cwd === '/work/b',
+				sidecar: () => {
+					const folder = new AgentSidecar({ command: () => fakeAgentCommand({ storedSessions: ['b1', 'b2'], turns: [says('own'), says('own')] }), cwd: undefined, restartDelaysMs: [] });
+					folders.push(folder);
+					return folder;
+				},
+				idleMs: 50,
+			},
+		});
+		const a = await session('/work/a', { resumeSessionId: 'a1' });
+		const b1 = await session('/work/b', { resumeSessionId: 'b1' });
+		const b2 = await session('/work/b', { resumeSessionId: 'b2' });
+		const fresh = await session('/work/b');
+		for (const each of [a, b1, b2, fresh]) {
+			await each.client.prompt('who');
+		}
+		// A new session reads its own folder's settings: it stays on the shared process.
+		expect({ texts: [a, b1, b2, fresh].map(each => each.texts.at(-1)), folders: folders.length }).toEqual({ texts: ['shared', 'own', 'own', 'shared'], folders: 1 });
+
+		// Its process ending, the session opens again on a new one.
+		folders[0].endProcess((folders[0].state as Extract<SidecarState, { kind: 'running' }>).process);
+		await waitFor<AgentClientState>(b1.client.onDidChangeState, s => s.kind === 'ready');
+		await b1.client.prompt('who');
+		expect({ text: b1.texts.at(-1), folders: folders.length }).toEqual({ text: 'own', folders: 2 });
+
+		// With no session left, the process ends after a while.
+		b1.client.dispose();
+		b2.client.dispose();
+		await waitFor<SidecarState>(folders[1].onDidChangeState, s => s.kind === 'stopped');
+	});
+
+	describe('a folder\'s own process', () => {
+		const says = (text: string) => [{ step: 'update' as const, update: { sessionUpdate: 'agent_message_chunk' as const, content: { type: 'text' as const, text } } }];
+
+		/** The shared process, and one of /work/b's own that restarts `restartDelaysMs` times. */
+		function startWithFolder(restartDelaysMs: number[], options: Partial<ConstructorParameters<typeof AgentRuntime>[1]> = {}) {
+			const folders: AgentSidecar[] = [];
+			start({ storedSessions: ['b1'], turns: [says('shared'), says('shared')] }, {
+				...options,
+				folderProcess: {
+					needed: async cwd => cwd === '/work/b',
+					sidecar: () => {
+						const folder = new AgentSidecar({ command: () => fakeAgentCommand({ storedSessions: ['b1'], turns: [says('own'), says('own')] }), cwd: undefined, restartDelaysMs });
+						folders.push(folder);
+						return folder;
+					},
+					idleMs: 50,
+				},
+			});
+			return folders;
+		}
+
+		async function folderSession() {
+			const b1 = await session('/work/b', { resumeSessionId: 'b1' });
+			const failures: string[] = [];
+			b1.client.onDidFailToReopen(f => failures.push(f.error.message));
+			return { ...b1, failures };
+		}
+
+		function endFolderProcess(folder: AgentSidecar): void {
+			folder.endProcess((folder.state as Extract<SidecarState, { kind: 'running' }>).process);
+		}
+
+		it('reopens the session on the folder\'s process once it has restarted', async () => {
+			const folders = startWithFolder([10]);
+			const b1 = await folderSession();
+			await b1.client.prompt('who');
+			expect(b1.texts.at(-1)).toBe('own');
+			endFolderProcess(folders[0]);
+			await waitFor<SidecarState>(folders[0].onDidChangeState, s => s.kind === 'running');
+			if (b1.client.state.kind !== 'ready') {
+				await waitFor<AgentClientState>(b1.client.onDidChangeState, s => s.kind === 'ready');
+			}
+			await b1.client.prompt('who');
+			expect({ text: b1.texts.at(-1), savedSessionId: b1.client.state.kind === 'ready' && b1.client.state.savedSessionId, failures: b1.failures, folderState: folders[0].state.kind, folderProcesses: folders.length })
+				.toEqual({ text: 'own', savedSessionId: 'b1', failures: [], folderState: 'running', folderProcesses: 1 });
+		});
+
+		it('with no restart budget, as agentService gives it, reopens the session on a fresh process of the folder\'s own', async () => {
+			const folders = startWithFolder([]);
+			const b1 = await folderSession();
+			await b1.client.prompt('who');
+			endFolderProcess(folders[0]);
+			await waitFor<AgentClientState>(b1.client.onDidChangeState, s => s.kind === 'ready');
+			await b1.client.prompt('who');
+			expect({ text: b1.texts.at(-1), savedSessionId: b1.client.state.kind === 'ready' && b1.client.state.savedSessionId, failures: b1.failures, folderStates: folders.map(f => f.state.kind) })
+				.toEqual({ text: 'own', savedSessionId: 'b1', failures: [], folderStates: ['stopped', 'running'] });
+		});
+
+		it('falls back to the shared process when the folder\'s connection cannot be made, rather than waiting for ever', async () => {
+			let loads = 0;
+			const folders = startWithFolder([], {
+				connectionModule: async () => {
+					if (loads++ === 0) {
+						return import('../../src/acp/agentConnection');
+					}
+					throw new Error('the protocol code did not load');
+				},
+			});
+			const b1 = await folderSession();
+			await b1.client.prompt('who');
+			expect({ text: b1.texts.at(-1), state: b1.client.state.kind, folderStates: folders.map(f => f.state.kind) }).toEqual({ text: 'shared', state: 'ready', folderStates: ['stopped'] });
+		});
+
+		it('marks the process that served a prompt healthy, not every process', async () => {
+			const folders = startWithFolder([]);
+			const a = await session('/work/a');
+			const b1 = await folderSession();
+			const marked = { shared: 0, folder: 0 };
+			sidecar!.onDidChangeState(() => undefined);
+			const sharedMark = sidecar!.markHealthy.bind(sidecar);
+			sidecar!.markHealthy = () => { marked.shared++; sharedMark(); };
+			const folderMark = folders[0].markHealthy.bind(folders[0]);
+			folders[0].markHealthy = () => { marked.folder++; folderMark(); };
+			await a.client.prompt('who');
+			expect(marked).toEqual({ shared: 1, folder: 0 });
+			await b1.client.prompt('who');
+			expect(marked).toEqual({ shared: 1, folder: 1 });
+		});
+	});
+
+	it('forgets the folder of a session it failed to reopen', async () => {
+		start({ storedSessions: ['earlier'] });
+		await ready(runtime!);
+		await runtime!.loadSession('/work/a', 'earlier');
+		expect(runtime!.folderOf('earlier')).toBe('/work/a');
+		// The replay starts with another prompt than the one the chat shows: not the session asked for.
+		await expect(runtime!.loadSession('/work/a', 'earlier', 'who are you')).rejects.toThrow(/different session/);
+		expect(runtime!.folderOf('earlier')).toBeUndefined();
+	});
+
+	it('opens a new session when the agent cannot load sessions', async () => {
+		start({});
+		const a = await session('/work/a', { resumeSessionId: 'earlier' });
+		expect(a.state).toMatchObject({ kind: 'ready', sessionId: 'fake-session-1' });
+	});
+
+	it('does not reopen a session the client forgot or replaced', async () => {
+		const { sidecar } = start({ storedSessions: ['fake-session-1'] });
+		const a = await session('/work/a');
+		a.client.forgetSession();
+		const readyAgain = waitFor<AgentClientState>(a.client.onDidChangeState, s => s.kind === 'ready');
+		sidecar.stop();
+		sidecar.start();
+		expect(await readyAgain).toMatchObject({ sessionId: 'fake-session-1' });
+		// A new process numbers sessions from 1 again; no history replay shows it is a new one.
+		expect(a.texts).toEqual([]);
+	});
+
+	it('serves a session from its own file handlers', async () => {
+		const root = path.resolve(tmpdir());
+		const file = path.join(root, 'a.ts');
+		const shared = createFileHandlers({ readTextFile: async () => 'shared', writeTextFile: async () => undefined }, () => ({ roots: [root] }));
+		const own = createFileHandlers({ readTextFile: async () => 'own', writeTextFile: async () => undefined }, () => ({ roots: [root] }));
+		start({ turns: [[{ step: 'readFile', path: file }], [{ step: 'readFile', path: file }]] }, { fileSystem: shared });
+		const a = await session(root);
+		const b = await session(root, { fileSystem: own });
+		await a.client.prompt('read');
+		await b.client.prompt('read');
+		expect(a.texts).toEqual(['read:shared']);
+		expect(b.texts).toEqual(['read:own']);
+	});
+
+	async function ready(runtime: AgentRuntime): Promise<void> {
+		if (runtime.state.kind !== 'ready') {
+			await waitFor(runtime.onDidChangeState, s => s.kind === 'ready');
+		}
+	}
+
+	it('gives a session prepared ahead to the next chat in the same folder', async () => {
+		start({ turns: [[{ step: 'session' }]] });
+		await ready(runtime!);
+		runtime!.prepareSession('/work/a');
+		runtime!.prepareSession('/work/a');
+		const b = await session('/work/b');
+		const a = await session('/work/a');
+		// Two sessions in all: a took the one prepared for it rather than opening a third. Which of
+		// the two the fake numbers first depends on whose session/new reaches it first.
+		const ids = [a.state, b.state].map(state => state.kind === 'ready' ? state.sessionId : state.kind);
+		expect([...ids].sort()).toEqual(['fake-session-1', 'fake-session-2']);
+		await a.client.prompt('who');
+		expect(a.texts).toEqual([`session:${ids[0]}:/work/a`]);
+	});
+
+	it('closes a spare it replaces when the agent can close sessions', async () => {
+		start({ initialize: { agentCapabilities: { sessionCapabilities: { close: {} } } }, turns: [[{ step: 'closed' }]] });
+		await ready(runtime!);
+		runtime!.prepareSession('/work/a', [], 'agent:/work/a:no-tools');
+		runtime!.prepareSession('/work/a', [], 'agent:/work/a:tools');
+		const a = await session('/work/a', { spareKey: () => 'agent:/work/a:tools' });
+		expect(a.state).toMatchObject({ kind: 'ready', sessionId: 'fake-session-2' });
+		// The old spare is closed once it has opened, which may be after the new chat started.
+		await new Promise(resolve => setTimeout(resolve, 150));
+		await a.client.prompt('which');
+		expect(a.texts).toEqual(['closed:fake-session-1']);
+	});
+
+	it('closes the sessions a chat leaves: the old one after a new session, and its own when it goes', async () => {
+		start({ initialize: { agentCapabilities: { sessionCapabilities: { close: {} } } }, turns: [[{ step: 'closed' }], [{ step: 'closed' }]] });
+		await ready(runtime!);
+		const a = await session('/work/a');
+		const b = await session('/work/b');
+		await a.client.newSession();
+		b.client.dispose();
+		await new Promise(resolve => setTimeout(resolve, 150));
+		await a.client.prompt('which');
+		expect(a.texts).toEqual(['closed:fake-session-1,fake-session-2']);
+	});
+
+	it('forgets the folder of a session its chat closed', async () => {
+		start({});
+		await ready(runtime!);
+		const a = await session('/work/a');
+		const b = await session('/work/b');
+		const [first, second] = [(a.state as { sessionId: string }).sessionId, (b.state as { sessionId: string }).sessionId];
+		const before = [runtime!.folderOf(first), runtime!.folderOf(second)];
+		a.client.dispose();
+		expect([before, runtime!.folderOf(first), runtime!.folderOf(second)]).toEqual([['/work/a', '/work/b'], undefined, '/work/b']);
+	});
+
+	it('does not give a prepared session to a chat with other servers', async () => {
+		start({});
+		await ready(runtime!);
+		runtime!.prepareSession('/work/a', [{ name: 'browser', command: 'x', args: [], env: [] }]);
+		const a = await session('/work/a');
+		expect(a.state).toMatchObject({ kind: 'ready', sessionId: 'fake-session-2' });
+	});
+
+	it('gives a spare prepared with a key to any chat with that key, with the spare\'s own servers', async () => {
+		start({});
+		await ready(runtime!);
+		const spareServers = [{ type: 'http' as const, name: 'browser', url: 'http://127.0.0.1:1/mcp/slot-1', headers: [] }];
+		runtime!.prepareSession('/work/a', spareServers, 'agent:/work/a');
+		expect(runtime!.spareKey).toBe('agent:/work/a');
+		const opened: unknown[] = [];
+		const a = await session('/work/a', {
+			mcpServers: () => [{ type: 'http', name: 'browser', url: 'http://127.0.0.1:1/mcp/a1', headers: [] }],
+			spareKey: () => 'agent:/work/a',
+			onDidOpenSession: servers => opened.push(servers),
+		});
+		expect(a.state).toMatchObject({ kind: 'ready', sessionId: 'fake-session-1' });
+		expect(opened).toEqual([spareServers]);
+		expect(runtime!.spareKey).toBeUndefined();
+	});
+
+	it('opens a chat made to open later only when asked', async () => {
+		start({});
+		await ready(runtime!);
+		const client = new AgentClient(runtime!, { cwd: '/work/a', requestPermission: cancelled, openLater: true });
+		clients.push(client);
+		await new Promise(resolve => setTimeout(resolve, 50));
+		expect(client.state.kind).toBe('connecting');
+		expect(runtime!.sessionCount).toBe(0);
+		const opened = waitFor<AgentClientState>(client.onDidChangeState, s => s.kind === 'ready');
+		client.open();
+		expect(await opened).toMatchObject({ sessionId: 'fake-session-1' });
+	});
+});

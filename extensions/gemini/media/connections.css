@@ -1,0 +1,338 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Pulkit Jain. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+/* The Connections page (webview-src/connections.ts), on top of panels.css's settings styles. */
+
+.connections {
+	max-width: 900px;
+}
+
+.tool-tile {
+	display: flex;
+	flex: none;
+	align-items: center;
+	justify-content: center;
+	width: 34px;
+	height: 34px;
+	border-radius: var(--gemini-radius-small);
+	background: var(--gemini-card);
+	border: 1px solid var(--gemini-border);
+}
+
+.connections .tool-row {
+	align-items: flex-start;
+	padding: 16px 16px;
+}
+
+/* The tool's logo, bare, at the row's start. */
+.tool-mark {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	margin-top: -1px;
+}
+
+.connections .tool-row.not-connected .tool-mark {
+	opacity: 0.45;
+	filter: grayscale(1);
+}
+
+.connections .tool-row .row-title {
+	flex-wrap: wrap;
+	gap: 6px 8px;
+}
+
+.connections .tool-row .row-detail + .row-detail {
+	margin-top: 2px;
+}
+
+/* Jira's other sites, each with its own token, under the Jira row. */
+.site-rows {
+	margin-top: 8px;
+	border: 1px solid var(--gemini-border);
+	border-radius: var(--gemini-radius-small);
+	overflow: hidden;
+}
+
+.site-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-height: var(--gc-row);
+	box-sizing: border-box;
+	padding: 8px 8px;
+}
+
+.site-row + .site-row {
+	border-top: 1px solid var(--gemini-border);
+}
+
+.site-row .row-title {
+	flex-wrap: wrap;
+	gap: 6px 8px;
+}
+
+/* Confluence's Connect dialog: one choice per Jira site. */
+.choice-list {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.choice {
+	display: flex;
+	align-items: flex-start;
+	gap: 10px;
+	padding: 8px 12px;
+	border: 1px solid var(--gemini-border);
+	border-radius: var(--gemini-radius-small);
+	cursor: pointer;
+}
+
+.choice:has(input:checked) {
+	border-color: var(--gemini-accent);
+	background: color-mix(in srgb, var(--gemini-accent) 10%, transparent);
+}
+
+.choice.off {
+	opacity: 0.6;
+	cursor: default;
+}
+
+.choice input {
+	margin: 4px 0 0;
+	accent-color: var(--gemini-accent);
+}
+
+.choice-text {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.choice-problem {
+	color: var(--gemini-error);
+	font-size: var(--gc-text-sm);
+}
+
+/* The repository's own Jira and GitLab servers: a card with a warm hairline, above the tools. */
+.team-servers {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	margin-top: 24px;
+	padding: 12px 16px;
+	border: 1px solid color-mix(in srgb, var(--gemini-warn) 45%, transparent);
+	border-radius: var(--gemini-radius);
+	background: var(--gemini-card);
+}
+
+.team-servers h2 {
+	font-size: var(--gc-text-md);
+}
+
+.team-servers .hint {
+	font-size: var(--gc-text-sm);
+}
+
+.team-server-list {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	font-size: var(--gc-text-sm);
+	color: var(--gemini-muted);
+}
+
+.team-server-list strong {
+	color: var(--vscode-foreground);
+}
+
+.team-server-list .mono {
+	font-size: var(--gc-text-xs);
+}
+
+.connections .tool-row .row-detail {
+	white-space: normal;
+}
+
+.row-actions {
+	display: flex;
+	flex: none;
+	align-items: center;
+	gap: 6px;
+}
+
+/* The quiet button and the state pill are tokens.css's. */
+.state-dot {
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: currentColor;
+}
+
+.permission-logos {
+	display: inline-flex;
+	gap: 4px;
+}
+
+.permission-row .tag {
+	flex: none;
+}
+
+.allowlist-note {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin-top: 24px;
+	padding: 8px 12px;
+	border: 1px solid color-mix(in srgb, var(--gemini-warn) 45%, transparent);
+	border-radius: var(--gemini-radius);
+	background: color-mix(in srgb, var(--gemini-warn) 8%, transparent);
+}
+
+.allowlist-text {
+	display: flex;
+	flex: 1;
+	gap: 8px;
+	line-height: var(--gc-leading-row);
+}
+
+.allowlist-text .codicon {
+	margin-top: 2px;
+	color: var(--gemini-warn);
+}
+
+.settings .hint a {
+	color: var(--vscode-textLink-foreground);
+}
+
+/* The Connect dialog: part of the page, never a native one. */
+
+.dialog-backdrop {
+	position: fixed;
+	inset: 0;
+	z-index: 10;
+	display: flex;
+	align-items: flex-start;
+	justify-content: center;
+	padding: 48px 16px;
+	background: color-mix(in srgb, var(--vscode-editor-background) 55%, transparent);
+}
+
+.dialog {
+	width: min(560px, 100%);
+	border: var(--gc-hairline);
+	border-radius: var(--gc-radius-overlay);
+	background: var(--gemini-popover);
+	box-shadow: var(--gc-shadow);
+}
+
+.dialog-head {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 16px 24px 8px;
+}
+
+.dialog-head h2 {
+	flex: 1;
+	margin: 0;
+	font-size: var(--gc-text-lg);
+	font-weight: var(--gc-weight-semibold);
+}
+
+.dialog-body {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+	padding: 8px 24px 16px;
+}
+
+.dialog-field {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.field-label {
+	font-weight: var(--gc-weight-semibold);
+}
+
+.field-box {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-top: 4px;
+	padding: 0 8px 0 8px;
+	border: 1px solid var(--gemini-border-strong);
+	border-radius: var(--gemini-radius-small);
+	background: var(--vscode-input-background);
+}
+
+.field-box:focus-within {
+	border-color: var(--vscode-focusBorder);
+}
+
+.field-box input {
+	flex: 1;
+	min-width: 0;
+	padding: 8px 0;
+	border: none;
+	/* The field's box shows focus; no ring of its own (tokens.css) inside it. */
+	outline: none;
+	box-shadow: none;
+	background: none;
+	color: var(--vscode-input-foreground);
+	font-family: inherit;
+	font-size: var(--gc-text-md);
+}
+
+.dialog-result {
+	display: flex;
+	gap: 6px;
+	min-height: 18px;
+	margin-top: -8px;
+}
+
+.dialog-result:empty {
+	display: none;
+}
+
+.dialog-result.checking {
+	color: var(--gemini-muted);
+}
+
+.dialog-result.error {
+	color: var(--gemini-error);
+}
+
+.keychain-note {
+	display: flex;
+	gap: 8px;
+	padding: 8px 12px;
+	border-radius: var(--gemini-radius-small);
+	background: var(--gemini-card);
+	color: var(--gemini-muted);
+	line-height: var(--gc-leading-row);
+}
+
+.keychain-note .codicon {
+	margin-top: 2px;
+}
+
+.dialog-foot {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 12px 24px;
+	border-top: 1px solid var(--gemini-border);
+}
+
+.dialog-foot .spacer {
+	flex: 1;
+}

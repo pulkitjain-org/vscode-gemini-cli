@@ -19,6 +19,8 @@ import { IInstantiationService } from '../../../../platform/instantiation/common
 import { Lazy } from '../../../../base/common/lazy.js';
 import { createNativeAboutDialogDetails } from '../../../../platform/dialogs/electron-browser/dialog.js';
 import { IWorkbenchEnvironmentService } from '../../../services/environment/common/environmentService.js';
+import { raceTimeout } from '../../../../base/common/async.js';
+import { ICommandService } from '../../../../platform/commands/common/commands.js';
 
 export class DialogHandlerContribution extends Disposable implements IWorkbenchContribution {
 
@@ -39,6 +41,7 @@ export class DialogHandlerContribution extends Disposable implements IWorkbenchC
 		@IClipboardService clipboardService: IClipboardService,
 		@INativeHostService private nativeHostService: INativeHostService,
 		@IWorkbenchEnvironmentService private environmentService: IWorkbenchEnvironmentService,
+		@ICommandService private commandService: ICommandService, // GEMINI-FORK: the Gemini CLI version in the About dialog
 	) {
 		super();
 
@@ -87,7 +90,12 @@ export class DialogHandlerContribution extends Disposable implements IWorkbenchC
 
 				// About
 				else {
-					const aboutDialogDetails = createNativeAboutDialogDetails(this.productService, await this.nativeHostService.getOSProperties());
+					// GEMINI-FORK: ask the Gemini extension which CLI is in use; never hold the dialog for long on it.
+					const [osProperties, geminiCliVersion] = await Promise.all([
+						this.nativeHostService.getOSProperties(),
+						raceTimeout(this.commandService.executeCommand<string>('_gemini.cliVersion').catch(() => undefined), 500)
+					]);
+					const aboutDialogDetails = createNativeAboutDialogDetails(this.productService, osProperties, typeof geminiCliVersion === 'string' ? geminiCliVersion : undefined);
 
 					if (this.useCustomDialog) {
 						await this.browserImpl.value.about(aboutDialogDetails.title, aboutDialogDetails.details, aboutDialogDetails.detailsToCopy);

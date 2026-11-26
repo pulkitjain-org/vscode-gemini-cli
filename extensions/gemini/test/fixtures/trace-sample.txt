@@ -1,0 +1,289 @@
+{
+  "name": "llm_call",
+  "startTime": [
+    1792306816,
+    699000000
+  ],
+  "endTime": [
+    1792306816,
+    928154891
+  ],
+  "attributes": {
+    "gen_ai.request.model": "gemini-3.5-flash-lite",
+    "gen_ai.prompt.name": "classifier-router-fallback-1792306816696-bda894b938607",
+    "gen_ai.conversation.id": "db161a59-0741-4cd6-86b0-db7891fc87cd",
+    "gen_ai.usage.input_tokens": 0,
+    "gen_ai.usage.output_tokens": 0
+  }
+}
+{
+  "name": "llm_call",
+  "startTime": [
+    1792306816,
+    966000000
+  ],
+  "endTime": [
+    1792306817,
+    188302730
+  ],
+  "attributes": {
+    "gen_ai.request.model": "gemini-3.1-pro-preview",
+    "gen_ai.prompt.name": "8f4e20afbceea",
+    "gen_ai.conversation.id": "db161a59-0741-4cd6-86b0-db7891fc87cd",
+    "gen_ai.usage.input_tokens": 1,
+    "gen_ai.usage.output_tokens": 1
+  }
+}
+{
+  "name": "llm_call",
+  "startTime": [
+    1792306817,
+    195000000
+  ],
+  "endTime": [
+    1792306817,
+    406856566
+  ],
+  "attributes": {
+    "gen_ai.request.model": "gemini-3-flash-preview",
+    "gen_ai.prompt.name": "b6a2fb75ae283",
+    "gen_ai.conversation.id": "e2ae3bbb-3b52-48bb-8030-1b5f51738e69",
+    "gen_ai.usage.input_tokens": 1,
+    "gen_ai.usage.output_tokens": 1
+  }
+}
+{
+  "hrTime": [
+    1792306816,
+    645000000
+  ],
+  "attributes": {
+    "session.id": "db161a59-0741-4cd6-86b0-db7891fc87cd",
+    "interactive": true,
+    "auth_type": "gemini-api-key",
+    "event.name": "gemini_cli.startup_stats",
+    "event.timestamp": "2026-10-18T07:00:16.643Z",
+    "phases": "[{\"name\":\"load_settings\",\"duration_ms\":9,\"cpu_usage_user_usec\":9862,\"cpu_usage_system_usec\":0,\"start_time_usec\":1792306816317942,\"end_time_usec\":1792306816326677},{\"name\":\"cleanup_ops\",\"duration_ms\":236,\"cpu_usage_user_usec\":255461,\"cpu_usage_system_usec\":24504,\"start_time_usec\":1792306816326905,\"end_time_usec\":1792306816562533},{\"name\":\"parse_arguments\",\"duration_ms\":27,\"cpu_usage_user_usec\":23658,\"cpu_usage_system_usec\":3733,\"start_time_usec\":1792306816328512,\"end_time_usec\":1792306816355701},{\"name\":\"load_cli_config\",\"duration_ms\":25,\"cpu_usage_user_usec\":29445,\"cpu_usage_system_usec\":130,\"start_time_usec\":1792306816452644,\"end_time_usec\":1792306816477779},{\"name\":\"setup_terminal\",\"duration_ms\":1,\"cpu_usage_user_usec\":577,\"cpu_usage_system_usec\":76,\"start_time_usec\":1792306816485234,\"end_time_usec\":1792306816485910},{\"name\":\"initialize_app\",\"duration_ms\":3,\"cpu_usage_user_usec\":3244,\"cpu_usage_system_usec\":88,\"start_time_usec\":1792306816485977,\"end_time_usec\":1792306816489256},{\"name\":\"authenticate\",\"duration_ms\":1,\"cpu_usage_user_usec\":542,\"cpu_usage_system_usec\":72,\"start_time_usec\":1792306816486114,\"end_time_usec\":1792306816486705},{\"name\":\"discover_tools\",\"duration_ms\":23,\"cpu_usage_user_usec\":2698,\"cpu_usage_system_usec\":0,\"start_time_usec\":1792306816500030,\"end_time_usec\":1792306816523156}]",
+    "os_platform": "linux",
+    "os_release": "6.18.44-fc-v139",
+    "is_docker": false
+  },
+  "_body": "Startup stats: 8 phases recorded."
+}
+{
+  "hrTime": [
+    1792306816,
+    685000000
+  ],
+  "attributes": {
+    "session.id": "e2ae3bbb-3b52-48bb-8030-1b5f51738e69",
+    "interactive": true,
+    "auth_type": "gemini-api-key",
+    "event.name": "gemini_cli.startup_stats",
+    "event.timestamp": "2026-10-18T07:00:16.685Z",
+    "phases": "[{\"name\":\"discover_tools\",\"duration_ms\":2,\"cpu_usage_user_usec\":1759,\"cpu_usage_system_usec\":246,\"start_time_usec\":1792306816673645,\"end_time_usec\":1792306816675645}]",
+    "os_platform": "linux",
+    "os_release": "6.18.44-fc-v139",
+    "is_docker": false
+  },
+  "_body": "Startup stats: 1 phases recorded."
+}
+{
+  "hrTime": [
+    1792306816,
+    701000000
+  ],
+  "attributes": {
+    "session.id": "db161a59-0741-4cd6-86b0-db7891fc87cd",
+    "interactive": true,
+    "auth_type": "gemini-api-key",
+    "event.name": "gemini_cli.api_request",
+    "event.timestamp": "2026-10-18T07:00:16.700Z",
+    "model": "gemini-3.5-flash-lite",
+    "prompt_id": "classifier-router-fallback-1792306816696-bda894b938607",
+    "role": "utility_router"
+  },
+  "_body": "API request to gemini-3.5-flash-lite."
+}
+{
+  "hrTime": [
+    1792306816,
+    926000000
+  ],
+  "attributes": {
+    "session.id": "db161a59-0741-4cd6-86b0-db7891fc87cd",
+    "interactive": true,
+    "auth_type": "gemini-api-key",
+    "event.name": "gemini_cli.api_response",
+    "event.timestamp": "2026-10-18T07:00:16.925Z",
+    "model": "gemini-3.5-flash-lite",
+    "duration_ms": 225,
+    "input_token_count": 0,
+    "output_token_count": 0,
+    "cached_content_token_count": 0,
+    "thoughts_token_count": 0,
+    "tool_token_count": 0,
+    "total_token_count": 0,
+    "prompt_id": "classifier-router-fallback-1792306816696-bda894b938607",
+    "status_code": 200,
+    "finish_reasons": [
+      "stop"
+    ],
+    "role": "utility_router",
+    "http.status_code": 200
+  },
+  "_body": "API response from gemini-3.5-flash-lite. Status: 200. Duration: 225ms."
+}
+{
+  "hrTime": [
+    1792306816,
+    959000000
+  ],
+  "attributes": {
+    "session.id": "db161a59-0741-4cd6-86b0-db7891fc87cd",
+    "interactive": true,
+    "auth_type": "gemini-api-key",
+    "event.name": "gemini_cli.model_routing",
+    "event.timestamp": "2026-10-18T07:00:16.958Z",
+    "decision_model": "gemini-3.1-pro-preview",
+    "decision_source": "agent-router/default",
+    "routing_latency_ms": 263,
+    "failed": false,
+    "approval_mode": "default",
+    "reasoning": "Routing to default model: gemini-3.1-pro-preview",
+    "enable_numerical_routing": true,
+    "classifier_threshold": "90"
+  },
+  "_body": "Model routing decision. Model: gemini-3.1-pro-preview, Source: agent-router/default"
+}
+{
+  "hrTime": [
+    1792306816,
+    966000000
+  ],
+  "attributes": {
+    "session.id": "db161a59-0741-4cd6-86b0-db7891fc87cd",
+    "interactive": true,
+    "auth_type": "gemini-api-key",
+    "event.name": "gemini_cli.api_request",
+    "event.timestamp": "2026-10-18T07:00:16.966Z",
+    "model": "gemini-3.1-pro-preview",
+    "prompt_id": "8f4e20afbceea",
+    "role": "main"
+  },
+  "_body": "API request to gemini-3.1-pro-preview."
+}
+{
+  "hrTime": [
+    1792306817,
+    187000000
+  ],
+  "attributes": {
+    "session.id": "db161a59-0741-4cd6-86b0-db7891fc87cd",
+    "interactive": true,
+    "auth_type": "gemini-api-key",
+    "event.name": "gemini_cli.api_response",
+    "event.timestamp": "2026-10-18T07:00:17.186Z",
+    "model": "gemini-3.1-pro-preview",
+    "duration_ms": 220,
+    "input_token_count": 1,
+    "output_token_count": 1,
+    "cached_content_token_count": 0,
+    "thoughts_token_count": 0,
+    "tool_token_count": 0,
+    "total_token_count": 2,
+    "prompt_id": "8f4e20afbceea",
+    "status_code": 200,
+    "finish_reasons": [
+      "stop"
+    ],
+    "role": "main",
+    "http.status_code": 200
+  },
+  "_body": "API response from gemini-3.1-pro-preview. Status: 200. Duration: 220ms."
+}
+{
+  "hrTime": [
+    1792306817,
+    192000000
+  ],
+  "attributes": {
+    "session.id": "e2ae3bbb-3b52-48bb-8030-1b5f51738e69",
+    "interactive": true,
+    "auth_type": "gemini-api-key",
+    "event.name": "gemini_cli.model_routing",
+    "event.timestamp": "2026-10-18T07:00:17.191Z",
+    "decision_model": "gemini-3-flash-preview",
+    "decision_source": "agent-router/override",
+    "routing_latency_ms": 0,
+    "failed": false,
+    "approval_mode": "default",
+    "reasoning": "Routing bypassed by forced model directive. Using: gemini-3-flash-preview",
+    "enable_numerical_routing": true,
+    "classifier_threshold": "90"
+  },
+  "_body": "Model routing decision. Model: gemini-3-flash-preview, Source: agent-router/override"
+}
+{
+  "hrTime": [
+    1792306817,
+    195000000
+  ],
+  "attributes": {
+    "session.id": "e2ae3bbb-3b52-48bb-8030-1b5f51738e69",
+    "interactive": true,
+    "auth_type": "gemini-api-key",
+    "event.name": "gemini_cli.api_request",
+    "event.timestamp": "2026-10-18T07:00:17.195Z",
+    "model": "gemini-3-flash-preview",
+    "prompt_id": "b6a2fb75ae283",
+    "role": "main"
+  },
+  "_body": "API request to gemini-3-flash-preview."
+}
+{
+  "hrTime": [
+    1792306817,
+    406000000
+  ],
+  "attributes": {
+    "session.id": "e2ae3bbb-3b52-48bb-8030-1b5f51738e69",
+    "interactive": true,
+    "auth_type": "gemini-api-key",
+    "event.name": "gemini_cli.api_response",
+    "event.timestamp": "2026-10-18T07:00:17.405Z",
+    "model": "gemini-3-flash-preview",
+    "duration_ms": 210,
+    "input_token_count": 1,
+    "output_token_count": 1,
+    "cached_content_token_count": 0,
+    "thoughts_token_count": 0,
+    "tool_token_count": 0,
+    "total_token_count": 2,
+    "prompt_id": "b6a2fb75ae283",
+    "status_code": 200,
+    "finish_reasons": [
+      "stop"
+    ],
+    "role": "main",
+    "http.status_code": 200
+  },
+  "_body": "API response from gemini-3-flash-preview. Status: 200. Duration: 210ms."
+}
+{
+  "hrTime": [
+    1792306818,
+    100000000
+  ],
+  "attributes": {
+    "event.name": "gemini_cli.tool_call",
+    "event.timestamp": "2026-10-18T07:00:18.100Z",
+    "session.id": "e2ae3bbb-3b52-48bb-8030-1b5f51738e69",
+    "function_name": "run_shell_command",
+    "duration_ms": 19800,
+    "success": true,
+    "decision": "accept",
+    "prompt_id": "b6a2fb75ae283"
+  },
+  "_body": "Tool call: run_shell_command. Decision: accept. Success: true. Duration: 19800ms."
+}

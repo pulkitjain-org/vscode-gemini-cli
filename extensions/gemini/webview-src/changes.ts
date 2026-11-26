@@ -1,0 +1,218 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Pulkit Jain. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+// Agents mode's Changes panel (src/host/changesPanel.ts): the agent's changed
+// files, each with its changes as a unified diff and Keep and Undo on each.
+
+import type { ChangedFileView, ChangesPanelView, FromChangesPanel, ToChangesPanel, VerifyView } from '../src/host/panelProtocol';
+import type { ChangesPanelStrings } from '../src/host/panelStrings';
+import { button, el, format, icon, pageStrings } from './panelDom';
+import { renderTeam } from './mrPanel';
+import { setTip } from './tooltip';
+import type { TryChoiceMenu } from './tryChoiceMenu';
+
+declare function acquireVsCodeApi(): { postMessage(message: FromChangesPanel): void; getState(): unknown; setState(state: unknown): void };
+
+const vscode = acquireVsCodeApi();
+const strings = pageStrings<ChangesPanelStrings>();
+const bar = document.getElementById('bar')!;
+const list = document.getElementById('files')!;
+/**
+ * Files the user folded, and new files the user unfolded, by path; kept across
+ * updates and reloads. A new file starts folded: its lines are all additions,
+ * and the file itself is a click away. An edited file starts unfolded.
+ */
+const saved = vscode.getState() as unknown;
+const folded = new Set<string>(Array.isArray(saved) ? saved as string[] : (saved as { folded?: string[] } | undefined)?.folded ?? []);
+const unfolded = new Set<string>((saved as { unfolded?: string[] } | undefined)?.unfolded ?? []);
+
+function isFolded(file: ChangedFileView): boolean {
+	return folded.has(file.path) || !!file.created && !unfolded.has(file.path);
+}
+
+type ChangesMenuModule = typeof import('./changesMenu');
+const changesMenuUrl = document.querySelector<HTMLScriptElement>('script[data-changes-menu]')?.dataset.changesMenu;
+/** The Try chevron's menu, a chunk of its own loaded on the first click. */
+let tryMenu: Promise<TryChoiceMenu> | undefined;
+
+function post(message: FromChangesPanel): void {
+	vscode.postMessage(message);
+}
+
+function render(view: ChangesPanelView): void {
+	bar.replaceChildren();
+	list.replaceChildren();
+	if (!view.agent) {
+		list.append(el('p', 'empty', strings.noAgent));
+		return;
+	}
+	if (view.team) {
+		list.append(renderTeam(view.team, post));
+	}
+	if (view.verify) {
+		list.append(renderVerify(view.verify));
+	}
+	if (!view.files.length) {
+		// Once a merge request is open, its panel takes the empty list's place.
+		if (!view.team?.mr) {
+			list.append(el('p', 'empty', strings.empty));
+		}
+		return;
+	}
+	const counts = el('span', 'counts');
+	counts.append(
+		el('span', 'files', format(view.files.length === 1 ? strings.oneFile : strings.files, view.files.length)),
+		el('span', 'added', `+${view.totals.added}`),
+		el('span', 'removed', `\u2212${view.totals.removed}`),
+	);
+	const actions = el('span', 'actions');
+	actions.append(
+		tip(button('icon-button', '', () => post({ type: 'openAll' }), 'diff-multiple', strings.openAll), strings.openAll),
+		button('secondary', strings.undoAll, () => post({ type: 'undoAll' })),
+		button('secondary', strings.keepAll, () => post({ type: 'keepAll' })),
+	);
+	if (view.agent.trying) {
+		actions.append(
+			tip(button('secondary', strings.takeBack, () => post({ type: 'takeBack' }), 'discard'), strings.takeBackTip),
+			tip(button('primary', strings.keepChanges, () => post({ type: 'keepTried' }), 'check'), strings.keepChangesTip),
+		);
+	} else if (view.agent.branch) {
+		const choice = view.agent.tryChoice;
+		const [label, hint, iconName] = choice === 'merge' ? [strings.mergeBack, strings.mergeBackTip, 'git-merge'] : choice === 'mr' ? [strings.openMr, strings.openMrTip, 'git-pull-request'] : [strings.tryIn, strings.tryInTip, 'beaker'];
+		const agent = view.agent;
+		const menu = button('primary try-menu', '', () => {
+			// eslint-disable-next-line eslint-js/no-restricted-syntax
+			tryMenu ??= (changesMenuUrl ? import(/* webpackIgnore: true */ changesMenuUrl) as Promise<ChangesMenuModule> : Promise.reject(new Error('no menu'))).then(module => module.createChangesMenu(strings.tryChoices, setTip));
+			void tryMenu.then(loaded => loaded.toggle(menu, agent.tryChoice ?? 'try', !!agent.mergeRequests, choice => post({ type: 'tryChoice', choice })));
+		}, 'chevron-down');
+		menu.setAttribute('aria-label', strings.tryMenu);
+		actions.append(tip(button('primary', label, () => post({ type: 'mergeBack' }), iconName), hint), tip(menu, strings.tryMenuTip));
+	} else {
+		const commit = button('primary', strings.commit, () => post({ type: 'commit' }), 'git-commit');
+		commit.disabled = !view.agent.canCommit;
+		if (view.agent.busy) {
+			setTip(commit, strings.working);
+		}
+		actions.append(commit);
+	}
+	bar.append(counts, actions);
+	for (const file of view.files) {
+		list.append(renderFile(file));
+	}
+}
+
+/** The repository's checks on the agent's work: the last result, and what to do about it. Every word is the host's. */
+function renderVerify(view: VerifyView): HTMLElement {
+	const card = el('section', `verify-card ${view.state}`);
+	const head = el('div', 'verify-head');
+	head.append(icon(view.state === 'passed' ? 'pass' : view.state === 'running' ? 'loading' : view.state === 'none' ? 'beaker' : 'error', view.state === 'running' ? 'codicon-modifier-spin' : ''), el('span', 'verify-text', view.text));
+	card.append(head);
+	if (view.detail) {
+		card.append(el('p', 'verify-detail', view.detail));
+	}
+	const actions = el('div', 'verify-actions');
+	for (const action of view.actions) {
+		const act = button(action.id === 'send' ? 'primary' : 'secondary', action.label, () => post({ type: 'verify', action: action.id }));
+		actions.append(action.tip ? tip(act, action.tip) : act);
+	}
+	const goal = el('label', 'verify-goal');
+	const box = el('input');
+	box.type = 'checkbox';
+	box.checked = view.goal.on;
+	box.addEventListener('change', () => post({ type: 'verify', action: 'goal' }));
+	goal.append(box, view.goal.label);
+	actions.append(tip(goal, view.goal.tip));
+	card.append(actions);
+	return card;
+}
+
+function renderFile(file: ChangedFileView): HTMLElement {
+	const section = el('section', 'file');
+	const header = el('div', 'file-header');
+	// The name is the button that folds the file, so Open, Undo and Keep beside it are not controls inside a control.
+	const name = el('button', 'file-name');
+	name.type = 'button';
+	name.setAttribute('aria-expanded', String(!isFolded(file)));
+	const toggle = () => {
+		if (isFolded(file)) {
+			folded.delete(file.path);
+			unfolded.add(file.path);
+		} else {
+			folded.add(file.path);
+			unfolded.delete(file.path);
+		}
+		vscode.setState({ folded: [...folded], unfolded: [...unfolded] });
+		section.classList.toggle('folded', isFolded(file));
+		name.setAttribute('aria-expanded', String(!isFolded(file)));
+	};
+	// The whole header folds it with the pointer; the buttons in it stop their clicks before they get here.
+	header.addEventListener('click', toggle);
+	name.addEventListener('click', e => {
+		e.stopPropagation();
+		toggle();
+	});
+	const label = el('span', 'name', file.name);
+	// The name may be cut in a narrow panel.
+	setTip(label, file.name);
+	name.append(icon('chevron-down'), label);
+	if (file.dir) {
+		const dir = el('span', 'dir', file.dir);
+		setTip(dir, file.dir);
+		name.append(dir);
+	}
+	if (file.created) {
+		name.append(el('span', 'tag', strings.newFile));
+	}
+	const counts = el('span', 'counts');
+	counts.append(el('span', 'added', `+${file.added}`), el('span', 'removed', `\u2212${file.removed}`));
+	const actions = el('span', 'file-actions');
+	actions.append(
+		tip(button('icon-button', '', () => post({ type: 'openFile', path: file.path }), 'go-to-file', strings.openFile), strings.openFile),
+		tip(button('icon-button', '', () => post({ type: 'undoFile', path: file.path }), 'discard', strings.undoFile), strings.undoFile),
+		tip(button('icon-button', '', () => post({ type: 'keepFile', path: file.path }), 'check', strings.keepFile), strings.keepFile),
+	);
+	header.append(name, counts, actions);
+	section.append(header);
+	section.classList.toggle('folded', isFolded(file));
+	const body = el('div', 'file-body');
+	if (!file.hunks) {
+		body.append(el('p', 'note', strings.noDiff));
+	}
+	for (const hunk of file.hunks ?? []) {
+		const block = el('div', 'hunk');
+		const code = el('div', 'hunk-lines');
+		for (const line of hunk.lines) {
+			const row = el('div', `line ${line.kind}`);
+			row.append(el('span', 'sign', line.kind === 'add' ? '+' : line.kind === 'del' ? '\u2212' : ' '), el('span', 'text', line.text || ' '));
+			code.append(row);
+		}
+		if (hunk.hidden) {
+			code.append(el('div', 'line more', format(strings.hiddenLines, hunk.hidden)));
+		}
+		const hunkActions = el('div', 'hunk-actions');
+		hunkActions.append(
+			button('chip', strings.undo, () => post({ type: 'undo', path: file.path, index: hunk.index }), 'discard'),
+			button('chip', strings.keep, () => post({ type: 'keep', path: file.path, index: hunk.index }), 'check'),
+		);
+		block.append(code, hunkActions);
+		body.append(block);
+	}
+	section.append(body);
+	return section;
+}
+
+/** Gives `node` a themed tooltip in place of the native one; the label stays what screen readers read. */
+function tip<T extends HTMLElement>(node: T, text: string): T {
+	setTip(node, text);
+	return node;
+}
+
+window.addEventListener('message', (event: MessageEvent<ToChangesPanel>) => {
+	if (event.data.type === 'view') {
+		render(event.data.view);
+	}
+});
+
+post({ type: 'ready' });

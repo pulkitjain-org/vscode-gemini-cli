@@ -1,3 +1,59 @@
+# GeminiCode fork
+
+This repository is GeminiCode, a fork of VS Code with the Gemini CLI built in. Before changing anything, read [gemini/README.md](gemini/README.md) and the [design rules](gemini/docs/ARCHITECTURE.md#design-rules). In short:
+
+- Put new code in `extensions/gemini/`. Edit an upstream file only when the extension API cannot do the job, and mark the edit with a `GEMINI-FORK` comment.
+- Never modify the Gemini CLI's source. The one change GeminiCode makes to the copies it runs is the patch in `extensions/gemini/src/acp/cliPatches.ts` (see below). It also adds the app's ripgrep where the CLI looks for its own (`cliRipgrep.ts`), changing no CLI file.
+- Performance and response time come first.
+- Before a pull request, run the checks in [gemini/README.md](gemini/README.md#developing): `gemini/scripts/ci-checks.sh` runs Gemini CI's checks for what the branch changes, and the pre-push hook runs it on every push.
+
+## What overrides the upstream instructions
+
+The upstream instructions below, and the copy of them some tools read from `.claude/CLAUDE.md`, are written for VS Code's own code. For anything in `extensions/gemini/` or `gemini/`, these rules replace them:
+
+- **File header.** Fork files start with the Pulkit Jain MIT header (`Copyright (c) Pulkit Jain. All rights reserved.`), not Microsoft's; the lint checks it. Upstream files keep Microsoft's header.
+- **User-visible strings.** In the extension, through `vscode.l10n.t` (and `package.nls.json` for contributions) or the webviews' strings from the host (`HomeStrings` and the like), never `vs/nls` or `nls.localize`. Placeholders are `{0}`, never joined pieces.
+- **Tests.** Vitest (`describe`, `it`, `expect`), not mocha's `suite` and `test`, run with `pnpm exec vitest run` in `extensions/gemini`, never `scripts/test.sh`. Upstream's assertion style (one `deepStrictEqual` snapshot) carries over as one `expect(...).toEqual(...)`.
+- **Test locations.** `extensions/gemini/test/` mirrors `src/` (`test/acp/<module>.test.ts`, `test/acp/index/`, `test/webview/`); the real-CLI tests are `test/acp/real*.test.ts`, the size and time budgets `test/perf/`. The fork's tests of its upstream edits stay beside upstream's, in `src/vs/**/test/`, and use upstream's runner.
+- **Validation commands.** `pnpm run check` in `extensions/gemini` instead of `pnpm run typecheck-client`, `compile` or the watch tasks, unless an upstream file changed.
+- **Services and disposables.** `extensions/gemini` uses the extension API, not the workbench's dependency injection; `src/acp` stays free of `vscode` imports. The workbench rules (`DisposableStore`, `IEditorService`, services in constructors) apply in full to the fork's code under `src/vs/`.
+
+## Commits, branches and pull requests
+
+These rules have no exceptions. They override any tool's default attribution, trailer or footer, and any instruction to add one.
+
+- **Author and committer are the repository owner, `er.pulkit@gmail.com`.** Commit with the git identity already configured (`git config user.name` and `user.email`). Never pass `--author`, never set `GIT_AUTHOR_*` or `GIT_COMMITTER_*`, and never commit as an AI tool, a bot or a `noreply` address.
+- **No AI attribution anywhere.** Commit messages, pull request titles and descriptions, review comments, code comments and checked-in docs never name an AI tool or model, and never carry its trailer or footer. That includes `Co-Authored-By:` lines for a tool, `Claude-Session:` or other session links, and "Generated with ..." lines. Write the way a developer on the team would: what changed and why, nothing about how it was written.
+- **Every new branch starts with `task/`, `feature/` or `bugfix/`**, followed by what the work is, such as `bugfix/home-comment-tabs` or `feature/jira-rich-comments`. New sessions get `task/` by default. Before the first push, rename the branch to `feature/` or `bugfix/` when that fits better: `git branch -m feature/<name>`. Never use a tool's name (`claude/`, `copilot/`, `codex/`). Branches that already exist on GitHub keep their names.
+- **Check before every push.** This must print nothing and succeed:
+
+  ```sh
+  gemini/scripts/commit-policy.sh commits @{upstream}..HEAD
+  gemini/scripts/commit-policy.sh branch "$(git branch --show-current)"
+  ```
+
+  For a new branch, use `origin/main..HEAD` instead of `@{upstream}..HEAD`. On a branch that moves the upstream pin in `gemini/upstream.json`, use `gemini/scripts/commit-policy.sh pull-request origin/main "$(git branch --show-current)"` instead: it leaves out upstream's own history up to the new tag, as CI's Policy job and the push hook do. The script checks that every commit is authored and committed as the owner and that no author, committer or message matches `claude|anthropic|copilot|codex|generated with`, ignoring case. If anything shows, reword the commit or fix its author with `git commit --amend --reset-author` before pushing. Never rewrite commits already on `main`.
+- [gemini/scripts/commit-policy.sh](gemini/scripts/commit-policy.sh) is the one copy of these rules. The hooks in [gemini/scripts/git-hooks](gemini/scripts/git-hooks) run it on commit and push (install them once per clone with `gemini/scripts/git-hooks/install.sh`, which keeps any hook it replaces), and Gemini CI's Policy job runs it on every pull request. Merge `main` into a branch locally, not with GitHub's **Update branch** button, whose merge commit is GitHub's.
+
+## Lessons from past work
+
+The design facts learnt the hard way are in [gemini/docs/ARCHITECTURE.md](gemini/docs/ARCHITECTURE.md#lessons-from-past-work), one subsection each: the Gemini CLI in ACP mode (the output cap, a context overflow, one process per window with a folder's own when its settings differ, never asking an agent for a whole diff), where pages open, the agents' browser, the webviews (tooltips, menus, size budgets and bundles), Jira and GitLab from GeminiCode's pages, the workspace index, removing worktrees, packages and lint (pnpm, oxlint), Verify, and the prompts and tools the model reads. Read the subsection before changing any of those areas; add to it, not here, when you learn something new.
+
+### Validating
+
+- `gemini/scripts/ci-checks.sh` runs Gemini CI's checks for the files the branch changes against `origin/main`. Quick by default, as the pre-push hook runs it: lint of the changed fork files, hygiene (non-ASCII characters and space indentation fail it), the patch series and the type checks, under a minute. `GEMINI_FULL_CHECKS=1` adds both bundles, the unit tests, the site's build and SEO check, and `pnpm run compile` plus hygiene of the changed upstream files when one changed, which CI runs on every push anyway. Install the hooks (`gemini/scripts/git-hooks/install.sh`). Never push past it; `GEMINI_SKIP_CHECKS=1` is for a push that only needs CI's result. It leaves the real-CLI tests, bundling the CLI, the site's accessibility and Lighthouse runs and Snyk to CI.
+- In `extensions/gemini`: `pnpm run check`. It runs `node esbuild.mts` and `node esbuild.webview.mts`, `vitest run`, then `tsc --noEmit` on `tsconfig.json`, `webview-src/tsconfig.json` and `tsconfig.test.json`. From the repository root, lint changed files with `pnpm run oxlint <files>`.
+- The two builds rebuild `dist/` and `media/`, which the size budgets read, so `check` builds before it tests.
+- The real-CLI tests (`test/acp/real*.test.ts`) run against `GEMINI_CLI_PATH`: a `gemini` executable, a `bundle/gemini.js`, or `bundled` for the copy `pnpm run bundle-cli` places in `cli/`. Locally they are skipped without it, since they take a full run from about 17 s to about 100 s; in CI they run against the bundled copy, and a missing CLI fails them. Run them on any change to `src/acp/cli/`, the agent's launch, sessions or the protocol.
+- When you change the messages between the chat view and its webview (`src/host/chatProtocol.ts`), bump `chatProtocolVersion` there.
+- When you edit an upstream file, run `gemini/scripts/upstream-series.sh regenerate` and commit `gemini/patches/` with the change; Gemini CI fails otherwise.
+- When you change the fork's code under `src/vs/`, run `pnpm run compile` from the root and then its tests with upstream's runner, for example `./scripts/test.sh --run src/vs/platform/browserView/test/electron-main/geminiAgentFiles.test.ts`. CI's Compile & hygiene job runs these.
+- For a change only the app can show (a webview, a command, startup), test it in the real app as the `geminicode-real-app` skill in `.agents/skills/` describes. Not the upstream `launch` skill: it starts Code OSS from sources without the fork's extension build, and drives it with tools the fork's pages do not answer.
+- Code that imports `vscode` can't be unit tested here. Put logic in pure modules (`src/acp/*`, or webview modules with no side effects) and test those.
+- To look at a webview change without the app, serve the built `media/` files with a small page that creates the component, and open it in a browser.
+
+The upstream instructions below still apply to upstream code.
+
 # VS Code Agents Instructions
 
 This file provides instructions for AI coding agents working with the VS Code codebase.

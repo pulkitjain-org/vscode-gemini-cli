@@ -1,0 +1,6 @@
+{"sessionId":"c3c021c6-b0e9-4063-8835-6d223ea326ee","projectHash":"dc51b43bd515c4666791c7b459456b68ca770e2a1d0416327f37c80d6fbc068e","startTime":"2026-10-05T10:27:08.057Z","lastUpdated":"2026-10-05T10:27:08.057Z","kind":"main"}
+{"$set":{"messages":[{"id":"d04923d38bb0f6017037e74183378ef4","timestamp":"2026-10-05T10:27:08.058Z","type":"user","content":[{"text":"<session_context>\nThis is the Gemini CLI. We are setting up the context for our chat.\nToday's date is Monday, October 5, 2026 (formatted according to the user's locale).\nMy operating system is: linux\nThe project's temporary directory is: /home/me/.gemini/tmp/shop\n- **Workspace Directories:**\n  - /home/me/shop\n- **Directory Structure:**\n\nShowing up to 200 items (files + folders).\n\n/home/me/shop/\n\n\n\n</session_context>"}]}],"lastUpdated":"2026-10-05T10:27:08.058Z"}}
+{"id":"bc34018d-40d1-4d52-8d47-81abf2c7e5f4","timestamp":"2026-10-05T10:27:08.072Z","type":"user","content":[{"text":"Fix the rounding in the cart total"}]}
+{"$set":{"lastUpdated":"2026-10-05T10:27:08.072Z"}}
+{"id":"76cc9d12-195f-43dc-ba55-39f41ddff79b","timestamp":"2026-10-05T10:27:08.130Z","type":"gemini","content":"Hello from the fake model.","thoughts":[],"tokens":{"input":1,"output":1,"cached":0,"thoughts":0,"tool":0,"total":2},"model":"gemini-2.5-flash"}
+{"$set":{"lastUpdated":"2026-10-05T10:27:08.130Z"}}

@@ -34,6 +34,9 @@ import { IConfigurationService } from '../../../platform/configuration/common/co
 import { IViewsService } from '../../services/views/common/viewsService.js';
 import { RunOnceScheduler } from '../../../base/common/async.js';
 
+// GEMINI-FORK: whether GeminiCode's view was moved to the top of the activity bar.
+const geminiFirstKey = 'gemini.activityBar.geminiFirst';
+
 interface IPlaceholderViewContainer {
 	readonly id: string;
 	readonly name?: string;
@@ -665,6 +668,15 @@ export class PaneCompositeBar extends Disposable {
 				const cachedViewContainer = this._cachedViewContainers.find(cached => cached.id === viewContainerWorkspaceState.id);
 				if (cachedViewContainer) {
 					cachedViewContainer.visible = viewContainerWorkspaceState.visible ?? cachedViewContainer.visible;
+				}
+			}
+			// GEMINI-FORK: move GeminiCode's view to the top once for profiles that cached it lower
+			// (before it came first); after that, wherever the user drags it stays.
+			if (this.location === ViewContainerLocation.Sidebar && !this.storageService.getBoolean(geminiFirstKey, StorageScope.PROFILE)) {
+				const index = this._cachedViewContainers.findIndex(cached => cached.id === 'workbench.view.extension.gemini');
+				if (index >= 0) {
+					this._cachedViewContainers.unshift(...this._cachedViewContainers.splice(index, 1));
+					this.storageService.store(geminiFirstKey, true, StorageScope.PROFILE, StorageTarget.MACHINE); // one move per machine, not synced
 				}
 			}
 		}

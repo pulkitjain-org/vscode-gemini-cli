@@ -1,0 +1,12 @@
+test/**
+src/**
+tsconfig*.json
+**/*.tsbuildinfo
+out/**
+esbuild*.mts
+vitest.config.mts
+pnpm-lock.yaml
+pnpm-workspace.yaml
+webview-src/**
+scripts/**
+knip.json

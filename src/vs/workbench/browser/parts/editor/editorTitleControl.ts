@@ -11,13 +11,14 @@ import { IEditorGroupMenuIds, IEditorGroupsView, IEditorGroupTitleHeight, IEdito
 import { IEditorTabsControl } from './editorTabsControl.js';
 import { MultiEditorTabsControl } from './multiEditorTabsControl.js';
 import { SingleEditorTabsControl } from './singleEditorTabsControl.js';
-import { IEditorPartOptions } from '../../../common/editor.js';
+import { EditorsOrder, IEditorPartOptions } from '../../../common/editor.js'; // GEMINI-FORK: EditorsOrder
 import { EditorInput } from '../../../common/editor/editorInput.js';
 import { DisposableStore, MutableDisposable } from '../../../../base/common/lifecycle.js';
 import { MultiRowEditorControl } from './multiRowEditorTabsControl.js';
 import { IReadonlyEditorGroupModel } from '../../../common/editor/editorGroupModel.js';
 import { NoEditorTabsControl } from './noEditorTabsControl.js';
 import { EditorHeaderControl } from './editorHeaderControl.js';
+import { geminiHidesTabRow, onDidChangeGeminiTabRows } from './geminiTabRows.js'; // GEMINI-FORK
 
 export interface IEditorTitleControlDimensions {
 
@@ -59,11 +60,32 @@ export class EditorTitleControl extends Themable {
 
 		this.editorTabsControl = this.createEditorTabsControl();
 		this.headerControl = this.createHeaderControl();
+
+		// GEMINI-FORK: the agents' group drops its tab row in Agents mode; see geminiTabRows.ts.
+		this._register(onDidChangeGeminiTabRows(() => this.checkGeminiTabRow()));
+	}
+
+	// GEMINI-FORK
+	private hidesTabRow = false;
+
+	// GEMINI-FORK: a group gains or loses its tab row when agents open in it or leave it.
+	// Returns whether the controls were recreated, with the group's editors already opened into them.
+	private checkGeminiTabRow(): boolean {
+		if (geminiHidesTabRow(this.model) === this.hidesTabRow) {
+			return false;
+		}
+		this.recreateControls();
+		this.groupView.relayout();
+		if (this.model.activeEditor) {
+			this.openEditors(this.model.getEditors(EditorsOrder.SEQUENTIAL));
+		}
+		return true;
 	}
 
 	private createEditorTabsControl(): IEditorTabsControl {
 		let tabsControlType;
-		switch (this.groupsView.partOptions.showTabs) {
+		this.hidesTabRow = geminiHidesTabRow(this.model); // GEMINI-FORK
+		switch (this.hidesTabRow ? 'none' : this.groupsView.partOptions.showTabs) {
 			case 'none':
 				tabsControlType = NoEditorTabsControl;
 				break;
@@ -87,12 +109,18 @@ export class EditorTitleControl extends Themable {
 	}
 
 	openEditor(editor: EditorInput, options?: IInternalEditorOpenOptions): void {
+		if (this.checkGeminiTabRow()) { // GEMINI-FORK: as restored editors arrive; a flip has opened them all already
+			return;
+		}
 		const didChange = this.editorTabsControl.openEditor(editor, options);
 
 		this.handleOpenedEditors(didChange);
 	}
 
 	openEditors(editors: EditorInput[]): void {
+		if (this.checkGeminiTabRow()) { // GEMINI-FORK: as restored editors arrive; a flip has opened them all already
+			return;
+		}
 		const didChange = this.editorTabsControl.openEditors(editors);
 
 		this.handleOpenedEditors(didChange);
@@ -175,20 +203,26 @@ export class EditorTitleControl extends Themable {
 			oldOptions.showTabs !== newOptions.showTabs ||
 			(newOptions.showTabs !== 'single' && oldOptions.pinnedTabsOnSeparateRow !== newOptions.pinnedTabsOnSeparateRow)
 		) {
-			// Clear old
-			this.editorTabsControlDisposable.clear();
-			this.headerControlDisposable.clear();
-			clearNode(this.parent);
-
-			// Create new
-			this.editorTabsControl = this.createEditorTabsControl();
-			this.headerControl = this.createHeaderControl();
+			this.recreateControls(); // GEMINI-FORK: shared with checkGeminiTabRow
 		}
 
 		// Forward into editor tabs control
 		else {
 			this.editorTabsControl.updateOptions(oldOptions, newOptions);
 		}
+	}
+
+	// GEMINI-FORK: updateOptions' own code, moved here so checkGeminiTabRow can share it
+	private recreateControls(): void {
+
+		// Clear old
+		this.editorTabsControlDisposable.clear();
+		this.headerControlDisposable.clear();
+		clearNode(this.parent);
+
+		// Create new
+		this.editorTabsControl = this.createEditorTabsControl();
+		this.headerControl = this.createHeaderControl();
 	}
 
 	layout(dimensions: IEditorTitleControlDimensions, headerWidth = dimensions.container.width, headerLeft = 0): Dimension {

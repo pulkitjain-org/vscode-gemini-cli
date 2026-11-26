@@ -1,0 +1,199 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Pulkit Jain. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+// Checks that an agent can reopen a session started in the terminal: the
+// session GeminiCode lists from the CLI's files is one `session/load` accepts,
+// and the CLI replays its messages. The CLI talks to a fake Gemini API on
+// localhost. Runs against the bundled CLI or GEMINI_CLI_PATH (test/realCli.ts). Runs with an empty HOME.
+
+import type * as acp from '@agentclientprotocol/sdk';
+import { ChildProcessWithoutNullStreams, execFile } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer, Server } from 'node:http';
+import { AddressInfo } from 'node:net';
+import { tmpdir } from 'node:os';
+import * as path from 'node:path';
+import { promisify } from 'node:util';
+import { afterEach, expect, it } from 'vitest';
+import { AgentConnection } from '../../src/acp/agentConnection';
+import { resolveAgentCommand, spawnAgent } from '../../src/acp/agentProcess';
+import { chatsFolder, findCliSession, isPrompt, listCliSessions, readSessionMessages } from '../../src/acp/cliSessions';
+import { keepSessionFolder } from '../../src/acp/sessionFolder';
+import { contentBlockToText } from '../../src/acp/sessionUpdates';
+import { describeRealCli, realCliPath } from '../realCli';
+
+const cliPath = realCliPath;
+
+/** A prompt the fake model answers by writing this file (`rounding.md` in the folder) before it replies. */
+const writePrompt = 'Write the rounding notes';
+
+async function startFakeGemini(): Promise<Server> {
+	const server = createServer((req, res) => {
+		const chunks: Buffer[] = [];
+		req.on('data', (chunk: Buffer) => chunks.push(chunk)).on('end', () => {
+			const last = (JSON.parse(Buffer.concat(chunks).toString() || '{}') as { contents?: { parts?: { text?: string }[] }[] }).contents?.at(-1);
+			const write = !!last?.parts?.some(part => part.text?.includes(writePrompt));
+			const parts = write ? [{ functionCall: { name: 'write_file', args: { file_path: 'rounding.md', content: '# Round to the cent\n' } } }] : [{ text: 'Rounded to the nearest cent.' }];
+			const payload = JSON.stringify({ candidates: [{ content: { role: 'model', parts }, finishReason: 'STOP' }], usageMetadata: { promptTokenCount: 1, candidatesTokenCount: 1, totalTokenCount: 2 } });
+			if (req.url?.includes(':streamGenerateContent')) {
+				res.writeHead(200, { 'content-type': 'text/event-stream' }).end(`data: ${payload}\n\n`);
+			} else {
+				res.writeHead(200, { 'content-type': 'application/json' }).end(payload);
+			}
+		});
+	});
+	await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+	return server;
+}
+
+describeRealCli('reopening a saved session over ACP', () => {
+	const children: ChildProcessWithoutNullStreams[] = [];
+	const connections: AgentConnection[] = [];
+	let server: Server | undefined;
+	let home: string | undefined;
+
+	afterEach(async () => {
+		connections.splice(0).forEach(c => c.dispose());
+		await Promise.all(children.splice(0).map(child => {
+			const exited = child.exitCode === null ? new Promise(resolve => child.once('exit', resolve)) : undefined;
+			child.kill();
+			return exited;
+		}));
+		server?.close();
+		if (home) {
+			rmSync(home, { recursive: true, force: true, maxRetries: 3 });
+		}
+	});
+
+	async function setUp(): Promise<{ env: NodeJS.ProcessEnv; work: string; geminiHome: string }> {
+		server = await startFakeGemini();
+		// The terminal keys a folder's chats by its real path, so work in one: macOS's temp folder is a link.
+		home = realpathSync(mkdtempSync(path.join(tmpdir(), 'gemini-home-')));
+		const work = path.join(home, 'shop');
+		mkdirSync(work);
+		mkdirSync(path.join(home, '.gemini'));
+		writeFileSync(path.join(home, '.gemini', 'settings.json'), JSON.stringify({ security: { auth: { selectedType: 'gemini-api-key' } } }));
+		const env: NodeJS.ProcessEnv = {
+			...process.env,
+			HOME: home,
+			USERPROFILE: home,
+			GEMINI_API_KEY: 'fake',
+			GEMINI_CLI_TRUST_WORKSPACE: 'true',
+			GOOGLE_GEMINI_BASE_URL: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
+			NO_PROXY: '127.0.0.1',
+		};
+		// Vitest's own variables switch the CLI into its test behaviour.
+		for (const key of Object.keys(env).filter(k => k.startsWith('VITEST') || /^https?_proxy$/i.test(k))) {
+			delete env[key];
+		}
+		return { env, work, geminiHome: path.join(home, '.gemini') };
+	}
+
+	async function startAgent(env: NodeJS.ProcessEnv, work: string, updates: acp.SessionUpdate[] = []): Promise<AgentConnection> {
+		const child = spawnAgent(resolveAgentCommand({ cliPath, execPath: process.execPath, env, platform: process.platform }), work);
+		child.stderr.resume();
+		children.push(child);
+		const connection = new AgentConnection(child.stdin, child.stdout, {
+			sessionUpdate: params => void updates.push(params.update),
+			// Allowed once: the fake model's write (`writePrompt`).
+			requestPermission: async params => {
+				const allow = params.options.find(option => option.kind === 'allow_once');
+				return { outcome: allow ? { outcome: 'selected', optionId: allow.optionId } : { outcome: 'cancelled' } };
+			},
+		});
+		connections.push(connection);
+		await connection.initialize();
+		return connection;
+	}
+
+	async function expectReplay(env: NodeJS.ProcessEnv, work: string, geminiHome: string): Promise<void> {
+		const [listed] = await listCliSessions(work, { home: geminiHome });
+		expect(listed).toMatchObject({ title: 'Fix the rounding in the cart total', messages: 1 });
+		const updates: acp.SessionUpdate[] = [];
+		const connection = await startAgent(env, work, updates);
+		// By its number: by its id, gemini-cli 0.62 resets the session before reading it.
+		const session = await findCliSession(work, listed.id, geminiHome);
+		await connection.loadSession(String(session!.index), work);
+		await new Promise(resolve => setTimeout(resolve, 500));
+		const text = (kind: 'user_message_chunk' | 'agent_message_chunk') => updates.flatMap(u => u.sessionUpdate === kind ? [contentBlockToText(u.content)] : []).join('');
+		expect(text('user_message_chunk')).toContain('Fix the rounding in the cart total');
+		expect(text('agent_message_chunk')).toContain('Rounded to the nearest cent.');
+		// Still listed, under the same id, for the next time.
+		expect((await listCliSessions(work, { home: geminiHome })).map(s => s.id)).toEqual([listed.id]);
+	}
+
+	it('reopens a session started in the terminal', async () => {
+		const { env, work, geminiHome } = await setUp();
+		const [command, args] = cliPath!.endsWith('.js') ? [process.execPath, [cliPath!]] : [cliPath!, []];
+		await promisify(execFile)(command, [...args, '-m', 'gemini-2.5-flash', '-p', 'Fix the rounding in the cart total'], { cwd: work, env, timeout: 60_000 });
+		await expectReplay(env, work, geminiHome);
+	}, 90_000);
+
+	it('reopens a session by its id, twice, with its whole history', async () => {
+		const { env, work, geminiHome } = await setUp();
+		const first = await startAgent(env, work);
+		const { sessionId } = await first.newSession(work);
+		await first.setModel(sessionId, 'gemini-2.5-flash');
+		await first.prompt(sessionId, [{ type: 'text', text: 'Fix the rounding in the cart total' }]);
+		await first.prompt(sessionId, [{ type: 'text', text: 'And the tax line' }]);
+		const listed = await findCliSession(work, sessionId, geminiHome);
+		expect(listed).toMatchObject({ id: sessionId, messages: 2 });
+		for (let i = 0; i < 2; i++) {
+			const updates: acp.SessionUpdate[] = [];
+			const connection = await startAgent(env, work, updates);
+			const loaded = await connection.loadSession(sessionId, work);
+			await new Promise(resolve => setTimeout(resolve, 500));
+			const replayed = updates.filter(u => ['user_message_chunk', 'agent_message_chunk', 'agent_thought_chunk', 'tool_call'].includes(u.sessionUpdate));
+			// The count GeminiCode works out from the file is what the CLI replays, so it knows when the replay ends.
+			expect(replayed).toHaveLength(listed!.replayUpdates);
+			expect(replayed.flatMap(u => u.sessionUpdate === 'user_message_chunk' ? [contentBlockToText(u.content)] : []).filter(isPrompt)).toEqual(['Fix the rounding in the cart total', 'And the tax line']);
+			expect(loaded).toBeDefined();
+			expect(await findCliSession(work, sessionId, geminiHome)).toMatchObject({ id: sessionId, messages: 2 });
+		}
+	}, 90_000);
+
+	it('reopens an agent session after the agent restarts', async () => {
+		const { env, work, geminiHome } = await setUp();
+		const first = await startAgent(env, work);
+		const { sessionId } = await first.newSession(work);
+		await first.setModel(sessionId, 'gemini-2.5-flash');
+		await first.prompt(sessionId, [{ type: 'text', text: 'Fix the rounding in the cart total' }]);
+		await expectReplay(env, work, geminiHome);
+	}, 90_000);
+
+	it('keeps the session\'s plans when it reopens', async () => {
+		const { env, work, geminiHome } = await setUp();
+		const first = await startAgent(env, work);
+		const { sessionId } = await first.newSession(work);
+		await first.setModel(sessionId, 'gemini-2.5-flash');
+		await first.prompt(sessionId, [{ type: 'text', text: 'Plan the rounding fix' }]);
+		const plan = path.join(path.dirname((await chatsFolder(work, geminiHome))!), sessionId, 'plans', 'rounding.md');
+		const writePlan = () => {
+			mkdirSync(path.dirname(plan), { recursive: true });
+			writeFileSync(plan, '# Round to the cent');
+		};
+		writePlan();
+		// The CLI deletes the session's folder as it reopens it. When this fails, it no longer does, and keepSessionFolder can go.
+		await (await startAgent(env, work)).loadSession(sessionId, work);
+		expect(existsSync(plan)).toBe(false);
+		writePlan();
+		const putBack = await keepSessionFolder(work, sessionId, geminiHome);
+		await (await startAgent(env, work)).loadSession(sessionId, work).finally(putBack);
+		expect(readFileSync(plan, 'utf8')).toBe('# Round to the cent');
+	}, 90_000);
+
+	it('saves a write\'s content, which a lost plan is rebuilt from', async () => {
+		const { env, work, geminiHome } = await setUp();
+		const agent = await startAgent(env, work);
+		const { sessionId } = await agent.newSession(work);
+		await agent.setModel(sessionId, 'gemini-2.5-flash');
+		await agent.prompt(sessionId, [{ type: 'text', text: writePrompt }]);
+		const calls = (await readSessionMessages(work, sessionId, geminiHome))?.messages.flatMap(message => Array.isArray(message.toolCalls) ? message.toolCalls as { name?: string; status?: string; args?: Record<string, unknown> }[] : []);
+		expect({ file: readFileSync(path.join(work, 'rounding.md'), 'utf8'), call: calls?.find(call => call.name === 'write_file') }).toMatchObject({
+			file: '# Round to the cent\n',
+			call: { status: 'success', args: { file_path: 'rounding.md', content: '# Round to the cent\n' } },
+		});
+	}, 90_000);
+});

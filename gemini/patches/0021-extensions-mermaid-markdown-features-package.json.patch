@@ -1,0 +1,13 @@
+diff --git a/extensions/mermaid-markdown-features/package.json b/extensions/mermaid-markdown-features/package.json
+index a66a98cda5fe26357f08b6c6262504bba09357a7..b603e24ae6762f416e7fd04625d9f9d6edc5e541 100644
+--- a/extensions/mermaid-markdown-features/package.json
++++ b/extensions/mermaid-markdown-features/package.json
+@@ -205,7 +205,7 @@
+         "requiresMessaging": "optional",
+         "entrypoint": {
+           "extends": "vscode.markdown-it-renderer",
+-          "path": "./notebook-out/index.js"
++          "path": "./markdown-preview-out/notebook.js"
+         }
+       }
+     ],

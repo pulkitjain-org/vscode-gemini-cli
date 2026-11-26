@@ -1,0 +1,174 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Pulkit Jain. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+// Approval modes and shell access as policy. GeminiCode's settings become two
+// things: the modes the picker offers, and a policy file passed to the CLI with
+// `--admin-policy`, the CLI's name for its highest tier. The CLI ranks that
+// file above user and workspace policies, so a repository's own policy cannot
+// undo it: a disallowed mode still asks before every tool, and a blocked shell
+// tool is removed from the agent. Checked against gemini-cli 0.62 in
+// test/acp/realAgentPolicy.test.ts.
+
+import { promises as fs } from 'node:fs';
+import * as path from 'node:path';
+import { writeFileAtomic } from './fsUtil';
+
+export interface ApprovalPolicy {
+	/** Auto Edit: edits are applied without asking. */
+	readonly allowAutoEdit: boolean;
+	/** YOLO: every tool runs without asking. */
+	readonly allowYolo: boolean;
+	/** The shell tool, which runs commands outside any sandbox. */
+	readonly allowShell: boolean;
+	/** Refuse the shell commands that print the environment, where a token passed to a server could sit. */
+	readonly denyEnvironmentCommands?: boolean;
+	/** MCP tools that ask in every mode, YOLO included, whatever a user or workspace policy allows: every team tool that writes, the confirm class among them. */
+	readonly confirmTools?: readonly { readonly server: string; readonly tools: readonly string[] }[];
+}
+
+/**
+ * Commands that print the environment: `env` and `printenv` with anything after them, the shells'
+ * listings of exported variables (`declare -x`, `typeset -x`, `export -p`, `compgen -e`), and `set`,
+ * `export`, `declare` or `typeset` alone (with arguments they change the shell, as in `set -e`, and
+ * print nothing). `ps` with an environment flag (`ps eww`, `ps -E`) prints other processes' environments.
+ */
+const environmentCommandPrefixes = ['env', 'printenv', 'declare -x', 'declare -p', 'typeset -x', 'typeset -p', 'export -p', 'compgen -e', 'compgen -v'] as const;
+const environmentCommandRegex = '(?:set|export|declare|typeset)\\s*"';
+const processEnvironmentRegex = 'ps\\s(?:[a-zA-Z]*e[a-zA-Z]*[\\s"]|-[a-zA-Z]*E|[^"]*\\s-[a-zA-Z]*E)';
+/**
+ * The CLI matches `commandRegex` from the start of each command, as `"command":"<regex>` against the
+ * call's arguments as JSON (`buildArgsPatterns`), so a rule for something anywhere in the command starts
+ * with the command's text up to it: any character but a quote, or an escaped quote, since JSON writes
+ * `"` as `\"`. A capturing group, as the CLI refuses a quantified `(?:...)` group as a nested quantifier.
+ */
+const anywhereInCommand = '([^"]|\\\\")*';
+/** The CLI's own variables read by name (`echo "$GEMINI_API_KEY"`, `${GOOGLE_APPLICATION_CREDENTIALS}`): the only credentials left in the agent's environment (env.ts). */
+export const cliVariableRegex = `${anywhereInCommand}\\$\\{?(?:GEMINI|GOOGLE)_`;
+/** The environment read whole through an interpreter or the kernel: `node -p process.env`, `python -c "import os; print(os.environ)"`, `cat /proc/self/environ`. */
+export const environmentObjectRegex = `${anywhereInCommand}(?:process\\.env|os\\.environ|/proc/[a-z0-9]+/environ)`;
+
+export const shellToolName = 'run_shell_command';
+export const policyFileName = 'geminicode.toml';
+const environmentDenyMessage = 'Commands that print the environment are turned off in GeminiCode, because it can hold tokens. If a task needs a setting from the environment, ask the user for it.';
+
+/**
+ * Whether `after` takes away something `before` allowed: a mode, the shell, or
+ * commands that print the environment. Such a change has to reach the agent at
+ * once; one that only allows more can wait for the running turns to end.
+ */
+export function takesAway(before: ApprovalPolicy, after: ApprovalPolicy): boolean {
+	return (before.allowAutoEdit && !after.allowAutoEdit)
+		|| (before.allowYolo && !after.allowYolo)
+		|| (before.allowShell && !after.allowShell)
+		|| (!before.denyEnvironmentCommands && !!after.denyEnvironmentCommands);
+}
+
+/** Default and Plan are always allowed: Default asks first, and Plan cannot change anything. */
+export function isModeAllowed(policy: ApprovalPolicy, modeId: string): boolean {
+	switch (modeId) {
+		case 'autoEdit': return policy.allowAutoEdit;
+		case 'yolo': return policy.allowYolo;
+		default: return true;
+	}
+}
+
+/** The CLI policy file for `policy`, or undefined when it allows everything. */
+export function buildToolPolicy(policy: ApprovalPolicy): string | undefined {
+	const askModes = [...policy.allowAutoEdit ? [] : ['autoEdit'], ...policy.allowYolo ? [] : ['yolo']];
+	const rules: string[] = [];
+	if (askModes.length) {
+		rules.push([
+			`# Approval modes turned off in GeminiCode: every tool asks first, as in Default mode.`,
+			`[[rule]]`,
+			`toolName = "*"`,
+			`decision = "ask_user"`,
+			`priority = 900`,
+			`modes = [${askModes.map(m => `"${m}"`).join(', ')}]`,
+		].join('\n'));
+	}
+	if (policy.allowShell && policy.denyEnvironmentCommands) {
+		rules.push([
+			`# Commands that print the environment, turned off in GeminiCode (gemini.tools.denyEnvironmentCommands).`,
+			`[[rule]]`,
+			`toolName = "${shellToolName}"`,
+			`commandPrefix = [${environmentCommandPrefixes.map(c => `"${c}"`).join(', ')}]`,
+			`decision = "deny"`,
+			`priority = 960`,
+			`denyMessage = "${environmentDenyMessage}"`,
+			``,
+			`[[rule]]`,
+			`toolName = "${shellToolName}"`,
+			`commandRegex = '${environmentCommandRegex}'`,
+			`decision = "deny"`,
+			`priority = 960`,
+			`denyMessage = "${environmentDenyMessage}"`,
+			``,
+			`[[rule]]`,
+			`toolName = "${shellToolName}"`,
+			`commandRegex = '${processEnvironmentRegex}'`,
+			`decision = "deny"`,
+			`priority = 960`,
+			`denyMessage = "${environmentDenyMessage}"`,
+			``,
+			`[[rule]]`,
+			`toolName = "${shellToolName}"`,
+			`commandRegex = '${cliVariableRegex}'`,
+			`decision = "deny"`,
+			`priority = 960`,
+			`denyMessage = "${environmentDenyMessage}"`,
+			``,
+			`[[rule]]`,
+			`toolName = "${shellToolName}"`,
+			`commandRegex = '${environmentObjectRegex}'`,
+			`decision = "deny"`,
+			`priority = 960`,
+			`denyMessage = "${environmentDenyMessage}"`,
+		].join('\n'));
+	}
+	// By the names the model calls them (`mcp_<server>_<tool>`), not `mcpName`: gemini-cli 0.63 gives the
+	// policy check no server name for the servers a session brings, so a rule with `mcpName` never matches
+	// them (test/acp/realAgentPolicy.test.ts).
+	for (const group of policy.confirmTools ?? []) {
+		rules.push([
+			`# ${group.server}: writes to the team's tools, which nothing undoes, so these ask every time, in every mode.`,
+			`[[rule]]`,
+			`toolName = [${group.tools.map(t => `"mcp_${group.server}_${t}"`).join(', ')}]`,
+			`decision = "ask_user"`,
+			`priority = 990`,
+		].join('\n'));
+	}
+	if (!policy.allowShell) {
+		rules.push([
+			`# Shell commands turned off in GeminiCode.`,
+			`[[rule]]`,
+			`toolName = "${shellToolName}"`,
+			`decision = "deny"`,
+			`priority = 950`,
+			`denyMessage = "Shell commands are turned off in GeminiCode."`,
+		].join('\n'));
+	}
+	return rules.length ? `# Written by GeminiCode from its gemini.approval and gemini.tools settings. Changes are overwritten.\n\n${rules.join('\n\n')}\n` : undefined;
+}
+
+/**
+ * Writes the policy file into `dir` and returns the arguments that load it,
+ * or removes it and returns none. Rewrites only when the content changed, so
+ * a start costs one small read.
+ */
+export async function prepareToolPolicy(dir: string, policy: ApprovalPolicy): Promise<string[]> {
+	const file = path.join(dir, policyFileName);
+	const content = buildToolPolicy(policy);
+	if (!content) {
+		await fs.rm(file, { force: true });
+		return [];
+	}
+	const current = await fs.readFile(file, 'utf8').catch(() => undefined);
+	if (current !== content) {
+		// Replaced in one rename, so an agent starting in another window never reads half a policy.
+		await writeFileAtomic(file, content);
+	}
+	// The CLI ranks a directory passed this way above user and workspace policies.
+	return ['--admin-policy', dir];
+}

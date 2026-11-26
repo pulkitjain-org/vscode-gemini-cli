@@ -1,0 +1,12 @@
+diff --git a/build/npm/dirs.ts b/build/npm/dirs.ts
+index 1f8b8433c7ccd03493061fb71fabb5072a8dcb76..ed76bd5d2fe8ec6a6ba7276e309df0f731af1547 100644
+--- a/build/npm/dirs.ts
++++ b/build/npm/dirs.ts
+@@ -96,6 +96,7 @@ export const layoutRoots = [
+ export const separateRoots = [
+ 	'build',
+ 	'remote',
++	'extensions/gemini', // GEMINI-FORK: GeminiCode's extension, with a lockfile of its own; no native modules, so the postinstall installs it with the JS-only roots
+ ];
+ 
+ /**

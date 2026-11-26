@@ -1,0 +1,194 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Pulkit Jain. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+import * as http from 'node:http';
+import { afterEach, describe, expect, it } from 'vitest';
+import { AgentMcpServer, LocalMcpServer, type McpHttpConfig } from '../../src/acp/localMcpServer';
+
+const servers: { dispose(): void }[] = [];
+afterEach(() => servers.splice(0).forEach(s => s.dispose()));
+
+async function post(config: McpHttpConfig, body: unknown): Promise<{ status: number; body: unknown }> {
+	const response = await fetch(config.url, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: config.headers[0].value }, body: JSON.stringify(body) });
+	return { status: response.status, body: await response.json().catch(() => undefined) };
+}
+
+describe('local MCP server', () => {
+	it('answers every request, even when a tool or the server itself throws', async () => {
+		let failBeforeAnswer = false;
+		const server = new LocalMcpServer<string>({
+			name: 'test-server',
+			version: '1',
+			callerOf: route => route,
+			instructions: () => '',
+			tools: () => [],
+			call: async () => {
+				throw new Error('The audit log could not be written.');
+			},
+			onMessages: () => {
+				if (failBeforeAnswer) {
+					throw new Error('Unexpected.');
+				}
+			},
+		});
+		servers.push(server);
+		await server.start();
+		const config = server.configFor('agent-1')!;
+		const toolThrew = await post(config, { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'jira_comment', arguments: {} } });
+		failBeforeAnswer = true;
+		const serverThrew = await post(config, { jsonrpc: '2.0', id: 2, method: 'ping' });
+		expect({ toolThrew, serverThrew }).toEqual({
+			toolThrew: { status: 200, body: { jsonrpc: '2.0', id: 1, result: { content: [{ type: 'text', text: 'The audit log could not be written.' }], isError: true } } },
+			serverThrew: { status: 500, body: { jsonrpc: '2.0', id: null, error: { code: -32603, message: 'Unexpected.' } } },
+		});
+	});
+
+	it('tells a session\'s open stream when its tools change, and says so in initialize', async () => {
+		let tools: string[] = [];
+		const server = new LocalMcpServer<string>({ name: 'test-server', version: '1', callerOf: route => route, instructions: () => '', tools: () => tools.map(name => ({ name, description: '', inputSchema: { type: 'object', properties: {} } })), call: async () => ({ content: [] }) });
+		servers.push(server);
+		await server.start();
+		const config = server.configFor('agent-1')!;
+		const initialized = await post(config, { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18' } });
+		expect((initialized.body as { result: { capabilities: unknown } }).result.capabilities).toEqual({ tools: { listChanged: true } });
+		// No stream yet: nobody to tell, and the next tools/list sees the change anyway.
+		tools = ['first'];
+		expect(server.notifyToolsChanged('agent-1')).toBe(0);
+		const stream = await fetch(config.url, { headers: { Authorization: config.headers[0].value, Accept: 'text/event-stream' } });
+		expect(stream.headers.get('content-type')).toBe('text/event-stream');
+		const reader = stream.body!.getReader();
+		const opened = await reader.read();
+		expect(new TextDecoder().decode(opened.value)).toBe(': open\n\n');
+		tools = ['first', 'second'];
+		expect(server.notifyToolsChanged('agent-1')).toBe(1);
+		expect(server.notifyToolsChanged('agent-2')).toBe(0);
+		const notice = await reader.read();
+		expect(new TextDecoder().decode(notice.value)).toBe('event: message\ndata: {"jsonrpc":"2.0","method":"notifications/tools/list_changed"}\n\n');
+		const listed = await post(config, { jsonrpc: '2.0', id: 2, method: 'tools/list' });
+		expect((listed.body as { result: { tools: { name: string }[] } }).result.tools.map(tool => tool.name)).toEqual(['first', 'second']);
+		await reader.cancel();
+	});
+
+	it('keeps an open stream alive with comments, so the CLI\'s fetch never ends it as idle', async () => {
+		const server = new LocalMcpServer<string>({ name: 'test-server', version: '1', callerOf: route => route, instructions: () => '', tools: () => [], call: async () => ({ content: [] }), streamKeepAliveMs: 20 });
+		servers.push(server);
+		await server.start();
+		const config = server.configFor('agent-1')!;
+		const stream = await fetch(config.url, { headers: { Authorization: config.headers[0].value, Accept: 'text/event-stream' } });
+		const reader = stream.body!.getReader();
+		const decoder = new TextDecoder();
+		const opened = decoder.decode((await reader.read()).value);
+		const pinged = decoder.decode((await reader.read()).value);
+		expect({ opened, pinged }).toEqual({ opened: ': open\n\n', pinged: ': ping\n\n' });
+		await reader.cancel();
+	});
+
+	it('answers a slow tool call as a stream at once, kept alive until the answer, and in JSON for a client without streams', async () => {
+		let finish: () => void = () => undefined;
+		const server = new LocalMcpServer<string>({
+			name: 'test-server',
+			version: '1',
+			callerOf: route => route,
+			instructions: () => '',
+			tools: () => [],
+			call: async (_caller, name) => {
+				if (name === 'slow') {
+					await new Promise<void>(resolve => finish = resolve);
+				}
+				return { content: [{ type: 'text', text: `${name} done` }] };
+			},
+			streamKeepAliveMs: 20,
+		});
+		servers.push(server);
+		await server.start();
+		const config = server.configFor('agent-1')!;
+		const call = (id: number, name: string, meta?: object) => fetch(config.url, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', Authorization: config.headers[0].value },
+			body: JSON.stringify({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: {}, ...meta ? { _meta: meta } : {} } }),
+		});
+		const decoder = new TextDecoder();
+		// The headers come before the tool is done, then comments until it is.
+		const slow = await call(1, 'slow');
+		const reader = slow.body!.getReader();
+		const pinged = decoder.decode((await reader.read()).value);
+		finish();
+		let rest = '';
+		for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) {
+			rest += decoder.decode(chunk.value);
+		}
+		const answer = rest.split('\n\n').filter(event => event.startsWith('event: message')).map(event => JSON.parse(event.slice(event.indexOf('data: ') + 6)));
+		// With a progress token, progress notices instead of comments.
+		const tracked = await call(2, 'slow', { progressToken: 'p1' });
+		const trackedReader = tracked.body!.getReader();
+		const noticed = decoder.decode((await trackedReader.read()).value);
+		finish();
+		await trackedReader.cancel();
+		const plain = await post(config, { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'quick' } });
+		expect({ type: slow.headers.get('content-type'), pinged, answer, noticed, plain }).toEqual({
+			type: 'text/event-stream',
+			pinged: ': ping\n\n',
+			answer: [{ jsonrpc: '2.0', id: 1, result: { content: [{ type: 'text', text: 'slow done' }] } }],
+			noticed: 'event: message\ndata: {"jsonrpc":"2.0","method":"notifications/progress","params":{"progressToken":"p1","progress":1}}\n\n',
+			plain: { status: 200, body: { jsonrpc: '2.0', id: 3, result: { content: [{ type: 'text', text: 'quick done' }] } } },
+		});
+	});
+
+	it('refuses requests from a browser page or another host before looking at the token', async () => {
+		const server = new LocalMcpServer<string>({ name: 'test-server', version: '1', callerOf: route => route, instructions: () => '', tools: () => [], call: async () => ({ content: [] }) });
+		servers.push(server);
+		await server.start();
+		const config = server.configFor('agent-1')!;
+		const headers = { 'Content-Type': 'application/json', Authorization: config.headers[0].value };
+		const body = JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'ping' });
+		const fromPage = await fetch(config.url, { method: 'POST', headers: { ...headers, Origin: 'http://127.0.0.1:3000' }, body });
+		// fetch never sends another Host; a raw request does, as a DNS rebinding would.
+		const otherHost = await new Promise<number>((resolve, reject) => {
+			const request = http.request(config.url, { method: 'POST', headers: { ...headers, Host: 'evil.example:80' } }, response => resolve(response.statusCode ?? 0));
+			request.on('error', reject);
+			request.end(body);
+		});
+		const local = await fetch(config.url.replace('127.0.0.1', 'localhost'), { method: 'POST', headers, body });
+		expect([fromPage.status, otherHost, local.status]).toEqual([403, 403, 200]);
+	});
+
+	it('stops listening when disposed while it starts', async () => {
+		const server = new LocalMcpServer<string>({ name: 'test-server', version: '1', callerOf: route => route, instructions: () => '', tools: () => [], call: async () => ({ content: [] }) });
+		const starting = server.start();
+		server.dispose();
+		expect([await starting.then(() => 'started', () => 'stopped'), server.listening]).toEqual(['stopped', false]);
+	});
+
+	it('keeps an agent\'s latest two session slots, and another agent\'s as they are', async () => {
+		const server = new AgentMcpServer({ name: 'test-server', version: '1', instructions: '', tools: () => [], call: async () => ({ content: [{ type: 'text', text: 'ok' }] }), notReady: 'Not ready.' });
+		servers.push(server);
+		await server.start();
+		// Four sessions of one agent, one after another, and one of another agent.
+		const mine = Array.from({ length: 4 }, () => {
+			const slot = server.configForSlot()!;
+			server.bind(slot.url, 'agent-1');
+			return slot;
+		});
+		const other = server.configForSlot()!;
+		server.bind(other.url, 'agent-2');
+		const status = async (slot: typeof other) => (await post(slot, { jsonrpc: '2.0', id: 1, method: 'ping' })).status;
+		expect([await status(mine[0]), await status(mine[1]), await status(mine[2]), await status(mine[3]), await status(other)]).toEqual([404, 404, 200, 200, 200]);
+	});
+
+	it('keeps only the newest unused spare-session slots', async () => {
+		const server = new AgentMcpServer({ name: 'test-server', version: '1', instructions: '', tools: () => [], call: async () => ({ content: [] }), notReady: 'Not ready.' });
+		servers.push(server);
+		await server.start();
+		const slots = Array.from({ length: 12 }, () => server.configForSlot()!);
+		const bound = server.bind(slots[11].url, 'agent-1');
+		const oldest = await post(slots[0], { jsonrpc: '2.0', id: 1, method: 'ping' });
+		const newest = await post(slots[10], { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'x' } });
+		expect({ bound, oldest: oldest.status, newest: newest.body }).toEqual({
+			bound: true,
+			oldest: 404,
+			newest: { jsonrpc: '2.0', id: 1, result: { content: [{ type: 'text', text: 'Not ready.' }], isError: true } },
+		});
+	});
+});

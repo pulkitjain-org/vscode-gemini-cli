@@ -400,6 +400,12 @@ export abstract class EditorTabsControl extends Themable implements IEditorTabsC
 			return;
 		}
 
+		// GEMINI-FORK: a control without a tab row (NoEditorTabsControl, which the agents' group gets in
+		// Agents mode) never creates this toolbar, and the assertion below then failed on every editor open.
+		if (!this.editorActionsToolbar) {
+			return;
+		}
+
 		this.editorActionsDisposables.clear();
 
 		const editorActions = this.groupView.createEditorActions(this.editorActionsDisposables, this.menuIds?.editorActions ?? MenuId.EditorTitle, { useEditorTitleMenu: true });

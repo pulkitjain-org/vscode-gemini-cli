@@ -9,7 +9,8 @@ import * as os from 'os';
 import * as path from 'path';
 
 const nodeCompileCacheKinds = ['main', 'extension-host', 'shared-process', 'pty-host', 'agent-host'] as const;
-const nodeCompileCacheTagPattern = /^v\d+\.\d+\.\d+-(arm64|x64)-[0-9a-f]{8}$/;
+// GEMINI-FORK: Node on macOS and Linux ends the tag with the user's id (`v24.22.0-arm64-60e4fe36-501`), which upstream's pattern rejected
+const nodeCompileCacheTagPattern = /^v\d+\.\d+\.\d+-(arm64|x64)-[0-9a-f]{8}(?:-\d+)?$/;
 const nodeCompileCacheEntryPattern = /^[0-9a-f]{8}$/;
 // Node writes each entry to `<entry>.XXXXXX` (uv_fs_mkstemp) and renames it into place, so a process that is
 // stopped while it flushes on exit can leave one behind. The last completed write of that entry is intact.

@@ -1,0 +1,123 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Pulkit Jain. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
+import { buildToolPolicy, cliVariableRegex, environmentObjectRegex, isModeAllowed, policyFileName, prepareToolPolicy, takesAway } from '../../src/acp/toolPolicy';
+import { filterModes } from '../../src/acp/sessionSettings';
+
+const allowAll = { allowAutoEdit: true, allowYolo: true, allowShell: true };
+const defaults = { allowAutoEdit: true, allowYolo: false, allowShell: true };
+
+describe('isModeAllowed', () => {
+	it('always allows Default and Plan', async () => {
+		const none = { allowAutoEdit: false, allowYolo: false, allowShell: false };
+		expect(['default', 'plan'].every(id => isModeAllowed(none, id))).toBe(true);
+		expect(isModeAllowed(none, 'autoEdit')).toBe(false);
+		expect(isModeAllowed(defaults, 'autoEdit')).toBe(true);
+		expect(isModeAllowed(defaults, 'yolo')).toBe(false);
+	});
+});
+
+describe('takesAway', () => {
+	it('is true only for a change that allows less', () => {
+		expect([
+			takesAway(defaults, allowAll),
+			takesAway(allowAll, defaults),
+			takesAway(defaults, { ...defaults, allowShell: false }),
+			takesAway({ ...defaults, denyEnvironmentCommands: false }, { ...defaults, denyEnvironmentCommands: true }),
+			takesAway({ ...defaults, denyEnvironmentCommands: true }, { ...defaults, denyEnvironmentCommands: false }),
+		]).toEqual([false, true, true, true, false]);
+	});
+});
+
+describe('buildToolPolicy', () => {
+	it('writes nothing when everything is allowed', async () => {
+		expect(buildToolPolicy(allowAll)).toBeUndefined();
+	});
+
+	it('makes every tool ask in the modes that are turned off', async () => {
+		expect(buildToolPolicy(defaults)).toContain('toolName = "*"\ndecision = "ask_user"\npriority = 900\nmodes = ["yolo"]');
+		expect(buildToolPolicy({ ...defaults, allowAutoEdit: false })).toContain('modes = ["autoEdit", "yolo"]');
+	});
+
+	it('refuses the commands that print the environment, and asks for the confirm class in every mode', async () => {
+		const policy = buildToolPolicy({ ...allowAll, denyEnvironmentCommands: true, confirmTools: [{ server: 'geminicode-tools', tools: ['jira_transition', 'gitlab_merge'] }] }) ?? '';
+		const rules = policy.split('\n\n').filter(block => block.includes('[[rule]]')).map(block => block.trim().split('\n').filter(line => !line.startsWith('#') && !line.startsWith('denyMessage')).join('\n'));
+		expect(rules).toEqual([
+			'[[rule]]\ntoolName = "run_shell_command"\ncommandPrefix = ["env", "printenv", "declare -x", "declare -p", "typeset -x", "typeset -p", "export -p", "compgen -e", "compgen -v"]\ndecision = "deny"\npriority = 960',
+			'[[rule]]\ntoolName = "run_shell_command"\ncommandRegex = \'(?:set|export|declare|typeset)\\s*"\'\ndecision = "deny"\npriority = 960',
+			'[[rule]]\ntoolName = "run_shell_command"\ncommandRegex = \'ps\\s(?:[a-zA-Z]*e[a-zA-Z]*[\\s"]|-[a-zA-Z]*E|[^"]*\\s-[a-zA-Z]*E)\'\ndecision = "deny"\npriority = 960',
+			'[[rule]]\ntoolName = "run_shell_command"\ncommandRegex = \'([^"]|\\\\")*\\$\\{?(?:GEMINI|GOOGLE)_\'\ndecision = "deny"\npriority = 960',
+			'[[rule]]\ntoolName = "run_shell_command"\ncommandRegex = \'([^"]|\\\\")*(?:process\\.env|os\\.environ|/proc/[a-z0-9]+/environ)\'\ndecision = "deny"\npriority = 960',
+			'[[rule]]\ntoolName = ["mcp_geminicode-tools_jira_transition", "mcp_geminicode-tools_gitlab_merge"]\ndecision = "ask_user"\npriority = 990',
+		]);
+	});
+
+	it('refuses the commands that read the CLI\'s own variables or the environment whole, by the regex the rules carry', () => {
+		const reads = ['echo "$GEMINI_API_KEY"', 'echo ${GOOGLE_APPLICATION_CREDENTIALS}', 'node -p process.env', 'python3 -c \'import os;print(os.environ)\'', 'cat /proc/self/environ', 'cat /proc/1/environ', 'echo "a" "b" "$GEMINI_API_KEY"'];
+		const plain = ['echo GEMINI_API_KEY is set', 'ls $HOME', 'cat src/env.ts', 'node -p process.version'];
+		// As the CLI applies it (`buildArgsPatterns`): from the start of the command, in the call's arguments as JSON.
+		const refused = (command: string) => [cliVariableRegex, environmentObjectRegex].some(regex => new RegExp(`"command":"${regex}`).test(JSON.stringify({ command, description: 'Reads os.environ handling' })));
+		expect({ reads: reads.filter(refused), plain: plain.filter(refused) }).toEqual({ reads, plain: [] });
+	});
+
+	it('writes no rule the CLI\'s RE2 would refuse: one it cannot compile is skipped without a word (gemini-cli 0.70 on)', () => {
+		const regexes = [...(buildToolPolicy({ ...allowAll, denyEnvironmentCommands: true }) ?? '').matchAll(/^commandRegex = '(?<regex>.*)'$/gm)].map(match => match.groups!.regex);
+		// Lookahead, lookbehind, backreferences, atomic groups and possessive quantifiers are not RE2's.
+		expect({ rules: regexes.length, refused: regexes.filter(regex => /\(\?(?:[=!]|<[=!]|>)|\\[1-9]|\\k<|[*+?}]\+/.test(regex)) }).toEqual({ rules: 4, refused: [] });
+	});
+
+	it('never suggests printing a variable instead', async () => {
+		expect(buildToolPolicy({ ...allowAll, denyEnvironmentCommands: true })).not.toContain('echo');
+	});
+
+	it('leaves the environment rules out when the shell is off anyway', async () => {
+		expect(buildToolPolicy({ ...allowAll, allowShell: false, denyEnvironmentCommands: true })).not.toContain('commandPrefix');
+	});
+
+	it('denies the shell tool when shell is turned off', async () => {
+		const policy = buildToolPolicy({ ...allowAll, allowShell: false });
+		expect(policy).toContain('toolName = "run_shell_command"\ndecision = "deny"');
+		expect(policy).not.toContain('ask_user');
+	});
+});
+
+describe('prepareToolPolicy', () => {
+	let dir: string | undefined;
+	afterEach(() => dir && fs.rmSync(dir, { recursive: true, force: true }));
+
+	it('writes the file and returns the flag, and removes it when nothing is restricted', async () => {
+		dir = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'gemini-policy-')), 'policy');
+		expect(await prepareToolPolicy(dir, defaults)).toEqual(['--admin-policy', dir]);
+		const file = path.join(dir, policyFileName);
+		expect(fs.readFileSync(file, 'utf8')).toBe(buildToolPolicy(defaults));
+		const written = fs.statSync(file).mtimeMs;
+		await prepareToolPolicy(dir, defaults);
+		expect(fs.statSync(file).mtimeMs).toBe(written);
+		expect(await prepareToolPolicy(dir, allowAll)).toEqual([]);
+		expect(fs.existsSync(file)).toBe(false);
+	});
+});
+
+describe('filterModes', () => {
+	const settings = {
+		mode: {
+			currentId: 'default',
+			available: ['default', 'autoEdit', 'yolo', 'plan'].map(id => ({ id, name: id })),
+		},
+	};
+
+	it('leaves out modes that are not allowed', async () => {
+		expect(filterModes(settings, id => isModeAllowed(defaults, id)).mode?.available.map(m => m.id)).toEqual(['default', 'autoEdit', 'plan']);
+	});
+
+	it('keeps the current mode and hides a picker with one choice', async () => {
+		expect(filterModes({ mode: { ...settings.mode, currentId: 'yolo' } }, id => id === 'default').mode?.available.map(m => m.id)).toEqual(['default', 'yolo']);
+		expect(filterModes(settings, id => id === 'default').mode).toBeUndefined();
+	});
+});

@@ -1,0 +1,42 @@
+diff --git a/extensions/mermaid-markdown-features/esbuild.webview.mts b/extensions/mermaid-markdown-features/esbuild.webview.mts
+index 324274538533bfa50ef6dfa62a4dfa73059655b4..199c4e3be8ea79f1536ef117784585cf210dbc14 100644
+--- a/extensions/mermaid-markdown-features/esbuild.webview.mts
++++ b/extensions/mermaid-markdown-features/esbuild.webview.mts
+@@ -59,33 +59,16 @@ await Promise.all([
+ 			},
+ 		}
+ 	}, process.argv),
+-	// Markdown preview
++	// Markdown preview, notebook and Markdown editor code blocks
++	// GEMINI-FORK: one build, so the three share mermaid's chunks (about 18 MB) instead of each shipping a copy; the notebook renderer was notebook-out/index.js and the Markdown editor's page markdown-editor-out/index.js
+ 	run({
+ 		entryPoints: {
+ 			'index': path.join(previewSrcDir, 'markdown', 'index.ts'),
++			'notebook': path.join(previewSrcDir, 'notebook', 'index.ts'),
++			'markdownEditor': path.join(previewSrcDir, 'markdownEditor', 'index.ts'),
+ 		},
+ 		srcDir: previewSrcDir,
+ 		outdir: path.join(rootDir, 'markdown-preview-out'),
+ 		additionalOptions: mermaidMarkdownBuildOptions,
+ 	}, process.argv),
+-	// Notebook
+-	run({
+-		entryPoints: {
+-			'index': path.join(previewSrcDir, 'notebook', 'index.ts'),
+-		},
+-		srcDir: previewSrcDir,
+-		outdir: path.join(rootDir, 'notebook-out'),
+-		additionalOptions: {
+-			...mermaidMarkdownBuildOptions,
+-		},
+-	}, process.argv),
+-	// Markdown editor code blocks
+-	run({
+-		entryPoints: {
+-			'index': path.join(previewSrcDir, 'markdownEditor', 'index.ts'),
+-		},
+-		srcDir: previewSrcDir,
+-		outdir: path.join(rootDir, 'markdown-editor-out'),
+-		additionalOptions: mermaidMarkdownBuildOptions,
+-	}, process.argv),
+ ]);

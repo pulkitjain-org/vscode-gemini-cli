@@ -1,0 +1,395 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Pulkit Jain. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+// Performance budgets. Each check times the work GeminiCode does on the path a
+// user waits on (a keystroke, a streamed chunk, switching agents) and fails
+// when it is over budget, so a change that slows one down shows up in CI
+// rather than in use. Budgets are well above what a laptop measures, so a slow
+// CI runner stays green; what they catch is work growing with the transcript
+// or the bundle growing by a library. The agent start, which runs the real CLI,
+// is timed by scripts/perf-first-reply.mts.
+
+// @vitest-environment happy-dom
+
+import { existsSync, readdirSync, statSync } from 'node:fs';
+import * as path from 'node:path';
+import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { AgentClient, type AgentClientState } from '../../src/acp/agentClient';
+import { AgentsModel, archiveAfterMs, isArchived, warmThreads } from '../../src/acp/agents';
+import { wakeThreadLines, type ThreadInfo } from '../../src/acp/projectHub';
+import { AgentRuntime } from '../../src/acp/agentRuntime';
+import { AgentSidecar } from '../../src/acp/sidecar';
+import { ChatTranscript, type TranscriptItem } from '../../src/acp/chatTranscript';
+import { SessionUpdateAdapter } from '../../src/acp/sessionUpdates';
+import { TextDeltas } from '../../src/acp/textDeltas';
+import { matchCommands, mentionAt, slashQuery } from '../../webview-src/chatLogic';
+import { scanStreaming } from '../../webview-src/streaming';
+import { fakeAgentCommand, waitFor } from '../helpers';
+import { page, sendToPage, showChatPage, startScript } from '../webview/pages';
+import { limitMs, medianMs } from '../timing';
+
+/**
+ * Bundle size budgets in bytes, minified: every script in media/ and dist/ has one. KaTeX and the
+ * highlighter load on demand and are not part of the chat view's first paint. Sizes in the comments
+ * are as of the latest change to a budget.
+ */
+export const bundleBudgets: Readonly<Record<string, number>> = {
+	// The chat view: about 238 KB, all GeminiCode's own code apart from the Markdown splitter it shares.
+	// Writing the bundles as UTF-8 rather than escaping non-ASCII text took about 21 KB off; reactions,
+	// the queue strip and the trace readout added most of what came after. The review fixes took it to about
+	// 255 KB: notices with Retry and the stall notice, prefix approvals answered from the keyboard, trimmed tool
+	// output, the mode, Build and Commit menus, the context breakdown and the @ picker's new groups. The project
+	// settings panel moved to a chunk of its own (media/projectSettings.js), taking it to about 249 KB.
+	'media/chat.js': 260_000,
+	// Home's startup script, about 26 KB: Preview's renderer, the menus and the popups are files of their own.
+	// The dashboard (cards, banners), the composer and the themed tooltips take most of it.
+	'media/home.js': 30_000,
+	// The Changes panel, about 12 KB; about 16.7 KB with Verify's card (the repository's checks on the agent's work), whose
+	// words all come from the host.
+	'media/changes.js': 17_500,
+	// The team flows, about 32 KB: Open Merge Request, Move Ticket and Log Time, Review and Checks, with the
+	// review's comments, threads and suggested changes. Loaded only with a flow's page.
+	// The select menu's headings and the options' tips added about 1 KB.
+	'media/teamFlow.js': 37_000,
+	// Settings, about 19.4 KB before 1.8; every contributed setting on the page, with its control, search and the side index, added about 7 KB.
+	'media/settings.js': 28_000,
+	// Connections, about 17.5 KB: the Jira sites after the first and Confluence's per-site Connect dialog added about 4 KB.
+	// The themed tooltip module and keepFocus took it to about 20.7 KB.
+	'media/connections.js': 21_500,
+	// The Review Page for Confluence drafts, about 27 KB: the in-place editor, its floating toolbar, the marked changes
+	// and the merge when the page changed meanwhile. The Markdown parser comes from draftMarkdown.js, loaded on open.
+	// Keeping what Markdown can't write (mentions, macros, tables) with the agent's version beside it, checking pasted
+	// attributes and normalizing for Confluence added about 6 KB.
+	'media/confluenceReview.js': 29_000,
+	// Plan Review's page, about 11 KB; its Markdown comes from draftMarkdown.js.
+	'media/planReview.js': 14_000,
+	// An agent's Files page: Recents, search and the folder tree, about 6 KB.
+	'media/agentFiles.js': 7_000,
+	// The audit log page, about 8 KB.
+	// The Storage section (settingsStorage.ts, with its select menu) moved here from Agent Setup's Loads tab, about 7 KB.
+	'media/auditLog.js': 18_500,
+	// The Index page, about 19 KB: workspaces' indexes, attached docs, the Add Docs and Files Left Out popups,
+	// with the shared select menu and tooltips.
+	'media/indexPage.js': 22_000,
+	// The rich Jira comment box, about 22.5 KB, loaded the first time a page opens one.
+	// The themed Visible-to menu (menu.ts and selectMenu.ts) took it to about 31 KB.
+	'media/commentBox.js': 32_000,
+	// About 158 KB.
+	'media/highlight.js': 180_000,
+	// About 265 KB, loaded only when a reply has math.
+	'media/katex.js': 290_000,
+	// About 110 KB, loaded the first time a draft is shown as Markdown.
+	'media/draftMarkdown.js': 140_000,
+	// Home's Show All list and Customize menu, loaded the first time either opens.
+	'media/homePopups.js': 5_000,
+	// Add Figma Design, about 11 KB with its copy of the link parser, loaded the first time a chat opens it from the + menu
+	// or a design's chip.
+	'media/figmaDesign.js': 13_000,
+	// A project thread's card, with its try steps, ⋯ menu, Try chevron menu and first-try guide, about 7 KB, loaded the
+	// first time a project chat shows a card. The Try chevron's menu (tryChoiceMenu.ts) added about 1 KB.
+	'media/threadCard.js': 8_000,
+	// Project settings, about 12 KB with their own copy of the settings logic, loaded the first time a project chat opens them.
+	'media/projectSettings.js': 13_000,
+	// The side question panel (/btw), about 4 KB, loaded the first time a side question is asked.
+	'media/sideChat.js': 5_000,
+	// Debug mode's bar and its reproduce, verify, rounds and clean-up cards, about 5 KB, loaded the first time a chat enters Debug mode.
+	'media/debugCard.js': 7_000,
+	// Debug mode's Evidence page, about 11 KB: its table and filters, about 4 KB, and the themed select menus with the menu class.
+	'media/evidence.js': 13_000,
+	// Home's menus (+, folder, mode, From Your Tools, a row's "...", an agent card's Try chevron) with the menu class,
+	// about 10 KB, loaded once Home has settled or on the first click on a menu's button. The Try chevron's menu added about 1 KB.
+	'media/homeMenus.js': 11_000,
+	// The Changes panel's Try chevron menu with the menu class, about 6 KB, loaded on the first click on the chevron.
+	'media/changesMenu.js': 7_500,
+	'media/connectionsMenu.js': 7_000,
+	// The emoji picker, about 97 KB, loaded the first time a reaction button is hovered or focused: about 88 KB
+	// of emoji data (1,923 emoji with their names and three search words each) and its own code.
+	'media/emojiPicker.js': 105_000,
+	// The extension host's bundle, about 1,061 KB: GeminiCode's own code, the ACP SDK and zod with its English
+	// messages only (esbuild.mts). Project Helpers, Connections, the audit log, Run Benchmark and the trace
+	// recorder moved to dist/pages.js and dist/onDemand.js, about 60 KB.
+	// More than one Jira site (routing a ticket to its site, Home's tickets by site) and Confluence's connection
+	// and agent tools' definitions added about 13 KB; Confluence's client, calls, drafts and Review Page are in dist/confluence.js.
+	// The Index page moving to dist/pages.js took it from about 1,206 KB to about 1,187 KB. Side questions, the
+	// language servers' tools and research added about 18 KB; the docs crawler moving to dist/onDemand.js took 9 KB off.
+	// The ACP SDK and zod (about 250 KB) moved to dist/connection.js, loaded when the first agent process starts:
+	// from about 1,212 KB to about 955 KB.
+	// The 1.8 review: ask rules for every team write, network git commands and variable expansion in approvals, the Run
+	// button's wrapper and download checks, the folder processes' restart handling and the restart hold, about 4 KB net
+	// once the CLI installer moved to dist/onDemand.js.
+	// The team flows (teamFlows.ts with checksBranch.ts and what only they use of teamFlowLogic.ts and releaseMerge.ts), about 45 KB,
+	// moved to dist/onDemand.js, loaded with their first command: about 974 KB. The reviews in progress stay here.
+	'dist/extension.js': 1_000_000,
+	// The agent's connection with the ACP SDK and zod (English messages only), and the benchmark's own ACP client,
+	// about 254 KB (src/connection.ts), loaded when the first agent process starts, seconds after activation.
+	// ACP SDK 2.7.0 took it to about 154 KB.
+	'dist/connection.js': 170_000,
+	// Project Helpers and Connections, about 96 KB, loaded the first time one is opened (src/pages.ts): their own code
+	// and their copy of jsonc-parser (about 17 KB), which edits the Gemini CLI's settings files keeping their comments.
+	// Project Helpers' Storage section, with the storage measuring and Clean Up's list, is about 9 KB of it.
+	// Adding and removing Jira sites and turning Confluence on for one (siteConnections.ts) added about 8 KB to Connections.
+	// Plan Review's host side (planReviewPage.ts, planReview.ts, planReviewStore.ts), about 13 KB, loaded the first time a plan is reviewed.
+	// The team flows' page (teamFlowPanel.ts: Log Time, Move, Open Merge Request, Run Checks, a merge request review), about 9 KB,
+	// moved here from dist/extension.js and loaded with the first flow opened.
+	// An agent's Files page (agentFilesPage.ts, agentFiles.ts), about 7 KB, loaded the first time one opens.
+	// Sync Design System on Figma's row in Connections added about 0.4 KB. The Index page with its docs suggestions
+	// (indexPage.ts, docs/suggest.ts), about 21 KB, moved here from dist/extension.js.
+	// The Storage section's host (storageSection.ts) moved to dist/onDemand.js with the audit page, about 10 KB.
+	// 1.8's Settings page, every contributed setting with its control and the model that reads them (settingsModel.ts),
+	// took it to about 160.3 KB. The team tools' table (teamTools.ts), about 9 KB, which only its server's name was
+	// needed from, is left out: about 153 KB.
+	'dist/pages.js': 162_000,
+	// Confluence, about 27 KB, loaded the first time an agent or a page uses it (src/confluence.ts): its client, the
+	// agents' calls, the drafts and the Review Page's host, with publishing only the changes kept (draftReview.ts,
+	// blockMerge.ts) and the page's localized strings.
+	'dist/confluence.js': 29_000,
+	// Debug mode, about 115 KB, loaded the first time one of its commands runs or a start finds a Debug mode that did not end
+	// (src/debug.ts): the debugger bridge and its logic, marked lines, one agent's Debug mode with its record, the endpoint,
+	// the picked log file, the Evidence page's host, and the geminicode-debug server's tools; its own copies of the pure
+	// modules they share with the extension. Only its commands and route (debugEntry.ts, under 1 KB) are in dist/extension.js.
+	'dist/debug.js': 125_000,
+	// The audit log, Run Benchmark and the trace recorder, about 31 KB, loaded the first time
+	// one of their commands runs (src/onDemand.ts). Finding or cloning a merge request's repository (reviewClone.ts,
+	// cloneSearch.ts) moved here from dist/extension.js: about 44 KB. Merge Back and Try in Workspace (agentMerge.ts,
+	// agentTries.ts, worktreeApply.ts), a project chat's strings (projectStrings.ts) and Figma's client (figma.ts),
+	// about 44 KB, loaded the first time an agent's work is tried or merged, a project chat opens, or Figma is checked.
+	// Check Agent with the CLI contract it reads (checkAgent.ts, cli/contract.ts), about 5 KB, moved here from
+	// dist/extension.js, and rebuilding a plan the CLI deleted (sessionReplay.ts), about 1 KB. Try in Workspace's batched git reads,
+	// links, line endings and per-agent action queue (worktreeApply.ts, tryState.ts) added about 14 KB.
+	// Sync Design System and the design system's reads for Figma (designSystemSync.ts, designSystem.ts, designTokens.ts)
+	// added about 9 KB; the pilot's export, removed, had been about 3 KB. The language servers' adapter for agents'
+	// index tools (editorToolsHost.ts), about 4 KB, loaded the first time an agent asks one. The research engine
+	// (research.ts), about 9 KB, loaded with the first side question that reads the code. The docs crawler (docs/crawler.ts), about 9 KB,
+	// moved here from dist/extension.js and loaded with the first docs fetch.
+	// The CLI installer with its streamed download and tar reader (cliInstall.ts), about 9 KB, moved here from
+	// dist/extension.js: it runs only when a copy is installed. What Clean Up may offer of the agents' folders, with the
+	// folders a removal left behind (worktreeCleanup.ts), about 4.5 KB, moved here from dist/extension.js.
+	// The team flows, about 53 KB with their own copies of the GitLab and Jira helpers they call, moved here from
+	// dist/extension.js: about 237 KB. Verify (agentVerify.ts, verifyRun.ts, verify.ts and the output tail they share with
+	// Run), about 11 KB, loads with the first run of a repository's checks: about 248 KB.
+	'dist/onDemand.js': 256_000,
+	// The indexer process, about 66 KB: parsing, SQLite queries and docs conversion, forked on first use, never
+	// loaded in the extension host.
+	'dist/indexer.js': 120_000,
+};
+
+describe('bundle size', () => {
+	const root = path.join(__dirname, '..', '..');
+	// Locally a bundle that is not built is skipped; CI builds them all first (gemini-ci.yml), so there a missing one fails.
+	const ci = !!process.env.CI;
+	for (const [file, budget] of Object.entries(bundleBudgets)) {
+		const full = path.join(root, file);
+		it.skipIf(!ci && !existsSync(full))(`${file} is within ${budget / 1000} KB`, () => {
+			expect(existsSync(full), `${file} is not built: run node esbuild.mts and node esbuild.webview.mts`).toBe(true);
+			expect(statSync(full).size).toBeLessThanOrEqual(budget);
+		});
+	}
+
+	it.skipIf(!ci && !['media', 'dist'].every(dir => existsSync(path.join(root, dir))))('has a budget for every script in media/ and dist/', () => {
+		const built = ['media', 'dist'].flatMap(dir => existsSync(path.join(root, dir)) ? readdirSync(path.join(root, dir)).filter(name => name.endsWith('.js')).map(name => `${dir}/${name}`) : []);
+		expect(built.filter(file => !Object.hasOwn(bundleBudgets, file))).toEqual([]);
+	});
+});
+
+describe('a project with 500 threads', () => {
+	// A project used for a long time: 500 threads, all but 20 merged, most of those long ago.
+	let now = 1_000;
+	const model = new AgentsModel(undefined, () => now);
+	const workspace = model.addWorkspace('/work/shop').id;
+	model.addAgent(workspace, 'Shop', undefined, 'c', { role: 'coordinator' });
+	const threads: ThreadInfo[] = [];
+	for (let i = 0; i < 500; i++) {
+		now += 60 * 60 * 1000;
+		const id = model.addAgent(workspace, `Thread ${i} with a title of usual length`, { folder: `/w/t${i}`, cwd: `/w/t${i}`, branch: `gemini/thread-${i}`, base: 'main' }, `t${i}`, { role: 'thread', coordinator: 'c', byCoordinator: true }).id;
+		model.recordPrompt(id, 'Do the work');
+		model.setChanges(id, { files: 3, added: 40, removed: 12 });
+		if (i < 480) {
+			model.setThreadResolved(id, true);
+		}
+		threads.push({ id, title: `Thread ${i}`, state: 'done', byCoordinator: true, ...(i < 480 ? { resolved: true } : {}) });
+	}
+	now += archiveAfterMs;
+
+	it('opens it starting only a few threads, and lists the rest quickly', () => {
+		expect(warmThreads(model.threadsOf('c'))).toHaveLength(6);
+		const ms = medianMs(51, () => {
+			const all = model.threadsOf('c');
+			warmThreads(all);
+			all.filter(record => !isArchived(record, now));
+		});
+		expect(ms).toBeLessThan(limitMs(5));
+	});
+
+	it('keeps the coordinator\'s wake short', () => {
+		const lines = wakeThreadLines(threads);
+		expect(lines.length).toBeLessThanOrEqual(20 + 10 + 1);
+		expect(medianMs(51, () => wakeThreadLines(threads))).toBeLessThan(limitMs(2));
+	});
+
+	it('saves the agent list quickly', () => {
+		const json = JSON.stringify(model.snapshot());
+		expect(json.length).toBeLessThan(250_000);
+		expect(medianMs(21, () => {
+			model.recordPrompt('t499', 'One more note');
+			JSON.stringify(model.snapshot());
+		})).toBeLessThan(limitMs(10));
+	});
+});
+
+describe('keystroke', () => {
+	it('matches "/" commands and "@" mentions in well under a frame', () => {
+		const commands = Array.from({ length: 600 }, (_, i) => ({ name: `command-${i}-${i % 7 ? 'review' : 'deploy'}` }));
+		const text = 'Please look at this file and then '.repeat(40) + '/rev';
+		const ms = medianMs(201, () => {
+			slashQuery(text, text.length, text.length);
+			mentionAt(text, text.length, text.length);
+			matchCommands(commands, 'rev');
+		});
+		expect(ms).toBeLessThan(limitMs(2));
+	});
+});
+
+describe('streaming', () => {
+	it('handles a chunk of a long reply without redoing the whole reply', () => {
+		const transcript = new ChatTranscript(() => 0);
+		const adapter = new SessionUpdateAdapter();
+		const deltas = new TextDeltas();
+		transcript.addPrompt('Explain the code');
+		const paragraph = 'Some words in a paragraph of the reply, with `code` and **bold**. '.repeat(4) + '\n\n';
+		// Grow the reply to about 60 KB first, then time single chunks.
+		for (let i = 0; i < 200; i++) {
+			transcript.apply(adapter.adapt({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: paragraph } }));
+		}
+		deltas.reset(transcript.items);
+		const reply = () => transcript.items[transcript.items.length - 1] as Extract<TranscriptItem, { kind: 'user' | 'agent' | 'thought' }>;
+		let scanned = scanStreaming(reply().text);
+		const ms = medianMs(201, () => {
+			transcript.apply(adapter.adapt({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'one more chunk ' } }));
+			deltas.toUpdates([reply()]);
+			scanned = scanStreaming(reply().text, scanned.stableEnd);
+		});
+		expect(ms).toBeLessThan(limitMs(2));
+	});
+});
+
+/** The chat's real page under happy-dom, started once for the tests that time the view. */
+let chatPageShown: Promise<void> | undefined;
+function chatPage(): Promise<void> {
+	return chatPageShown ??= (async () => {
+		await showChatPage();
+		await startScript('chat');
+	})();
+}
+
+describe('agent switch', () => {
+	it('snapshots a long transcript for the view quickly', () => {
+		const transcript = new ChatTranscript(() => 0);
+		const adapter = new SessionUpdateAdapter();
+		for (let turn = 0; turn < 150; turn++) {
+			transcript.addPrompt(`Question ${turn}`);
+			transcript.apply(adapter.adapt({ sessionUpdate: 'tool_call', toolCallId: `t${turn}`, title: 'Read file', kind: 'read', status: 'completed' }));
+			transcript.apply(adapter.adapt({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'An answer of moderate length. '.repeat(40) } }));
+		}
+		const deltas = new TextDeltas();
+		const ms = medianMs(51, () => {
+			deltas.reset(transcript.items);
+			JSON.stringify(transcript.items);
+		});
+		expect(ms).toBeLessThan(limitMs(25));
+	});
+
+	it('opens a 300-turn chat in the view drawing only its latest items', async () => {
+		// The chat's real page under happy-dom: the view draws the latest 60 items and a slot per older turn
+		// (webview-src/virtualBlocks.ts), so opening costs the same however long the chat is. Before the slots,
+		// the view drew 30 items at once (about 12 ms here) and the other 1,170 in idle time, about 490 ms more.
+		await chatPage();
+		const items: TranscriptItem[] = [];
+		for (let turn = 0; turn < 300; turn++) {
+			items.push({ id: `u${turn}`, kind: 'user', text: `Question ${turn}` });
+			items.push({ id: `t${turn}`, kind: 'toolCall', title: 'Read file', toolKind: 'read', status: 'completed', locations: [], details: [] });
+			items.push({ id: `a${turn}`, kind: 'agent', text: 'An answer of moderate length, with `code` and **bold**. '.repeat(40) });
+			items.push({ id: `e${turn}`, kind: 'turnEnd', durationMs: 4000 });
+		}
+		const transcript = page.document.getElementById('transcript')!;
+		const reset = () => sendToPage({ type: 'reset', items, busy: false, status: { phase: 'ready', text: '' }, settings: {} });
+		// Drawing the latest 60 items: about 30 ms on a laptop and about 112 ms on CI's runner, with happy-dom's DOM. The count
+		// below is what holds the view to its latest items on any machine; the time catches only a return to drawing all 1,200.
+		const ms = medianMs(11, reset);
+		expect(ms).toBeLessThan(300);
+		const drawn = [...transcript.children].filter(child => !child.classList.contains('turn-slot'));
+		expect(drawn.length).toBeLessThanOrEqual(80);
+		expect(transcript.querySelectorAll('.turn-slot').length).toBe(285);
+	});
+});
+
+describe('streaming in the view', () => {
+	// The chat's real page under happy-dom. A reply's unfinished tail is drawn whole on each
+	// update, so a tail with no blank line in it costs more with every row: 400 rows drawn 400 times is 80,000 rows
+	// drawn. The view spaces its draws by what the last one cost (webview-src/streamingReply.ts, `renderGap`), so the
+	// whole stream costs a few draws however many updates carry it.
+	const stream = async (id: string, head: string, row: (i: number) => string) => {
+		sendToPage({ type: 'reset', items: [{ id: `u-${id}`, kind: 'user', text: 'Go' }, { id, kind: 'agent', text: head }], busy: true, status: { phase: 'ready', text: '' }, settings: {} });
+		const started = performance.now();
+		for (let i = 0; i < 400; i++) {
+			sendToPage({ type: 'items', items: [{ kind: 'append', id, append: row(i) }] });
+		}
+		const ms = performance.now() - started;
+		// The draw the view put off comes within its longest wait.
+		await new Promise(resolve => setTimeout(resolve, 1_100));
+		return ms;
+	};
+	const transcript = () => page.document.getElementById('transcript')!;
+	beforeAll(() => chatPage());
+
+	it('streams a 400-row table without drawing it 400 times', async () => {
+		const ms = await stream('table', '| File | Lines | Note |\n| --- | --- | --- |\n', i => `| src/module${i}.ts | ${i * 3} | Changed in step ${i}, with \`code\` |\n`);
+		expect(transcript().querySelectorAll('tbody tr').length).toBe(400);
+		expect(ms).toBeLessThan(limitMs(1_500));
+	});
+
+	it('streams a 400-item list without drawing it 400 times', async () => {
+		const ms = await stream('list', 'The steps:\n', i => `- Step ${i}: update **module${i}** and its \`test\`\n`);
+		expect(transcript().querySelectorAll('li').length).toBe(400);
+		expect(ms).toBeLessThan(limitMs(1_500));
+	});
+
+	it('streams a 400-line code block by adding its lines', async () => {
+		const ms = await stream('fence', '```ts\n', i => `export const value${i} = compute(${i}, 'argument');\n`);
+		expect(transcript().querySelector('pre code')!.textContent!.split('\n').length).toBe(401);
+		expect(ms).toBeLessThan(limitMs(500));
+	});
+});
+
+describe('enter to send', () => {
+	let sidecar: AgentSidecar | undefined;
+	let runtime: AgentRuntime | undefined;
+	let client: AgentClient | undefined;
+	afterEach(() => {
+		client?.dispose();
+		runtime?.dispose();
+		sidecar?.dispose();
+	});
+
+	it('gets a prompt to the agent and its first chunk back with little overhead', async () => {
+		const chunk = { step: 'update' as const, update: { sessionUpdate: 'agent_message_chunk' as const, content: { type: 'text' as const, text: 'ok' } } };
+		sidecar = new AgentSidecar({ command: () => fakeAgentCommand({ turns: Array.from({ length: 12 }, () => [chunk]) }), cwd: undefined, restartDelaysMs: [] });
+		runtime = new AgentRuntime(sidecar, {});
+		client = new AgentClient(runtime, { cwd: process.cwd(), requestPermission: async () => ({ outcome: { outcome: 'cancelled' } }) });
+		const ready = waitFor<AgentClientState>(client.onDidChangeState, s => s.kind === 'ready');
+		sidecar.start();
+		await ready;
+		const times: number[] = [];
+		for (let i = 0; i < 11; i++) {
+			const start = performance.now();
+			const first = waitFor(client.onDidReceiveEvent, e => e.kind === 'text');
+			const turn = client.prompt(`prompt ${i}`);
+			await first;
+			times.push(performance.now() - start);
+			await turn;
+		}
+		// The fake agent answers at once, so this is GeminiCode's own overhead plus one round trip over stdio.
+		expect(times.sort((a, b) => a - b)[5]).toBeLessThan(limitMs(30));
+	});
+});

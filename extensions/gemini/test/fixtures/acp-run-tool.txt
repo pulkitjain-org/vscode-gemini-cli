@@ -1,0 +1,31 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Pulkit Jain. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+// A stand-in for the Gemini CLI's ACP module (bundle/gemini-<hash>.js), with
+// its tool call written the way esbuild writes it, for cliPatches.test.ts.
+// Read as text and patched; the patched copy is loaded as an ES module.
+
+const require = (await import('node:module')).createRequire(import.meta.url);
+
+function toToolCallContent(result) {
+	return result.returnDisplay;
+}
+
+export class Session {
+	constructor(id, config) {
+		this.id = id;
+		this.context = { config };
+	}
+
+	async runTool(invocation, fc) {
+		const abortSignal = undefined;
+		const callId = fc.id;
+      const toolResult = await invocation.execute({
+        abortSignal
+      });
+      const content = toToolCallContent(toolResult);
+		return { llmContent: toolResult.llmContent, content };
+	}
+}

@@ -1,0 +1,46 @@
+diff --git a/build/lib/preLaunch.ts b/build/lib/preLaunch.ts
+index 38557ecc455a374c12c2b6d4adca6e625b21b858..738d7de9e98b846d3b38a1d17335df3e2320b35f 100644
+--- a/build/lib/preLaunch.ts
++++ b/build/lib/preLaunch.ts
+@@ -6,6 +6,7 @@ import path from 'path';
+ import { spawn } from 'child_process';
+ import { promises as fs } from 'fs';
+ import { getPnpmCommand } from './pnpm.ts';
++import { createHash } from 'crypto';
+ 
+ const rootDir = path.resolve(import.meta.dirname, '..', '..');
+ 
+@@ -37,8 +38,32 @@ async function ensureNodeModules() {
+ 
+ async function getElectron() {
+ 	const { shouldDownloadElectron } = await import('./electronVersion.ts');
+-	if (shouldDownloadElectron(rootDir)) {
++	// GEMINI-FORK: the dev app also keeps the icons it was built with, so a rebrand needs a fresh copy too.
++	const branding = await brandingStamp();
++	const rebranded = process.env['VSCODE_SKIP_PRELAUNCH'] !== '1' && await readBrandingStamp() !== branding;
++	if (shouldDownloadElectron(rootDir) || rebranded) {
+ 		await runPnpm(['run', 'electron']);
++		await fs.writeFile(path.join(rootDir, '.build', 'electron', brandingStampFile), branding);
++	}
++}
++
++// GEMINI-FORK: what `pnpm run electron` copies into the dev app: names from product.json and the app icons.
++const brandingStampFile = 'branding';
++const brandingFiles = ['product.json', 'resources/darwin/code.icns', 'resources/win32/code.ico'];
++
++async function brandingStamp(): Promise<string> {
++	const hash = createHash('sha256');
++	for (const file of brandingFiles) {
++		hash.update(await fs.readFile(path.join(rootDir, file)));
++	}
++	return hash.digest('hex');
++}
++
++async function readBrandingStamp(): Promise<string | undefined> {
++	try {
++		return (await fs.readFile(path.join(rootDir, '.build', 'electron', brandingStampFile), 'utf8')).trim();
++	} catch {
++		return undefined;
+ 	}
+ }
+ 

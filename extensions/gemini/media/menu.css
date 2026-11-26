@@ -1,0 +1,300 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Pulkit Jain. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+/*
+ * Menus (webview-src/menu.ts): the chat's "+" menu, model, branch and folder, and Agent Home's
+ * folder. Solid, with one shadow and no blur. The page that loads this defines the --gemini-* colours
+ * and loads its own stylesheet after this one, so it can place each menu.
+ */
+
+.menu {
+	position: absolute;
+	bottom: calc(100% + 6px);
+	z-index: 10;
+	box-sizing: border-box;
+	max-height: min(420px, 70vh);
+	overflow-y: auto;
+	padding: var(--gc-space-1);
+	border: var(--gc-hairline);
+	border-radius: var(--gc-radius-overlay);
+	background: var(--gemini-popover);
+	box-shadow: var(--gc-shadow);
+	font-size: var(--gc-text-md);
+	line-height: var(--gc-leading-body);
+	cursor: default;
+}
+
+/* The Try button's chevron menu (webview-src/tryChoiceMenu.ts) and Connections' repository menu (webview-src/connectionsMenu.ts), in the page's body: placed by the button that opened it. */
+.try-choice-menu:not([hidden]),
+.repo-menu:not([hidden]) {
+	position: fixed;
+	padding-top: 4px;
+}
+
+.menu[hidden] {
+	display: none;
+}
+
+.menu:focus {
+	outline: none;
+}
+
+.menu-title {
+	padding: 4px 8px 0;
+	font-size: var(--gc-text-sm);
+	font-weight: var(--gc-weight-semibold);
+}
+
+.menu-subtitle {
+	padding: 1px 8px 4px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: var(--gc-text-sm);
+	color: var(--gemini-faint);
+}
+
+/* The "+" menu searches from a bar across its top; the branch menu from a box. */
+.menu-search {
+	display: block;
+	box-sizing: border-box;
+	width: calc(100% + 8px);
+	margin: -4px -4px 4px;
+	padding: 8px 12px;
+	border: none;
+	border-bottom: 1px solid var(--gemini-border);
+	outline: none;
+	background: transparent;
+	color: var(--vscode-foreground);
+	font: inherit;
+	font-size: var(--gc-text-md);
+}
+
+.foot-menu .menu-search {
+	width: calc(100% - 8px);
+	margin: 4px 4px 8px;
+	padding: 8px 8px;
+	border: 1px solid var(--vscode-foreground);
+	border-radius: var(--gc-radius-md);
+	background: var(--gemini-surface);
+	font-size: var(--gc-text-md);
+}
+
+.menu-search::placeholder {
+	color: var(--gemini-faint);
+}
+
+.menu-heading {
+	padding: 8px 8px 2px;
+	font-size: var(--gc-text-xs);
+	color: var(--gemini-faint);
+}
+
+.menu-separator {
+	height: 1px;
+	margin: 4px 0;
+	background: var(--gemini-border);
+}
+
+.menu > .menu-row:first-child {
+	margin-top: 0;
+}
+
+.menu-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin: 0;
+	min-height: var(--gc-menu-row);
+	box-sizing: border-box;
+	padding: 0 8px;
+	border-radius: var(--gc-radius-sm);
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+.menu-row.active {
+	background: var(--gemini-selected);
+}
+
+.menu-icon {
+	flex: none;
+	font-size: var(--gc-text-lg) !important;
+	color: var(--gemini-muted);
+}
+
+.menu-name {
+	flex: none;
+	max-width: 70%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.menu-detail {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	color: var(--gemini-faint);
+}
+
+.menu-end {
+	display: flex;
+	flex: none;
+	align-items: center;
+	gap: 6px;
+	margin-left: auto;
+	padding-left: 8px;
+	color: var(--gemini-faint);
+}
+
+/* Fork Agent: a line from the left that splits into two arrows, as on the agent's row (icons/commands/fork-*.svg). */
+.codicon-gemini-fork::before {
+	content: "";
+	display: block;
+	width: 1em;
+	height: 1em;
+	background: currentColor;
+	mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1.5 8h3.2L8 4h6M4.7 8 8 12h6M12 2l2 2-2 2M12 10l2 2-2 2'/%3E%3C/svg%3E") center / 100% no-repeat;
+}
+
+/* Usage and quota: four plain bars (the codicon has a frame). */
+.codicon-gemini-usage::before {
+	content: "";
+	display: block;
+	width: 1em;
+	height: 1em;
+	background: currentColor;
+	mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.2' stroke-linecap='round'%3E%3Cpath d='M3 13V8M6.5 13V4M10 13V9M13.5 13V6'/%3E%3C/svg%3E") center / 100% no-repeat;
+}
+
+.menu-end .codicon {
+	font-size: var(--gc-text-lg);
+}
+
+.menu-end-ok,
+.menu-end-warn {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.menu-end-ok { color: var(--gemini-ok); }
+.menu-end-warn { color: var(--gemini-warn); }
+
+.menu-end-ok .codicon,
+.menu-end-warn .codicon {
+	font-size: var(--gc-text-sm);
+}
+
+.menu-switch {
+	position: relative;
+	flex: none;
+	width: 28px;
+	height: 16px;
+	border-radius: var(--gc-radius-pill);
+	background: var(--gemini-switch-off);
+	transition: background var(--gc-motion);
+}
+
+.menu-switch::after {
+	content: "";
+	position: absolute;
+	top: 2px;
+	left: 2px;
+	width: 12px;
+	height: 12px;
+	border-radius: 50%;
+	background: var(--gemini-surface);
+	transition: transform var(--gc-motion);
+}
+
+.menu-switch.on {
+	background: var(--vscode-button-background);
+}
+
+.menu-switch.on::after {
+	transform: translateX(12px);
+}
+
+.menu-empty {
+	padding: 8px;
+	white-space: normal;
+	color: var(--gemini-faint);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+	.menu:not([hidden]) {
+		animation: gemini-menu-pop 120ms ease-out;
+	}
+}
+
+@keyframes gemini-menu-pop {
+	from {
+		opacity: 0;
+		transform: translateY(4px);
+	}
+}
+
+/* A <select> drawn as a button and a menu (webview-src/selectMenu.ts); the button takes the select's own class for its look. */
+.select-menu {
+	min-width: 0;
+}
+
+.select-menu-button {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 6px;
+	width: 100%;
+	text-align: start;
+	cursor: pointer;
+}
+
+.select-menu-button:disabled {
+	opacity: 0.5;
+	cursor: default;
+}
+
+.select-menu-text {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.select-menu-button .codicon {
+	flex: none;
+	color: var(--gemini-muted);
+}
+
+.menu.select-menu-list {
+	position: fixed;
+	bottom: auto;
+	z-index: 1000;
+}
+
+/* Themed tooltips for controls (tooltip.ts setTip), in place of the system's, in the chat and Home. A popover in the top layer, so it shows over a modal dialog: the popover's own centring, border and padding are reset. */
+.gemini-tooltip {
+	position: fixed;
+	inset: auto;
+	z-index: 1000;
+	margin: 0;
+	overflow: visible;
+	max-width: min(320px, calc(100vw - 8px));
+	padding: 4px 8px;
+	border: var(--gc-hairline);
+	border-radius: var(--gc-radius-overlay);
+	background: var(--gemini-popover);
+	box-shadow: var(--gc-shadow);
+	color: var(--vscode-foreground);
+	font-size: var(--gc-text-sm);
+	line-height: var(--gc-leading-row);
+	pointer-events: none;
+	white-space: normal;
+	overflow-wrap: anywhere;
+}
+
+.gemini-tooltip[hidden] {
+	display: none;
+}

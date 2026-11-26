@@ -1,0 +1,311 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Pulkit Jain. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+// The extension host's side of the indexer process. The process starts on
+// the first request, never at activation, with the app's own Node at the
+// lowest priority it sets itself; it is started again after a crash (with a
+// growing delay, giving up after a few, then trying once more ten minutes
+// later), and stopped after ten minutes with nothing to do. The host only forwards requests: every file read, parse and
+// database write happens in the process.
+
+import { fork, type ChildProcess } from 'node:child_process';
+import { Emitter } from '../events';
+import type { HostMessage, IndexerMessage, IndexerMethod, IndexerParams, IndexerResult, IndexStatus } from './indexerProtocol';
+
+export interface IndexClientOptions {
+	/** The indexer's entry point: `indexer.js` beside `extension.js`. */
+	readonly script: string;
+	readonly execPath: string;
+	/** Where indexes live: ~/.geminicode/index. */
+	readonly baseDir: string;
+	/** The app's ripgrep, for searching folders whose index isn't built yet. */
+	readonly ripgrep?: string | Promise<string | undefined>;
+	readonly log: (message: string) => void;
+	readonly idleStopMs?: number;
+	readonly restartDelaysMs?: readonly number[];
+	/** After giving up, how long before the process may start again. */
+	readonly cooldownMs?: number;
+	/** How long a stopped process gets to close its indexes before it is signalled. */
+	readonly stopGraceMs?: number;
+	readonly fork?: typeof fork;
+	readonly now?: () => number;
+}
+
+const defaultIdleStopMs = 10 * 60 * 1000;
+const defaultRestartDelaysMs = [1_000, 4_000, 16_000];
+const defaultCooldownMs = 10 * 60 * 1000;
+const defaultStopGraceMs = 5_000;
+/** A process that ran this long resets the crash count. */
+const healthyAfterMs = 5 * 60 * 1000;
+const heapMb = 512;
+
+interface Pending {
+	readonly resolve: (value: unknown) => void;
+	readonly reject: (error: Error) => void;
+}
+
+/**
+ * How long each answer may take. Queries answer from the store in well under
+ * a second even on a large repository (FINDINGS.md); a build, a reconcile or a
+ * docs ingest runs as long as the repository is big, and has no limit. The
+ * host's own callers of the long ones show progress from the status events.
+ */
+const answerTimeoutMs: Partial<Record<IndexerMethod, number>> = {
+	status: 30_000, skipped: 30_000, files: 30_000, search: 30_000, findSymbol: 30_000, related: 30_000, repoMap: 30_000,
+	docsStatus: 30_000, docsSearch: 30_000, docsValidators: 30_000, pause: 30_000, resume: 30_000, remove: 60_000,
+};
+
+/** Unanswered requests in a row from one process before it is ended. */
+const maxTimeouts = 3;
+
+export class IndexClient {
+
+	private readonly onDidChangeStatusEmitter = new Emitter<IndexStatus>();
+	readonly onDidChangeStatus = this.onDidChangeStatusEmitter.event;
+	/** The process (re)started; folders it should know about need `ensure` again. */
+	private readonly onDidStartEmitter = new Emitter<void>();
+	readonly onDidStart = this.onDidStartEmitter.event;
+	/** `failed` changed: the process gave up, or its cooldown ended. */
+	private readonly onDidChangeFailedEmitter = new Emitter<boolean>();
+	readonly onDidChangeFailed = this.onDidChangeFailedEmitter.event;
+
+	private child: ChildProcess | undefined;
+	private starting: Promise<ChildProcess> | undefined;
+	private readonly pending = new Map<number, Pending>();
+	private nextId = 1;
+	private workerIdle = true;
+	private lastRequestAt = 0;
+	private idleTimer: ReturnType<typeof setInterval> | undefined;
+	private crashes = 0;
+	private startedAt = 0;
+	private notBefore = 0;
+	/** When the process gave up after crashing again and again; 0 while it hasn't. */
+	private stoppedAt = 0;
+	private cooldownTimer: ReturnType<typeof setTimeout> | undefined;
+	private disposed = false;
+	/** Answers that never came since the last one that did; after a few in a row the process is ended, and the crash path starts it again. */
+	private timeouts = 0;
+
+	private readonly now: () => number;
+
+	constructor(private readonly options: IndexClientOptions) {
+		this.now = options.now ?? Date.now;
+	}
+
+	/** The process's id while it runs, for a measurement of it from outside. */
+	get pid(): number | undefined {
+		return this.child?.pid;
+	}
+
+	/** Whether the process is running now. */
+	get running(): boolean {
+		return !!this.child;
+	}
+
+	/**
+	 * Whether the process gave up after crashing again and again: until its
+	 * cooldown ends, sessions get neither the index tools nor the hint.
+	 */
+	get failed(): boolean {
+		return this.stoppedAt > 0 && this.now() - this.stoppedAt < this.cooldownMs;
+	}
+
+	private get cooldownMs(): number {
+		return this.options.cooldownMs ?? defaultCooldownMs;
+	}
+
+	async request<M extends IndexerMethod>(method: M, params: IndexerParams<M>): Promise<Awaited<IndexerResult<M>>> {
+		if (this.disposed) {
+			throw new Error('The indexer has stopped.');
+		}
+		if (this.failed) {
+			throw new Error('The indexer stopped after crashing several times. The Gemini log has the details.');
+		}
+		if (this.stoppedAt) {
+			// The cooldown is over: try again from scratch.
+			this.stoppedAt = 0;
+			this.crashes = 0;
+		}
+		const wait = this.notBefore - this.now();
+		if (!this.child && wait > 0) {
+			await new Promise(resolve => setTimeout(resolve, wait));
+		}
+		const child = this.child ?? await (this.starting ??= this.start().finally(() => this.starting = undefined));
+		this.lastRequestAt = this.now();
+		const id = this.nextId++;
+		const limit = answerTimeoutMs[method];
+		return new Promise<Awaited<IndexerResult<M>>>((resolve, reject) => {
+			let timer: ReturnType<typeof setTimeout> | undefined;
+			const settle = { resolve: (value: unknown) => { clearTimeout(timer); resolve(value as Awaited<IndexerResult<M>>); }, reject: (err: Error) => { clearTimeout(timer); reject(err); } };
+			this.pending.set(id, settle);
+			if (limit) {
+				timer = setTimeout(() => this.timedOut(child, id, method, limit), limit);
+				timer.unref?.();
+			}
+			child.send({ id, method, params } satisfies HostMessage, err => {
+				if (err) {
+					this.pending.delete(id);
+					settle.reject(err);
+				}
+			});
+		});
+	}
+
+	/** An answer that never came: its caller fails now, and a process that does this a few times running is ended, so the crash path starts a fresh one. */
+	private timedOut(child: ChildProcess, id: number, method: IndexerMethod, limit: number): void {
+		const pending = this.pending.get(id);
+		if (!pending) {
+			return;
+		}
+		this.pending.delete(id);
+		pending.reject(new Error(`The indexer did not answer ${method} within ${Math.round(limit / 1000)} s.`));
+		if (++this.timeouts >= maxTimeouts && this.child === child) {
+			this.options.log(`The indexer did not answer ${this.timeouts} requests; ending it so a fresh one takes over.`);
+			this.timeouts = 0;
+			child.kill();
+		}
+	}
+
+	/** Like `request`, for messages whose answer doesn't matter (file changes); failures are logged. */
+	notify<M extends IndexerMethod>(method: M, params: IndexerParams<M>): void {
+		this.request(method, params).catch(err => this.options.log(`Indexer ${method} failed: ${err instanceof Error ? err.message : String(err)}`));
+	}
+
+	dispose(): void {
+		this.disposed = true;
+		clearTimeout(this.cooldownTimer);
+		this.stop();
+		this.onDidChangeStatusEmitter.dispose();
+		this.onDidStartEmitter.dispose();
+		this.onDidChangeFailedEmitter.dispose();
+	}
+
+	private async start(): Promise<ChildProcess> {
+		const ripgrep = await this.options.ripgrep;
+		const child = (this.options.fork ?? fork)(this.options.script, [], {
+			execPath: this.options.execPath,
+			execArgv: [`--max-old-space-size=${heapMb}`, '--disable-warning=ExperimentalWarning'],
+			env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', GEMINICODE_INDEX_DIR: this.options.baseDir, GEMINICODE_RIPGREP: ripgrep ?? '' },
+			stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
+			serialization: 'advanced',
+		});
+		this.child = child;
+		this.startedAt = this.now();
+		this.workerIdle = true;
+		this.timeouts = 0;
+		child.stderr?.setEncoding('utf8');
+		child.stderr?.on('data', (text: string) => this.options.log(`Indexer: ${text.trim()}`));
+		child.on('message', message => this.receive(message as IndexerMessage));
+		child.once('exit', (code, signal) => this.exited(child, code, signal));
+		child.once('error', err => this.options.log(`Indexer failed to start: ${err.message}`));
+		this.idleTimer ??= setInterval(() => this.stopIfIdle(), 60_000);
+		this.idleTimer.unref?.();
+		queueMicrotask(() => this.onDidStartEmitter.fire());
+		return child;
+	}
+
+	private receive(message: IndexerMessage): void {
+		if (message.kind === 'answer') {
+			// It answers: slow answers hours apart are no reason to end it.
+			this.timeouts = 0;
+			const pending = this.pending.get(message.id);
+			this.pending.delete(message.id);
+			if (message.error !== undefined) {
+				pending?.reject(new Error(message.error));
+			} else {
+				pending?.resolve(message.result);
+			}
+			return;
+		}
+		switch (message.event) {
+			case 'status':
+				this.onDidChangeStatusEmitter.fire(message.status);
+				break;
+			case 'idle':
+				this.workerIdle = message.idle;
+				break;
+			case 'log':
+				this.options.log(`Indexer: ${message.message}`);
+				break;
+		}
+	}
+
+	private exited(child: ChildProcess, code: number | null, signal: NodeJS.Signals | null): void {
+		if (this.child !== child) {
+			return;
+		}
+		this.child = undefined;
+		for (const pending of this.pending.values()) {
+			pending.reject(new Error('The indexer stopped while answering.'));
+		}
+		this.pending.clear();
+		if (this.disposed) {
+			return;
+		}
+		this.options.log(`Indexer exited (code ${code}, signal ${signal}).`);
+		if (this.now() - this.startedAt > healthyAfterMs) {
+			this.crashes = 0;
+		}
+		const delays = this.options.restartDelaysMs ?? defaultRestartDelaysMs;
+		if (this.crashes >= delays.length) {
+			this.stoppedAt = this.now();
+			this.options.log(`The indexer crashed ${this.crashes + 1} times; sessions go without the index for ${Math.round(this.cooldownMs / 60_000)} minutes.`);
+			this.onDidChangeFailedEmitter.fire(true);
+			clearTimeout(this.cooldownTimer);
+			this.cooldownTimer = setTimeout(() => {
+				this.cooldownTimer = undefined;
+				if (!this.disposed) {
+					this.onDidChangeFailedEmitter.fire(false);
+				}
+			}, this.cooldownMs);
+			this.cooldownTimer.unref?.();
+			return;
+		}
+		this.notBefore = this.now() + delays[this.crashes++];
+	}
+
+	private stopIfIdle(): void {
+		if (this.child && this.workerIdle && !this.pending.size && this.now() - this.lastRequestAt > (this.options.idleStopMs ?? defaultIdleStopMs)) {
+			this.stop();
+		}
+	}
+
+	/**
+	 * Stops the process the way the host's own exit does: the channel closes,
+	 * and the process closes its indexes (checkpointing their files, releasing
+	 * their locks) and exits. A signal would end it at once, leaving every
+	 * lock with a dead pid and every file with an unmerged write-ahead log;
+	 * one goes only when it hasn't exited within the grace, and SIGKILL after
+	 * as long again. It is no longer this client's process from here, so its
+	 * exit is no crash and the next request starts a fresh one.
+	 */
+	private stop(): void {
+		clearInterval(this.idleTimer);
+		this.idleTimer = undefined;
+		const child = this.child;
+		if (!child) {
+			return;
+		}
+		this.child = undefined;
+		for (const pending of this.pending.values()) {
+			pending.reject(new Error('The indexer stopped while answering.'));
+		}
+		this.pending.clear();
+		const grace = this.options.stopGraceMs ?? defaultStopGraceMs;
+		const term = setTimeout(() => child.kill('SIGTERM'), grace);
+		const kill = setTimeout(() => child.kill('SIGKILL'), grace * 2);
+		term.unref?.();
+		kill.unref?.();
+		child.once('exit', () => {
+			clearTimeout(term);
+			clearTimeout(kill);
+		});
+		if (child.connected) {
+			child.disconnect();
+		} else {
+			child.kill('SIGTERM');
+		}
+	}
+}

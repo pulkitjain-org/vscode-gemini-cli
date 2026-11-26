@@ -93,7 +93,8 @@ export function hygiene(some: NodeJS.ReadableStream | string[] | undefined, runO
 	const productJson = through(function (file: VinylFile) {
 		const product = JSON.parse(file.contents!.toString('utf8'));
 
-		if (product.extensionsGallery) {
+		// GEMINI-FORK: the fork ships the Open VSX gallery; any other gallery is still rejected.
+		if (product.extensionsGallery && !String(product.extensionsGallery.serviceUrl).startsWith('https://open-vsx.org/')) {
 			console.error(`product.json: Contains 'extensionsGallery'`);
 			errorCount++;
 		}

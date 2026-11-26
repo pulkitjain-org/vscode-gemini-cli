@@ -96,6 +96,7 @@ export const layoutRoots = [
 export const separateRoots = [
 	'build',
 	'remote',
+	'extensions/gemini', // GEMINI-FORK: GeminiCode's extension, with a lockfile of its own; no native modules, so the postinstall installs it with the JS-only roots
 ];
 
 /**

@@ -25,6 +25,7 @@ import { IInstantiationService } from '../../instantiation/common/instantiation.
 import { localize } from '../../../nls.js';
 import { IAgentNetworkFilterService } from '../../networkFilter/common/networkFilterService.js';
 import { ISandboxNetworkRestrictions } from '../../sandbox/common/sandboxSettingsResolutionHelper.js';
+import { geminiAgentFiles } from './geminiAgentFiles.js'; // GEMINI-FORK
 
 /**
  * Holds an Electron session along with its storage scope and unique browser
@@ -408,7 +409,8 @@ export class BrowserSession {
 			return;
 		}
 		this._networkFilterEnabled = enabled;
-		this.electronSession.webRequest.onBeforeRequest(enabled ? (details, callback) => {
+		// GEMINI-FORK: the session's one onBeforeRequest listener also checks Gemini agents' file loads (geminiAgentFiles.ts)
+		geminiAgentFiles.setNetworkFilter(this.electronSession, enabled ? (details, callback) => {
 			let uri: URI;
 			try {
 				uri = URI.parse(details.url, true);
@@ -429,6 +431,8 @@ export class BrowserSession {
 			type: 'frame',
 			filePath: FileAccess.asFileUri('vs/platform/browserView/electron-browser/preload-browserView.js').fsPath
 		});
+		// GEMINI-FORK: a Gemini agent's page loads only the files its agent may read (geminiAgentFiles.ts)
+		geminiAgentFiles.listen(this.electronSession);
 		this.electronSession.protocol.handle(Schemas.file, request => {
 			// Sessions on a remote network never serve local files, just like they never reach local servers.
 			if (this._network) {
@@ -438,7 +442,8 @@ export class BrowserSession {
 			if (!BrowserSession._trustAllLocalFiles && !BrowserSession._trustedLocalFileRoots.findSubstr(filePath)) {
 				return new Response(localize('browserSession.untrustedFile', 'Forbidden. File does not reside within a trusted folder.'), { status: 403 });
 			}
-			return this.electronSession.fetch(request, { bypassCustomProtocolHandlers: true });
+			// GEMINI-FORK: this read comes back through the session with no page; the file check lets it through
+			return geminiAgentFiles.readOwn(this.electronSession, request.url, () => this.electronSession.fetch(request, { bypassCustomProtocolHandlers: true }));
 		});
 	}
 

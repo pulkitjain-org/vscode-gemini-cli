@@ -1,0 +1,13 @@
+diff --git a/extensions/mermaid-markdown-features/scripts/markdownEditor.browser.test.mts b/extensions/mermaid-markdown-features/scripts/markdownEditor.browser.test.mts
+index 55aa44f846a7b22356f48bc75428e99eada9ebf4..2c9ff1d6bd8b62081133d5369b48439b4c194b83 100644
+--- a/extensions/mermaid-markdown-features/scripts/markdownEditor.browser.test.mts
++++ b/extensions/mermaid-markdown-features/scripts/markdownEditor.browser.test.mts
+@@ -55,7 +55,7 @@ it('renders diagrams at their natural size in the VS Code theme, and follows edi
+ 		await page.route('https://mermaid.test/**', route => {
+ 			const url = route.request().url();
+ 			const body = url.endsWith('/editor/index.html') ? editorHtml
+-				: url.endsWith('/editor/index.js') ? guest.outputFiles[0].text
++				: url.endsWith('/editor/markdownEditor.js') ? guest.outputFiles[0].text // GEMINI-FORK: the page's script, as editorHtml.ts names it
+ 					: url.endsWith('/host.js') ? host.outputFiles[0].text
+ 						: `<html><body style="margin: 0"><iframe src="/editor/index.html" style="width: 800px; height: 150px; border: none; display: block"></iframe><script type="module" src="/host.js"></script></body></html>`;
+ 			return route.fulfill({ contentType: url.endsWith('.js') ? 'text/javascript' : 'text/html', body });

@@ -1,0 +1,24 @@
+diff --git a/resources/linux/debian/control.template b/resources/linux/debian/control.template
+index 1a5981bb2194756fae82a5f4c906989efad3f44a..6dff6d8b1a6b3cdb033803f4d9af46636aa94532 100644
+--- a/resources/linux/debian/control.template
++++ b/resources/linux/debian/control.template
+@@ -5,14 +5,12 @@ Depends: @@DEPENDS@@
+ Recommends: @@RECOMMENDS@@
+ Priority: optional
+ Architecture: @@ARCHITECTURE@@
+-Maintainer: Microsoft Corporation <vscode-linux@microsoft.com>
+-Homepage: https://code.visualstudio.com/
++Maintainer: pulkitjain-org
++Homepage: https://github.com/pulkitjain-org/vscode-gemini-cli
+ Installed-Size: @@INSTALLEDSIZE@@
+ Provides: visual-studio-@@NAME@@
+ Conflicts: visual-studio-@@NAME@@
+ Replaces: visual-studio-@@NAME@@
+-Description: Code editing. Redefined.
+- Visual Studio Code is a new choice of tool that combines the simplicity of
+- a code editor with what developers need for the core edit-build-debug cycle.
+- See https://code.visualstudio.com/docs/setup/linux for installation
+- instructions and FAQ.
++Description: Code editor with the Gemini agent built in.
++ GeminiCode is a code editor built on Code - OSS, with the Gemini CLI agent built in.
++ See https://github.com/pulkitjain-org/vscode-gemini-cli for installation instructions.
