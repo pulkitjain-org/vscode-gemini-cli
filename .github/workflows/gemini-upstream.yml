@@ -238,7 +238,12 @@ jobs:
             echo "Merge once Gemini CI is green."
             if [ -f "$LOG" ]; then echo; echo '```'; cat "$LOG"; echo '```'; fi
           } > "$BODY"
-          gh pr create --base main --head "$branch" --title "$title" --body-file "$BODY"
+          # This repository is a fork with a remote named upstream, and gh would open the pull request there: --repo names this one.
+          # A branch left without its pull request would make every later run skip the move, so it goes when the pull request cannot be opened.
+          if ! gh pr create --repo "$GITHUB_REPOSITORY" --base main --head "$branch" --title "$title" --body-file "$BODY"; then
+            git push origin --delete "$branch"
+            exit 1
+          fi
           if [ "$HAS_UPSTREAM_TOKEN" != "true" ]; then
             # A pull request opened with the workflow's own token starts no workflows; pushes a person makes to the branch do.
             gh workflow run gemini-ci.yml --repo "$GITHUB_REPOSITORY" --ref "$branch"
@@ -324,10 +329,14 @@ jobs:
           CLI_CURRENT: ${{ steps.pick.outputs.cli_current }}
         run: |
           git push -u origin "$BRANCH"
-          gh pr create --base main --head "$BRANCH" --title "Gemini CLI $CLI" --body "Opened by the Gemini Upstream workflow, apart from the upstream move, which is held up.
+          # --repo, and the branch removed on a failure, for the reasons the other job gives.
+          if ! gh pr create --repo "$GITHUB_REPOSITORY" --base main --head "$BRANCH" --title "Gemini CLI $CLI" --body "Opened by the Gemini Upstream workflow, apart from the upstream move, which is held up.
 
           - Gemini CLI: $CLI_CURRENT → $CLI, checksum from npm. Re-check the items in gemini/docs/FINDINGS.md that name a CLI version; Gemini CI runs the real-CLI tests against the bundled version.
 
-          Merge once Gemini CI is green."
+          Merge once Gemini CI is green."; then
+            git push origin --delete "$BRANCH"
+            exit 1
+          fi
           # A pull request opened with the workflow's own token starts no workflows; pushes a person makes to the branch do.
           gh workflow run gemini-ci.yml --repo "$GITHUB_REPOSITORY" --ref "$BRANCH"
