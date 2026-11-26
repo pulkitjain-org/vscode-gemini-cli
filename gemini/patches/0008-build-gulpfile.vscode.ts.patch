@@ -1,8 +1,8 @@
 diff --git a/build/gulpfile.vscode.ts b/build/gulpfile.vscode.ts
-index 8de1c610ba71de8465643688e5c1d788b4d859ae..0b59fe68d06c0ee4f1b21a3462fb837f84f6537a 100644
+index 331fc0715c4b9fc3907520418f1deb0fad477124..d3d8b7e24862563b9cb181c67699d56e92c7d936 100644
 --- a/build/gulpfile.vscode.ts
 +++ b/build/gulpfile.vscode.ts
-@@ -26,7 +26,7 @@ import { createAsar } from './lib/asar.ts';
+@@ -27,7 +27,7 @@ import { createAsar } from './lib/asar.ts';
  import minimist from 'minimist';
  import { compileNonNativeExtensionsBuildTask, compileNativeExtensionsBuildTask, compileAllExtensionsBuildTask, compileExtensionMediaBuildTask, cleanExtensionsBuildTask, compileCopilotExtensionBuildTask } from './gulpfile.extensions.ts';
  import { checkApiProposalNamesTask, copyCodiconsTask } from './lib/compilation.ts';
@@ -11,7 +11,7 @@ index 8de1c610ba71de8465643688e5c1d788b4d859ae..0b59fe68d06c0ee4f1b21a3462fb837f
  import { getLockedVersion } from './lib/pnpmLock.ts';
  import { ensureOSProxyResolverPlatformPackage, getOSProxyResolverExcludeFilter, getOSProxyResolverPlatformFiles } from './lib/osProxyResolver.ts';
  import { readAgentSdkResults } from './agent-sdk/common.ts';
-@@ -251,12 +251,11 @@ function packageTask(platform: string, arch: string, sourceFolderName: string, d
+@@ -252,12 +252,15 @@ function packageTask(platform: string, arch: string, sourceFolderName: string, d
  			.pipe(filter(depFilterPattern))
  			.pipe(util.cleanNodeModules(path.join(import.meta.dirname, '.moduleignore')))
  			.pipe(util.cleanNodeModules(path.join(import.meta.dirname, `.moduleignore.${process.platform}`)));
@@ -21,12 +21,15 @@ index 8de1c610ba71de8465643688e5c1d788b4d859ae..0b59fe68d06c0ee4f1b21a3462fb837f
  		ensureOSProxyResolverPlatformPackage(platform, arch);
  		const osProxyResolverPlatformPackage = gulp.src(getOSProxyResolverPlatformFiles(platform, arch), { base: '.', dot: true, allowEmpty: true });
  		// `cleanedDeps` has already dropped dot files; keep those of the platform packages, such as SDK plugin manifests.
--		const deps = es.merge(cleanedDeps, copilotRuntimePrebuilds, osProxyResolverPlatformPackage)
++<<<<<<< ours
+ 		const deps = merge(cleanedDeps, copilotRuntimePrebuilds, osProxyResolverPlatformPackage)
++=======
 +		const deps = es.merge(cleanedDeps, osProxyResolverPlatformPackage) // GEMINI-FORK: was cleanedDeps, copilotRuntimePrebuilds, osProxyResolverPlatformPackage
++>>>>>>> theirs
  			.pipe(filter(getCopilotExcludeFilter(platform, arch), { dot: true }))
  			.pipe(filter(getCopilotTgrepExcludeFilter(platform, arch), { dot: true }))
  			.pipe(filter(getRipgrepExcludeFilter(platform, arch), { dot: true }))
-@@ -566,6 +565,9 @@ function prepareCopilotRipgrepShimTask(platform: string, arch: string, destinati
+@@ -567,6 +570,9 @@ function prepareCopilotRipgrepShimTask(platform: string, arch: string, destinati
  		const appNodeModulesDir = path.join(appBase, 'node_modules.asar.unpacked');
  
  		const builtInCopilotExtensionDir = path.join(appBase, 'extensions', 'copilot');

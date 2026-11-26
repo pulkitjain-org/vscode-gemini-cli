@@ -1,5 +1,5 @@
 diff --git a/src/vs/workbench/browser/parts/editor/editorPart.ts b/src/vs/workbench/browser/parts/editor/editorPart.ts
-index 43ceae2af24fa5fcae23ad9a0b02db18cdb11788..5819d625aff9ba78c19a6a06bcbcb3d90caa434d 100644
+index 32fe6e1f1a53f27ec8275c0365c3ada53a63275c..4e4925287860718c5ce875bb97ed928cbaff51f2 100644
 --- a/src/vs/workbench/browser/parts/editor/editorPart.ts
 +++ b/src/vs/workbench/browser/parts/editor/editorPart.ts
 @@ -414,7 +414,8 @@ export class EditorPart extends Part<IEditorPartMemento> implements IEditorPart,

@@ -1,5 +1,5 @@
 diff --git a/eslint.config.js b/eslint.config.js
-index 9db9923e5d76f890d0fafca5d8a9c8b2dcd5a8e4..298ae76f79bb06f8dca69ff6276c5cf9391adc82 100644
+index f679ac1abc0739456b064bfaf149def1acf40677..af94758afb7684a33a35cda38894e63f3d73c5fb 100644
 --- a/eslint.config.js
 +++ b/eslint.config.js
 @@ -12,6 +12,11 @@ const ignores = fs.readFileSync(path.join(import.meta.dirname, '.eslint-ignore')
@@ -14,7 +14,7 @@ index 9db9923e5d76f890d0fafca5d8a9c8b2dcd5a8e4..298ae76f79bb06f8dca69ff6276c5cf9
  const allowedJavaScriptFiles = fs.readFileSync(path.join(import.meta.dirname, '.eslint-allowed-javascript-files'), 'utf8')
  	.toString()
  	.split(/\r\n|\n/)
-@@ -3006,4 +3011,43 @@ export default [
+@@ -3007,4 +3012,43 @@ export default [
  			'local/code-no-new-javascript-files': 'error',
  		},
  	},

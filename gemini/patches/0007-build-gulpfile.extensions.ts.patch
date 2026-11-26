@@ -1,8 +1,8 @@
 diff --git a/build/gulpfile.extensions.ts b/build/gulpfile.extensions.ts
-index ffe491305cfdd32434b274f4fe78eac22006b14f..30a353109ee008126bf91020841189997b734692 100644
+index 02b5eefb9c6cdc4adc6b6978cbe0a1e7a7465157..5c4140a463a28aeac79df78bfdb9584924638f1f 100644
 --- a/build/gulpfile.extensions.ts
 +++ b/build/gulpfile.extensions.ts
-@@ -49,6 +49,7 @@ const compilations = [
+@@ -50,6 +50,7 @@ const compilations = [
  	'extensions/debug-server-ready/tsconfig.json',
  	'extensions/emmet/tsconfig.json',
  	'extensions/extension-editing/tsconfig.json',

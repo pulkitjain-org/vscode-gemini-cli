@@ -1,8 +1,8 @@
 diff --git a/src/vs/workbench/browser/layout.ts b/src/vs/workbench/browser/layout.ts
-index 2e7e9e7cb31ed7ce2f27b37a36e44384aa952911..150752ed9de4debbd562f7926388ad612a7ed95d 100644
+index 117a9b904ca4915c6c4301f8a274c9df98c8fef9..6b41f95aa810f9591203d8e36dcb16cab46f64d0 100644
 --- a/src/vs/workbench/browser/layout.ts
 +++ b/src/vs/workbench/browser/layout.ts
-@@ -1985,7 +1985,10 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
+@@ -2021,7 +2021,10 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
  	private setActivityBarHidden(hidden: boolean): void {
  		this.stateModel.setRuntimeValue(LayoutStateKeys.ACTIVITYBAR_HIDDEN, hidden);
  		this.mainContainer.classList.toggle(LayoutClasses.ACTIVITYBAR_HIDDEN, hidden);

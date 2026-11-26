@@ -1,5 +1,5 @@
 diff --git a/src/vs/platform/browserView/electron-main/browserViewMainService.ts b/src/vs/platform/browserView/electron-main/browserViewMainService.ts
-index 5d918c47353cdfbddd5060b2fdcb919d961c31b8..b167f8dc1c6d42b12e2f8471dc8e23037150ac00 100644
+index e4cba32cb095275f2041ff09a3763ed99ef2b090..45ba3a7f3a8a2cc73b49da11ddc7f18db862b484 100644
 --- a/src/vs/platform/browserView/electron-main/browserViewMainService.ts
 +++ b/src/vs/platform/browserView/electron-main/browserViewMainService.ts
 @@ -30,6 +30,8 @@ import { ILogService } from '../../log/common/log.js';
@@ -11,7 +11,7 @@ index 5d918c47353cdfbddd5060b2fdcb919d961c31b8..b167f8dc1c6d42b12e2f8471dc8e2303
  
  export const IBrowserViewMainService = createDecorator<IBrowserViewMainService>('browserViewMainService');
  
-@@ -456,6 +458,7 @@ export class BrowserViewMainService extends Disposable implements IBrowserViewMa
+@@ -466,6 +468,7 @@ export class BrowserViewMainService extends Disposable implements IBrowserViewMa
  			options
  		);
  		this.browserViews.set(id, view);
@@ -19,7 +19,7 @@ index 5d918c47353cdfbddd5060b2fdcb919d961c31b8..b167f8dc1c6d42b12e2f8471dc8e2303
  		view.presentation = presentation;
  		if (windowConfiguration?.theme) {
  			view.inspector.setTheme(windowConfiguration.theme);
-@@ -719,7 +722,6 @@ export class BrowserViewMainService extends Disposable implements IBrowserViewMa
+@@ -738,7 +741,6 @@ export class BrowserViewMainService extends Disposable implements IBrowserViewMa
  				click: () => inspectTarget.addComment()
  			}));
  			void inspectTarget.highlight().catch(() => { });
@@ -27,7 +27,7 @@ index 5d918c47353cdfbddd5060b2fdcb919d961c31b8..b167f8dc1c6d42b12e2f8471dc8e2303
  		}
  
  		menu.append(new MenuItem({ type: 'separator' }));
-@@ -729,6 +731,14 @@ export class BrowserViewMainService extends Disposable implements IBrowserViewMa
+@@ -748,6 +750,14 @@ export class BrowserViewMainService extends Disposable implements IBrowserViewMa
  		}));
  
  		const viewBounds = view.getWebContentsView().getBounds();

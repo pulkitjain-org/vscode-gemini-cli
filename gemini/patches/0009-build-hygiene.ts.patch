@@ -1,9 +1,9 @@
 diff --git a/build/hygiene.ts b/build/hygiene.ts
-index 246ec7c9dfc76a5462c2137130e4c64ea83bd890..07a777b542e880bc8dd296bf36bf6550fd851d27 100644
+index 2d24e6862d4989680b53ba3f59a8ce3fca0ea185..4fee10e79afd0a580fd55c2abbc9409e4f1bdd7b 100644
 --- a/build/hygiene.ts
 +++ b/build/hygiene.ts
-@@ -92,7 +92,8 @@ export function hygiene(some: NodeJS.ReadWriteStream | string[] | undefined, run
- 	const productJson = es.through(function (file: VinylFile) {
+@@ -93,7 +93,8 @@ export function hygiene(some: NodeJS.ReadableStream | string[] | undefined, runO
+ 	const productJson = through(function (file: VinylFile) {
  		const product = JSON.parse(file.contents!.toString('utf8'));
  
 -		if (product.extensionsGallery) {

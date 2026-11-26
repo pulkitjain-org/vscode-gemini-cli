@@ -1,8 +1,8 @@
 diff --git a/src/vs/workbench/browser/parts/editor/modalEditorPart.ts b/src/vs/workbench/browser/parts/editor/modalEditorPart.ts
-index bee9fca55008a999f1ff1eb88f5730867772cc29..6e259c28ee35f633f9848e306c00007c927aae2f 100644
+index 4929b9559a557dc1e29244a2ef4ffe4da69d6620..1138a99fde2db9800e99f22f09f6148552d2273f 100644
 --- a/src/vs/workbench/browser/parts/editor/modalEditorPart.ts
 +++ b/src/vs/workbench/browser/parts/editor/modalEditorPart.ts
-@@ -950,6 +950,14 @@ class ModalEditorPartImpl extends EditorPart implements IModalEditorPart {
+@@ -951,6 +951,14 @@ class ModalEditorPartImpl extends EditorPart implements IModalEditorPart {
  	private _maximized: boolean;
  	get maximized(): boolean { return this._maximized; }
  
@@ -17,7 +17,7 @@ index bee9fca55008a999f1ff1eb88f5730867772cc29..6e259c28ee35f633f9848e306c00007c
  	private _size: IDimension | undefined;
  	get size(): IDimension | undefined { return this._size; }
  	set size(value: IDimension | undefined) { this._size = value; }
-@@ -1167,6 +1175,11 @@ class ModalEditorPartImpl extends EditorPart implements IModalEditorPart {
+@@ -1169,6 +1177,11 @@ class ModalEditorPartImpl extends EditorPart implements IModalEditorPart {
  
  	async close(options?: { mergeAllEditorsToMainPart?: boolean }): Promise<boolean> {
  

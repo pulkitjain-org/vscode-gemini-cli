@@ -1,5 +1,5 @@
 diff --git a/src/vs/platform/windows/electron-main/windowImpl.ts b/src/vs/platform/windows/electron-main/windowImpl.ts
-index 6ef6ecadd7c0848b0bbdce506b84d887cd8b868c..e74fb3aa2c3fe558c5fb9606dacbedeae817568e 100644
+index 7ca896fa45a85c9abc7bc8ab1f66fb8aa8d9a6c9..118b5f92ef71aa7da37b10f94b7f1087c8123a9a 100644
 --- a/src/vs/platform/windows/electron-main/windowImpl.ts
 +++ b/src/vs/platform/windows/electron-main/windowImpl.ts
 @@ -4,6 +4,7 @@
@@ -10,7 +10,7 @@ index 6ef6ecadd7c0848b0bbdce506b84d887cd8b868c..e74fb3aa2c3fe558c5fb9606dacbedea
  import { DeferredPromise, RunOnceScheduler, timeout, Delayer } from '../../../base/common/async.js';
  import { CancellationToken } from '../../../base/common/cancellation.js';
  import { toErrorMessage } from '../../../base/common/errorMessage.js';
-@@ -983,6 +984,9 @@ export class CodeWindow extends BaseWindow implements ICodeWindow {
+@@ -984,6 +985,9 @@ export class CodeWindow extends BaseWindow implements ICodeWindow {
  		// (https://github.com/microsoft/vscode/issues/122736)
  		this._register(Event.fromNodeEventEmitter<electron.Event>(this._win.webContents, 'will-prevent-unload')(event => event.preventDefault()));
  
